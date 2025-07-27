@@ -1,4 +1,4 @@
-use crate::lexer::token::{FloatType, IntType, Token, TokenType};
+use crate::lexer::token::{Token, TokenType};
 
 pub mod ast;
 pub mod token;
@@ -34,6 +34,7 @@ impl Lexer {
             self.skip_whitespace();
             if !self.is_at_end() {
                 self.scan_token(&mut tokens)?;
+                // println!("Token {:?}", self.peek())
             }
         }
 
@@ -173,18 +174,8 @@ impl Lexer {
             "false" => TokenType::False,
             "as" => TokenType::As,
 
-            "i8" => TokenType::i8,
-            "i16" => TokenType::i16,
-            "i32" => TokenType::i32,
-            "i64" => TokenType::i64,
-            "i128" => TokenType::i128,
-            "u8" => TokenType::u8,
-            "u16" => TokenType::u16,
-            "u32" => TokenType::u32,
-            "u64" => TokenType::u64,
-            "u128" => TokenType::u128,
-            "f32" => TokenType::f32,
-            "f64" => TokenType::f64,
+            "int" => TokenType::Int,
+            "float" => TokenType::Float,
             "bool" => TokenType::Boolean,
             "void" => TokenType::Void,
             "char" => TokenType::Char,
@@ -196,7 +187,7 @@ impl Lexer {
 
     fn scan_number(&mut self) -> Result<Token, LexError> {
         let start_line = self.line;
-        let start_col = self.column - 1; // -1 because we already advanced
+        let start_col = self.column - 1; // already advanced
         let start_pos = self.current - 1;
 
         let mut is_float = false;
@@ -209,78 +200,33 @@ impl Lexer {
         // Check for decimal point
         if self.peek() == '.' && self.peek_next().is_ascii_digit() {
             is_float = true;
-            self.advance(); // Consume the '.'
+            self.advance(); // consume '.'
 
             while self.peek().is_ascii_digit() {
                 self.advance();
             }
         }
 
-        // Check for type suffix
-        let suffix = if self.peek().is_ascii_alphabetic() {
-            let start = self.current;
-            while self.peek().is_ascii_alphabetic() {
-                self.advance();
-            }
-            Some(self.chars[start..self.current].iter().collect::<String>())
-        } else {
-            None
-        };
-
         let num_text: String = self.chars[start_pos..self.current].iter().collect();
 
         if is_float {
             let value = num_text
-                .parse()
+                .parse::<f32>()
                 .map_err(|_| LexError::InvalidNumber(num_text.clone(), start_line, start_col))?;
 
-            let float_type = match suffix.as_deref() {
-                None => None,
-                Some("f32") => Some(FloatType::f32),
-                Some("f64") => Some(FloatType::f64),
-                Some(s) => {
-                    return Err(LexError::InvalidTypeSuffix(
-                        s.to_string(),
-                        start_line,
-                        start_col,
-                    ));
-                }
-            };
-
             Ok(Token::new(
-                TokenType::FloatLiteral(value, float_type),
+                TokenType::FloatLiteral(value),
                 start_line,
                 start_col,
                 start_pos,
             ))
         } else {
             let value = num_text
-                .parse()
+                .parse::<i32>()
                 .map_err(|_| LexError::InvalidNumber(num_text.clone(), start_line, start_col))?;
 
-            let int_type = match suffix.as_deref() {
-                None => None,
-                Some("i8") => Some(IntType::i8),
-                Some("i16") => Some(IntType::i16),
-                Some("i32") => Some(IntType::i32),
-                Some("i64") => Some(IntType::i64),
-                Some("i128") => Some(IntType::i128),
-                Some("u8") => Some(IntType::u8),
-                Some("u16") => Some(IntType::u16),
-                Some("u32") => Some(IntType::u32),
-                Some("u64") => Some(IntType::u64),
-                Some("u128") => Some(IntType::u128),
-                Some(s) => {
-                    return Err(LexError::InvalidTypeSuffix(
-                        s.to_string(),
-                        start_line,
-                        start_col,
-                    ));
-                }
-            };
-
             Ok(Token::new(
-                TokenType::IntLiteral(value, int_type),
+                TokenType::IntLiteral(value),
                 start_line,
                 start_col,
                 start_pos,

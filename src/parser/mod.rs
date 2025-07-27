@@ -18,7 +18,6 @@ impl Parser {
 
         while !self.is_at_end() {
             statements.push(self.statement()?);
-            // println!("Peeked token: {:?}", self.peek());
         }
 
         Ok(statements)
@@ -465,30 +464,26 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
-        if let TokenType::IntLiteral(val, int_type) = &self.peek().token_type {
+        if let TokenType::IntLiteral(val) = &self.peek().token_type {
             let val = *val;
-            let typ = int_type
-                .clone()
-                .unwrap_or(crate::lexer::token::IntType::i32);
+
             self.advance();
 
-            return Ok(Expr::IntLiteral(val, typ));
+            return Ok(Expr::IntLiteral(val.into()));
         }
 
-        if let TokenType::FloatLiteral(val, float_type) = &self.peek().token_type {
+        if let TokenType::FloatLiteral(val) = &self.peek().token_type {
             let val = *val;
-            let typ = float_type
-                .clone()
-                .unwrap_or(crate::lexer::token::FloatType::f32);
+
             self.advance();
 
-            return Ok(Expr::FloatLiteral(val, typ));
+            return Ok(Expr::FloatLiteral(val.into()));
         }
 
-        if self.match_token(&[TokenType::LeftBrace]) {
+        if self.match_token(&[TokenType::LeftBracket]) {
             let mut elements = Vec::new();
 
-            if !self.check(&TokenType::RightBrace) {
+            if !self.check(&TokenType::RightBracket) {
                 loop {
                     elements.push(self.expression()?);
                     if !self.match_token(&[TokenType::Comma]) {
@@ -497,16 +492,16 @@ impl Parser {
                 }
             }
 
-            self.consume(TokenType::RightBrace, "Expected '}' after array elements")?;
+            self.consume(TokenType::RightBracket, "Expected ']' after array elements")?;
 
+            // Try to infer the array type from elements
             let element_type = if !elements.is_empty() {
                 match &elements[0] {
-                    Expr::IntLiteral(_, int_type) => Type::from_int_type(int_type.clone()),
-                    Expr::FloatLiteral(_, float_type) => Type::from_float_type(float_type.clone()),
+                    Expr::IntLiteral(_) => Type::int,
+                    Expr::FloatLiteral(_) => Type::float,
                     Expr::BoolLiteral(_) => Type::Bool,
-
-                    // Expr::Array(exprs, _) => todo!(),
-                    // Expr::ArrayAccess { array, index, element_type } => todo!(),
+                    Expr::CharLiteral(_) => Type::Char,
+                    Expr::Array(_, ty) => ty.clone(),
                     _ => Type::Unknown,
                 }
             } else {
@@ -515,7 +510,6 @@ impl Parser {
 
             return Ok(Expr::Array(elements, element_type));
         }
-
         if self.match_token(&[TokenType::True]) {
             return Ok(Expr::BoolLiteral(true));
         }
@@ -554,79 +548,52 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
-        let base_type = match &self.peek().token_type {
-            TokenType::i8 => {
-                self.advance();
-                Ok(Type::i8)
-            }
-            TokenType::i16 => {
-                self.advance();
-                Ok(Type::i16)
-            }
-            TokenType::i32 => {
-                self.advance();
-                Ok(Type::i32)
-            }
-            TokenType::i64 => {
-                self.advance();
-                Ok(Type::i64)
-            }
-            TokenType::u8 => {
-                self.advance();
-                Ok(Type::u8)
-            }
-            TokenType::u16 => {
-                self.advance();
-                Ok(Type::u16)
-            }
-            TokenType::u32 => {
-                self.advance();
-                Ok(Type::u32)
-            }
-            TokenType::u64 => {
-                self.advance();
-                Ok(Type::u64)
-            }
-            TokenType::f32 => {
-                self.advance();
-                Ok(Type::f32)
-            }
-            TokenType::f64 => {
-                self.advance();
-                Ok(Type::f64)
-            }
-            TokenType::Boolean => {
-                self.advance();
-                Ok(Type::Bool)
-            }
-            TokenType::Void => {
-                self.advance();
-                Ok(Type::Void)
-            }
-            TokenType::Char => {
-                self.advance();
-                Ok(Type::Char)
-            }
-            _ => Err(ParseError::UnexpectedToken(self.peek().clone())),
-        }?;
-
         if self.match_token(&[TokenType::LeftBracket]) {
-            let size_token = self.consume(TokenType::IntLiteral(0, None), "Expected array size")?;
+            // Parse element type
+            let element_type = self.parse_type()?;
 
-            let size = if let TokenType::IntLiteral(size, _) = size_token.token_type {
+            self.consume(TokenType::Comma, "Expected ',' after array element type")?;
+
+            // Parse array size
+            let size_token = self.consume(TokenType::IntLiteral(0), "Expected array size")?;
+            let size = if let TokenType::IntLiteral(size) = size_token.token_type {
                 size as usize
             } else {
                 return Err(ParseError::UnexpectedToken(size_token.clone()));
             };
 
             self.consume(TokenType::RightBracket, "Expected ']' after array size")?;
-            Ok(Type::Array(Box::new(base_type), size))
+
+            Ok(Type::Array(Box::new(element_type), size))
         } else {
-            Ok(base_type)
+            // Handle base types
+            match &self.peek().token_type {
+                TokenType::Int => {
+                    self.advance();
+                    Ok(Type::int)
+                }
+                TokenType::Float => {
+                    self.advance();
+                    Ok(Type::float)
+                }
+                TokenType::Boolean => {
+                    self.advance();
+                    Ok(Type::Bool)
+                }
+                TokenType::Void => {
+                    self.advance();
+                    Ok(Type::Void)
+                }
+                TokenType::Char => {
+                    self.advance();
+                    Ok(Type::Char)
+                }
+                _ => Err(ParseError::UnexpectedToken(self.peek().clone())),
+            }
         }
     }
 }
-
+#[derive(Debug)]
 pub enum ParseError {
     Expected {
         expected: TokenType,

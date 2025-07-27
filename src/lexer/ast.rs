@@ -1,20 +1,8 @@
-use crate::lexer::token::{FloatType, IntType};
-
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-    f32,
-    f64,
+    int,
+    float,
     Bool,
     Array(Box<Type>, usize),
     Function {
@@ -26,38 +14,13 @@ pub enum Type {
     Char,
 }
 
-impl Type {
-    pub fn from_int_type(int_type: crate::lexer::token::IntType) -> Self {
-        use crate::lexer::token::IntType;
-        match int_type {
-            IntType::i8 => Type::i8,
-            IntType::i16 => Type::i16,
-            IntType::i32 => Type::i32,
-            IntType::i64 => Type::i64,
-            IntType::i128 => Type::i128,
-            IntType::u8 => Type::u8,
-            IntType::u16 => Type::u16,
-            IntType::u32 => Type::u32,
-            IntType::u64 => Type::u64,
-            IntType::u128 => Type::u128,
-        }
-    }
-
-    pub fn from_float_type(float_type: crate::lexer::token::FloatType) -> Self {
-        use crate::lexer::token::FloatType;
-        match float_type {
-            FloatType::f32 => Type::f32,
-            FloatType::f64 => Type::f64,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLiteral(i64, IntType),
-    FloatLiteral(f64, FloatType),
+    IntLiteral(i64),
+    FloatLiteral(f64),
     BoolLiteral(bool),
-    
+    CharLiteral(char),
+
     Variable(String),
     Assign {
         name: String,

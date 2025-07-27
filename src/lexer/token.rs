@@ -29,8 +29,8 @@ impl Token {
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
-    IntLiteral(i64, Option<IntType>),
-    FloatLiteral(f64, Option<FloatType>),
+    IntLiteral(i32),
+    FloatLiteral(f32),
     Boolean,
 
     Var,
@@ -83,38 +83,6 @@ pub enum TokenType {
 
     Void,
     Char,
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-    f32,
-    f64,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum IntType {
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum FloatType {
-    f32,
-    f64,
+    Float,
+    Int,
 }
