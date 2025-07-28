@@ -37,17 +37,6 @@ add eax, 1
 mov ebx, eax
 global _start
 _start:
-sub rsp, 16
-mov byte [rsp + 0], 'h'
-mov byte [rsp + 1], 'e'
-mov byte [rsp + 2], 'l'
-mov byte [rsp + 3], 'l'
-mov byte [rsp + 4], 'o'
-mov byte [rsp + 5], 10
-mov byte [rsp + 6], 0
-mov rdi, rsp
-call print_string
-add rsp, 16
 mov rax, 60
 xor rdi, rdi
 syscall
