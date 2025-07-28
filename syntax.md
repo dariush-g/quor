@@ -1,30 +1,23 @@
-let x: i32 = 42;
 
 
-@!pub
-class Example {
-    x: i32,
-    y: i32
-
-    fn func() {}
-}
-
-@pub, @ext Example
-class Example2 {
-
-}
-
-
-@pub
-fn add(a: i32, b: i32) {
+@public
+fn add(a: int, b: int) -> int {
     return a + b;
 }
 
-if (x > 0) {
-    print("positive")
-} else {
-    print("negative")
+
+@public 
+interface Shape {
+    fn area() -> float;
 }
 
-let nums = [1, 2, 3]
+@public
+class Circle : ExampleTrait {
+    @public | @const
+    area: float;
 
+    @impl
+    fn area(self) -> float {
+        self.area
+    }
+}

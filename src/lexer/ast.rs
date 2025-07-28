@@ -54,6 +54,31 @@ pub enum Expr {
     },
 }
 
+impl Expr {
+    pub fn get_type(&self) -> Type {
+        match self {
+            Expr::IntLiteral(_) => Type::int,
+            Expr::FloatLiteral(_) => Type::float,
+            Expr::BoolLiteral(_) => Type::Bool,
+            Expr::CharLiteral(_) => Type::Char,
+            Expr::Variable(_) => {
+                // Get type from symbol table (you'll need to pass it in)
+                // For now, return Unknown - we'll fix this next
+                Type::Unknown
+            }
+            Expr::Binary { result_type, .. } => {
+                // Use the result_type we stored during type checking
+                result_type.clone()
+            }
+            Expr::Unary { result_type, .. } => result_type.clone(),
+            Expr::Call { return_type, .. } => return_type.clone(),
+            Expr::Cast { target_type, .. } => target_type.clone(),
+            Expr::Array(_, element_type) => Type::Array(Box::new(element_type.clone()), 0),
+            _ => Type::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     // Arithmetic

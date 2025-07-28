@@ -166,6 +166,8 @@ impl Lexer {
         let token_type = match text.as_str() {
             "var" => TokenType::Var,
             "fn" => TokenType::Fn,
+            "if" => TokenType::If,
+
             "else" => TokenType::Else,
             "while" => TokenType::While,
             "for" => TokenType::For,
