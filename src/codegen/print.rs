@@ -1,134 +1,63 @@
-// section .text
-// global print_string
+pub fn add_print_int(string: &mut String) {
+    string.push_str(
+        r#"section .text
+global print_int
 
-// ; void print_string(char *str);
-// ; rdi = pointer to null-terminated string
-// print_string:
-//     push rbp
-//     mov rbp, rsp
+print_int:
+    ; rdi = number to print
+    ; preserve caller-saved regs
+    push rax
+    push rcx
+    push rdx
+    push rsi
+    push rbx
 
-//     ; Calculate string length
-//     mov rsi, rdi      ; rsi = pointer to string
-//     xor rcx, rcx      ; counter = 0
+    mov rax, rdi           ; move number to rax for division
+    mov rcx, 10
+    lea rsi, [rel int_buf + 20] ; start at end of buffer
+    mov byte [rsi], 10     ; newline
+    dec rsi
 
-// .length_loop:
-//     mov al, byte [rsi + rcx]
-//     cmp al, 0
-//     je .length_done
-//     inc rcx
-//     jmp .length_loop
+    test rax, rax
+    jns .convert
+    neg rax
+    mov bl, '-'            ; remember the sign
+    jmp .convert
 
-// .length_done:
-//     ; rcx = length of string
+.convert:
+    xor rbx, rbx           ; clear high bits
+.loop:
+    xor rdx, rdx
+    div rcx                ; rax / 10, remainder in rdx
+    add dl, '0'
+    dec rsi
+    mov [rsi], dl
+    test rax, rax
+    jnz .loop
 
-//     ; Prepare syscall parameters
-//     mov rax, 1        ; sys_write
-//     mov rdi, 1        ; stdout fd = 1
-//     mov rsi, rsi      ; pointer to string (already in rsi)
-//     mov rdx, rcx      ; length
-//     syscall
+    cmp bl, '-'
+    jne .done
+    dec rsi
+    mov [rsi], bl
 
-//     ; Restore stack frame and return
-//     mov rsp, rbp
-//     pop rbp
-//     ret
-
-pub fn add_print() -> String {
-    format!(
-        r#"
-global print_string
-
-; void print_string(char *str);
-; rdi = pointer to null-terminated string
-print_string:
-    push rbp
-    mov rbp, rsp
-
-    ; Calculate string length
-    mov rsi, rdi      ; rsi = pointer to string
-    xor rcx, rcx      ; counter = 0
-
-.length_loop:
-    mov al, byte [rsi + rcx]
-    cmp al, 0
-    je .length_done
-    inc rcx
-    jmp .length_loop
-
-.length_done:
-    ; rcx = length of string
-
-    ; Prepare syscall parameters
-    mov rax, 1        ; sys_write
-    mov rdi, 1        ; stdout fd = 1
-    mov rsi, rsi      ; pointer to string (already in rsi)
-    mov rdx, rcx      ; length
+.done:
+    mov rdx, int_buf + 21
+    sub rdx, rsi           ; rdx = length
+    mov rax, 1             ; syscall: write
+    mov rdi, 1             ; stdout
+    mov rsi, rsi           ; pointer to string
     syscall
 
-    ; Restore stack frame and return
-    mov rsp, rbp
-    pop rbp
+    ; restore
+    pop rbx
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
     ret
-"#
-    )
-}
 
-// section .text
-// global _start
-
-// _start:
-//     ; Allocate 14 bytes on stack (13 chars + null terminator)
-//     sub rsp, 16      ; align to 16 bytes for safety
-
-//     mov byte [rsp], 'H'
-//     mov byte [rsp+1], 'e'
-//     mov byte [rsp+2], 'l'
-//     mov byte [rsp+3], 'l'
-//     mov byte [rsp+4], 'o'
-//     mov byte [rsp+5], ','
-//     mov byte [rsp+6], ' '
-//     mov byte [rsp+7], 'w'
-//     mov byte [rsp+8], 'o'
-//     mov byte [rsp+9], 'r'
-//     mov byte [rsp+10], 'l'
-//     mov byte [rsp+11], 'd'
-//     mov byte [rsp+12], '!'
-//     mov byte [rsp+13], 0       ; null terminator
-
-//     ; Pass pointer to string (rsp) to print function
-//     mov rdi, rsp
-//     call print_string
-
-//     add rsp, 16     ; restore stack
-
-//     ; exit syscall
-//     mov rax, 60
-//     xor rdi, rdi
-//     syscall
-
-// mov eax, 1\nint 0x80
-
-fn align16(n: usize) -> usize {
-    (n + 15) & !15
-}
-
-pub fn print(str: String) -> String {
-    let alloc = align16(str.len() + 2);
-    let mut n = String::new();
-    n.push_str(&format!("sub rsp, {alloc}\n"));
-
-    for (i, c) in str.chars().enumerate() {
-        n.push_str(&format!("mov byte [rsp + {i}], '{c}'\n"));
-    }
-
-    let newline_index = str.len();
-    n.push_str(&format!("mov byte [rsp + {newline_index}], 10\n"));
-
-    n.push_str(&format!("mov byte [rsp + {}], 0\n", str.len() + 1));
-
-    n.push_str("mov rdi, rsp\n");
-    n.push_str("call print_string\n");
-    n.push_str(&format!("add rsp, {alloc}\n"));
-
-    n
+section .bss
+int_buf resb 21  ;
+"#,
+    );
 }

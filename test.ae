@@ -1,1 +1,3 @@
-var x: int = 1 + 1;
+fn print()->void {
+    var x: int = 5;
+}

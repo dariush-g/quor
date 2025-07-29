@@ -1,42 +1,70 @@
-
-global print_string
-
-; void print_string(char *str);
-; rdi = pointer to null-terminated string
-print_string:
-    push rbp
-    mov rbp, rsp
-
-    ; Calculate string length
-    mov rsi, rdi      ; rsi = pointer to string
-    xor rcx, rcx      ; counter = 0
-
-.length_loop:
-    mov al, byte [rsi + rcx]
-    cmp al, 0
-    je .length_done
-    inc rcx
-    jmp .length_loop
-
-.length_done:
-    ; rcx = length of string
-
-    ; Prepare syscall parameters
-    mov rax, 1        ; sys_write
-    mov rdi, 1        ; stdout fd = 1
-    mov rsi, rsi      ; pointer to string (already in rsi)
-    mov rdx, rcx      ; length
-    syscall
-
-    ; Restore stack frame and return
-    mov rsp, rbp
-    pop rbp
-    ret
-mov eax, 1
-add eax, 1
-mov ebx, eax
+global print
+print:
+push rbp
+mov rbp, rsp
+mov rax, 5
+pop rbp
+ret
 global _start
 _start:
 mov rax, 60
 xor rdi, rdi
 syscall
+section .text
+global print_int
+
+print_int:
+    ; rdi = number to print
+    ; preserve caller-saved regs
+    push rax
+    push rcx
+    push rdx
+    push rsi
+    push rbx
+
+    mov rax, rdi           ; move number to rax for division
+    mov rcx, 10
+    lea rsi, [rel int_buf + 20] ; start at end of buffer
+    mov byte [rsi], 10     ; newline
+    dec rsi
+
+    test rax, rax
+    jns .convert
+    neg rax
+    mov bl, '-'            ; remember the sign
+    jmp .convert
+
+.convert:
+    xor rbx, rbx           ; clear high bits
+.loop:
+    xor rdx, rdx
+    div rcx                ; rax / 10, remainder in rdx
+    add dl, '0'
+    dec rsi
+    mov [rsi], dl
+    test rax, rax
+    jnz .loop
+
+    cmp bl, '-'
+    jne .done
+    dec rsi
+    mov [rsi], bl
+
+.done:
+    mov rdx, int_buf + 21
+    sub rdx, rsi           ; rdx = length
+    mov rax, 1             ; syscall: write
+    mov rdi, 1             ; stdout
+    mov rsi, rsi           ; pointer to string
+    syscall
+
+    ; restore
+    pop rbx
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+
+section .bss
+int_buf resb 21  ;
