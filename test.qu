@@ -5,7 +5,10 @@ fn example()->void {
 }
 
 fn main() -> int {
-    
+    var x: bool = true;
+    if (x) {
+        var n: int = 0;
+    }    
 
     return 0;
 }

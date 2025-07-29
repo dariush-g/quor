@@ -38,7 +38,7 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    code.generate_function("_start", &vec![], body);
+                    code.generate_function("main", &vec![], body);
                     has_main = true;
                 } else {
                     code.functions
@@ -90,11 +90,26 @@ impl CodeGen {
                 condition,
                 then_stmt,
                 else_stmt,
-            } => match condition {
-                Expr::BoolLiteral(bool) => {}
-                Expr::Variable(string) => {
-                    
+            } => { match condition {
+                Expr::BoolLiteral(bool) => {
+                    let num = match bool {
+                        true => 1,
+                        false => 0,
+                    };
+                    let open = self.regs.pop_front().unwrap();
+                    self.output.push_str(&format!("mov {open}, {num}\n"));
+                    // self.output.push_str(&format!("xor {open}, {open}\n"));
+                    self.output.push_str(&format!("cmp {open}, 1\njne jmp{}\n", self._jmp_count));
+                  
                 }
+                Expr::Variable(string) => {
+                    // self.handle_expr(&Expr::Variable(string.to_string()), Some(string.to_string()));
+                        let val = self.used.iter().find(|x| x.1 == *string).unwrap();
+
+                        self.output.push_str(&format!("cmp {}, 1\n", val.0));
+
+                        self.output.push_str(&format!("jne .jmpne{}\n", self._jmp_count));
+                    }
                 Expr::Binary {
                     left,
                     op,
@@ -107,7 +122,23 @@ impl CodeGen {
                     result_type,
                 } => todo!(),
                 _ => {}
+                }
+
+
+
+                self.handle_stmt(&then_stmt);
+                
+
+
+                self.output.push_str(&format!(".jmpne{}:\n", self._jmp_count));
+                self._jmp_count += 1;
+
             },
+            Stmt::Block(stmts) => {
+                for stmt in stmts {
+                    self.handle_stmt(stmt);
+                }
+            }
             _ => {}
         }
     }
@@ -119,12 +150,12 @@ impl CodeGen {
         self.output.push_str("mov rbp, rsp\n");
 
         for stmt in body {
-            self.handle_stmt(stmt);
+          self.handle_stmt(stmt);
         }
 
         self.output.push_str("pop rbp\n");
 
-        if name == "_start" {
+        if name == "main" {
             self.output
                 .push_str(&format!("mov rax, 60\nxor rdi, rdi\nsyscall\n"));
         } else {
@@ -139,6 +170,20 @@ impl CodeGen {
                 args,
                 return_type: _,
             } => {}
+            Expr::BoolLiteral(n) => {
+                let val = match n {
+                    true => 1,
+                    false => 0,
+                };
+                let av_reg = self.regs.pop_front().unwrap();
+                self.output.push_str(&format!("mov {av_reg}, {val}\n"));
+
+                if let Some(id) = ident {
+                    self.used.push_back((av_reg.clone(), id));
+                }
+
+                return Some(av_reg.to_string());
+            }
             Expr::IntLiteral(n) => {
                 let av_reg = self.regs.pop_front().unwrap();
                 self.output.push_str(&format!("mov {}, {n}\n", av_reg));

@@ -88,13 +88,8 @@ impl Expr {
             Expr::FloatLiteral(_) => Type::float,
             Expr::BoolLiteral(_) => Type::Bool,
             Expr::CharLiteral(_) => Type::Char,
-            Expr::Variable(_) => {
-               
-                Type::Unknown
-            }
-            Expr::Binary { result_type, .. } => {
-                result_type.clone()
-            }
+            Expr::Variable(_) => Type::Unknown,
+            Expr::Binary { result_type, .. } => result_type.clone(),
             Expr::Unary { result_type, .. } => result_type.clone(),
             Expr::Call { return_type, .. } => return_type.clone(),
             Expr::Cast { target_type, .. } => target_type.clone(),
