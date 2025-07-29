@@ -10,7 +10,7 @@ pub struct CodeGen {
     output: String,
     regs: VecDeque<String>,
     used: VecDeque<(String, String)>,
-    jmp_count: u32,
+    _jmp_count: u32,
     functions: Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>,
 }
 
@@ -28,9 +28,11 @@ impl CodeGen {
                 "r11".to_string(),
             ]),
             used: VecDeque::new(),
-            jmp_count: 0,
+            _jmp_count: 0,
             functions: vec![],
         };
+
+        let mut has_main = false;
 
         for stmt in stmts {
             if let Stmt::FunDecl {
@@ -40,9 +42,18 @@ impl CodeGen {
                 body,
             } = stmt
             {
-                code.functions
-                    .push((name.clone(), params.clone(), body.clone()));
+                if name == "main" {
+                    code.generate_function("_start", &vec![], body);
+                    has_main = true;
+                } else {
+                    code.functions
+                        .push((name.clone(), params.clone(), body.clone()));
+                }
             }
+        }
+
+        if !has_main {
+            panic!("No main function found");
         }
 
         let functions = &code.functions.clone();
@@ -51,16 +62,11 @@ impl CodeGen {
             code.generate_function(name, params, body);
         }
 
-        code.output.push_str("global _start\n_start:\n");
-
         for stmt in stmts {
             if !matches!(stmt, Stmt::FunDecl { .. }) {
                 code.handle_stmt(stmt);
             }
         }
-
-        code.output
-            .push_str(&format!("mov rax, 60\nxor rdi, rdi\nsyscall\n"));
 
         add_print_int(&mut code.output);
 
@@ -81,7 +87,9 @@ impl CodeGen {
                     name,
                     args,
                     return_type,
-                } => {}
+                } => {
+                    self.output.push_str(&format!("call {}\n", name));
+                }
                 _ => {}
             },
             _ => {}
@@ -99,7 +107,13 @@ impl CodeGen {
         }
 
         self.output.push_str("pop rbp\n");
-        self.output.push_str("ret\n");
+
+        if name == "_start" {
+            self.output
+                .push_str(&format!("mov rax, 60\nxor rdi, rdi\nsyscall\n"));
+        } else {
+            self.output.push_str("ret\n");
+        }
     }
 
     fn handle_expr(&mut self, expr: &Expr, ident: Option<String>) -> Option<String> {

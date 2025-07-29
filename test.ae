@@ -1,3 +1,13 @@
 fn print()->void {
     var x: int = 5;
+    print();
 }
+
+fn main() -> int {
+    
+    
+    return 0;
+}
+
+
+

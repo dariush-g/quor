@@ -1,15 +1,19 @@
+global _start
+_start:
+push rbp
+mov rbp, rsp
+pop rbp
+mov rax, 60
+xor rdi, rdi
+syscall
 global print
 print:
 push rbp
 mov rbp, rsp
 mov rax, 5
+call print
 pop rbp
 ret
-global _start
-_start:
-mov rax, 60
-xor rdi, rdi
-syscall
 section .text
 global print_int
 
