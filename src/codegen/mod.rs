@@ -131,6 +131,9 @@ impl CodeGen {
                 }
                 return Some(av_reg.to_string());
             }
+            Expr::AddressOf(expr) => {
+                
+            },
             Expr::Variable(name) => {
                 let val = self.used.iter().find(|x| x.1 == name.to_string()).unwrap();
                 return Some(val.0.to_string());

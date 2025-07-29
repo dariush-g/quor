@@ -1,13 +1,14 @@
-fn print()->void {
-    var x: int = 5;
-    print();
+fn example()->void {
+    var value: int = 5;
+    var x: int* = &value;
+    *x = 100;
 }
 
 fn main() -> int {
     
-    
+
     return 0;
 }
 
 
-
+// nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test

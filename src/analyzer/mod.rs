@@ -100,12 +100,10 @@ impl TypeChecker {
             Expr::IntLiteral(_) => Ok(Type::int),
             Expr::FloatLiteral(_) => Ok(Type::float),
             Expr::CharLiteral(_) => Ok(Type::Char),
-
             Expr::Variable(name) => self
                 .lookup_var(name)
                 .cloned()
                 .ok_or_else(|| format!("Undeclared variable '{}'", name)),
-
             Expr::Assign { name, value } => {
                 let value_type = self.type_check_expr(value)?;
                 let var_type = self
@@ -120,7 +118,6 @@ impl TypeChecker {
                 }
                 Ok(value_type)
             }
-
             Expr::Binary {
                 left, op, right, ..
             } => {
@@ -180,7 +177,6 @@ impl TypeChecker {
                     _ => Ok(left_type),
                 }
             }
-
             Expr::Unary { op, expr, .. } => {
                 let expr_type = self.type_check_expr(expr)?;
 
@@ -197,9 +193,12 @@ impl TypeChecker {
                         }
                         Ok(expr_type)
                     }
+                    UnaryOp::AddressOf => {
+                        Ok(Type::Pointer(Box::new(self.type_check_expr(expr).unwrap())))
+                    }
+                    UnaryOp::Dereference => Ok(self.type_check_expr(expr).unwrap()),
                 }
             }
-
             Expr::Call { name, args, .. } => {
                 let (param_types, ret_type) = self
                     .lookup_fn(name)
@@ -227,7 +226,6 @@ impl TypeChecker {
 
                 Ok(ret_type)
             }
-
             Expr::Cast { expr, target_type } => {
                 let expr_type = self.type_check_expr(expr)?;
 
@@ -246,7 +244,6 @@ impl TypeChecker {
 
                 Ok(target_type.clone())
             }
-
             Expr::Array(exprs, expr_elem_type) => {
                 if exprs.is_empty() {
                     return Err("Cannot infer type of empty array".to_string());
@@ -261,7 +258,6 @@ impl TypeChecker {
 
                 Ok(Type::Array(Box::new(expr_elem_type.clone()), exprs.len()))
             }
-
             Expr::ArrayAccess {
                 array,
                 index,
@@ -281,6 +277,8 @@ impl TypeChecker {
                     _ => Err("Attempted to index a non-array type or type mismatch".to_string()),
                 }
             }
+            Expr::AddressOf(expr) => Ok(expr.get_type()),
+            Expr::DerefAssign { target, .. } => Ok(target.get_type()),
         }
     }
 

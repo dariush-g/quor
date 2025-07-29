@@ -214,19 +214,29 @@ impl Parser {
         if self.match_token(&[TokenType::Equal]) {
             let value = self.assignment()?;
 
-            if let Expr::Variable(name) = expr {
-                return Ok(Expr::Assign {
-                    name,
-                    value: Box::new(value),
-                });
+            match expr {
+                Expr::Variable(name) => {
+                    return Ok(Expr::Assign {
+                        name,
+                        value: Box::new(value),
+                    });
+                }
+                Expr::Unary {
+                    op: UnaryOp::Dereference,
+                    expr,
+                    ..
+                } => {
+                    return Ok(Expr::DerefAssign {
+                        target: expr,
+                        value: Box::new(value),
+                    });
+                }
+                _ => return Err(ParseError::InvalidAssignmentTarget),
             }
-
-            return Err(ParseError::InvalidAssignmentTarget);
         }
 
         Ok(expr)
     }
-
     fn logic_or(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.logic_and()?;
 
@@ -355,10 +365,17 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expr, ParseError> {
-        if self.match_token(&[TokenType::Bang, TokenType::Minus]) {
+        if self.match_token(&[
+            TokenType::Bang,
+            TokenType::Minus,
+            TokenType::Star,
+            TokenType::Ampersand,
+        ]) {
             let op = match self.previous().token_type {
                 TokenType::Bang => UnaryOp::Not,
                 TokenType::Minus => UnaryOp::Negate,
+                TokenType::Star => UnaryOp::Dereference,
+                TokenType::Ampersand => UnaryOp::AddressOf,
                 _ => unreachable!(),
             };
 
@@ -506,32 +523,38 @@ impl Parser {
             };
 
             self.consume(TokenType::RightBracket, "Expected ']' after array size")?;
-            Ok(Type::Array(Box::new(element_type), size))
-        } else {
-            match &self.peek().token_type {
-                TokenType::Int => {
-                    self.advance();
-                    Ok(Type::int)
-                }
-                TokenType::Float => {
-                    self.advance();
-                    Ok(Type::float)
-                }
-                TokenType::Boolean => {
-                    self.advance();
-                    Ok(Type::Bool)
-                }
-                TokenType::Void => {
-                    self.advance();
-                    Ok(Type::Void)
-                }
-                TokenType::Char => {
-                    self.advance();
-                    Ok(Type::Char)
-                }
-                _ => Err(ParseError::UnexpectedToken(self.peek().clone())),
-            }
+            return Ok(Type::Array(Box::new(element_type), size));
         }
+
+        let mut base_type = match &self.peek().token_type {
+            TokenType::Int => {
+                self.advance();
+                Type::int
+            }
+            TokenType::Float => {
+                self.advance();
+                Type::float
+            }
+            TokenType::Boolean => {
+                self.advance();
+                Type::Bool
+            }
+            TokenType::Void => {
+                self.advance();
+                Type::Void
+            }
+            TokenType::Char => {
+                self.advance();
+                Type::Char
+            }
+            _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
+        };
+
+        while self.match_token(&[TokenType::Star]) {
+            base_type = Type::Pointer(Box::new(base_type));
+        }
+
+        Ok(base_type)
     }
 }
 

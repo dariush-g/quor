@@ -62,6 +62,7 @@ pub enum TokenType {
     Less,
     LessEqual,
     Arrow,
+    Ampersand,
 
     // Punctuation
     LeftParen,

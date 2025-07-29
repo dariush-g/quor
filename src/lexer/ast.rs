@@ -12,6 +12,24 @@ pub enum Type {
     Void,
     Unknown,
     Char,
+    Pointer(Box<Type>),
+}
+
+impl Type {
+    pub fn pointer_to(base: Type) -> Type {
+        Type::Pointer(Box::new(base))
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, Type::Pointer(_))
+    }
+
+    pub fn deref(&self) -> Option<&Type> {
+        match self {
+            Type::Pointer(inner) => Some(inner),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -21,11 +39,20 @@ pub enum Expr {
     BoolLiteral(bool),
     CharLiteral(char),
 
+    AddressOf(Box<Expr>), // &expr
+
+    DerefAssign {
+        target: Box<Expr>,
+        value: Box<Expr>,
+    },
+
     Variable(String),
+
     Assign {
         name: String,
         value: Box<Expr>,
     },
+
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
@@ -73,6 +100,8 @@ impl Expr {
             Expr::Unary { result_type, .. } => result_type.clone(),
             Expr::Call { return_type, .. } => return_type.clone(),
             Expr::Cast { target_type, .. } => target_type.clone(),
+            Expr::AddressOf(expr) => expr.get_type(),
+            Expr::DerefAssign { target, .. } => target.get_type(),
             Expr::Array(_, element_type) => Type::Array(Box::new(element_type.clone()), 0),
             _ => Type::Unknown,
         }
@@ -105,6 +134,8 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Not,    // !
     Negate, // -
+    AddressOf,
+    Dereference,
 }
 
 #[derive(Debug, Clone)]

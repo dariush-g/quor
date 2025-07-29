@@ -6,12 +6,11 @@ pop rbp
 mov rax, 60
 xor rdi, rdi
 syscall
-global print
-print:
+global example
+example:
 push rbp
 mov rbp, rsp
 mov rax, 5
-call print
 pop rbp
 ret
 section .text
