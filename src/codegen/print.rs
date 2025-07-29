@@ -4,31 +4,30 @@ pub fn add_print_int(string: &mut String) {
 global print_int
 
 print_int:
-    ; rdi = number to print
-    ; preserve caller-saved regs
+    
     push rax
     push rcx
     push rdx
     push rsi
     push rbx
 
-    mov rax, rdi           ; move number to rax for division
+    mov rax, rdi           
     mov rcx, 10
-    lea rsi, [rel int_buf + 20] ; start at end of buffer
-    mov byte [rsi], 10     ; newline
+    lea rsi, [rel int_buf + 20] 
+    mov byte [rsi], 10    
     dec rsi
 
     test rax, rax
     jns .convert
     neg rax
-    mov bl, '-'            ; remember the sign
+    mov bl, '-'         
     jmp .convert
 
 .convert:
-    xor rbx, rbx           ; clear high bits
+    xor rbx, rbx     
 .loop:
     xor rdx, rdx
-    div rcx                ; rax / 10, remainder in rdx
+    div rcx              
     add dl, '0'
     dec rsi
     mov [rsi], dl
@@ -42,13 +41,12 @@ print_int:
 
 .done:
     mov rdx, int_buf + 21
-    sub rdx, rsi           ; rdx = length
-    mov rax, 1             ; syscall: write
-    mov rdi, 1             ; stdout
-    mov rsi, rsi           ; pointer to string
+    sub rdx, rsi          
+    mov rax, 1            
+    mov rdi, 1            
+    mov rsi, rsi           
     syscall
 
-    ; restore
     pop rbx
     pop rsi
     pop rdx

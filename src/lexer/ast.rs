@@ -89,12 +89,10 @@ impl Expr {
             Expr::BoolLiteral(_) => Type::Bool,
             Expr::CharLiteral(_) => Type::Char,
             Expr::Variable(_) => {
-                // Get type from symbol table (you'll need to pass it in)
-                // For now, return Unknown - we'll fix this next
+               
                 Type::Unknown
             }
             Expr::Binary { result_type, .. } => {
-                // Use the result_type we stored during type checking
                 result_type.clone()
             }
             Expr::Unary { result_type, .. } => result_type.clone(),

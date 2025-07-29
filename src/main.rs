@@ -8,7 +8,7 @@ use aera::parser::Parser;
 
 fn main() {
     // 1. Read source file
-    let path = Path::new("test.ae");
+    let path = Path::new("test.qu");
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(e) => {
