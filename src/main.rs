@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use aera::analyzer::TypeChecker;
-use aera::codegen::CodeGen;
-use aera::lexer::Lexer;
-use aera::parser::Parser;
+use quor::analyzer::TypeChecker;
+use quor::codegen::CodeGen;
+use quor::lexer::Lexer;
+use quor::parser::Parser;
 
 fn main() {
     // 1. Read source file

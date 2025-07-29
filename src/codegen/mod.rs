@@ -1,9 +1,4 @@
-mod print;
-
-use crate::{
-    codegen::print::add_print_int,
-    lexer::ast::{BinaryOp, Expr, Stmt, Type},
-};
+use crate::lexer::ast::{BinaryOp, Expr, Stmt, Type};
 use std::collections::VecDeque;
 
 pub struct CodeGen {
@@ -68,8 +63,6 @@ impl CodeGen {
             }
         }
 
-        add_print_int(&mut code.output);
-
         code.output
     }
 
@@ -88,8 +81,31 @@ impl CodeGen {
                     args,
                     return_type,
                 } => {
+                    // TODO: allow parameters through registers bf fn call
                     self.output.push_str(&format!("call {}\n", name));
                 }
+                _ => {}
+            },
+            Stmt::If {
+                condition,
+                then_stmt,
+                else_stmt,
+            } => match condition {
+                Expr::BoolLiteral(bool) => {}
+                Expr::Variable(string) => {
+                    
+                }
+                Expr::Binary {
+                    left,
+                    op,
+                    right,
+                    result_type,
+                } => todo!(),
+                Expr::Unary {
+                    op,
+                    expr,
+                    result_type,
+                } => todo!(),
                 _ => {}
             },
             _ => {}
@@ -131,9 +147,7 @@ impl CodeGen {
                 }
                 return Some(av_reg.to_string());
             }
-            Expr::AddressOf(expr) => {
-                
-            },
+            Expr::AddressOf(expr) => {}
             Expr::Variable(name) => {
                 let val = self.used.iter().find(|x| x.1 == name.to_string()).unwrap();
                 return Some(val.0.to_string());

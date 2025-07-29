@@ -1,4 +1,4 @@
-use aera::{lexer::Lexer, parser::Parser};
+use quor::{lexer::Lexer, parser::Parser};
 
 #[test]
 fn test_function_declaration() {
