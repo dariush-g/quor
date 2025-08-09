@@ -11,6 +11,15 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn analyze_program(program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::new();
+
+        // Register builtins
+        type_checker
+            .declare_fn("print_int", vec![Type::int], Type::Void)
+            .map_err(|e| format!("Global scope error: {}", e))?;
+        type_checker
+            .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+            .map_err(|e| format!("Global scope error: {}", e))?;
+
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
 
@@ -194,9 +203,14 @@ impl TypeChecker {
                         Ok(expr_type)
                     }
                     UnaryOp::AddressOf => {
-                        Ok(Type::Pointer(Box::new(self.type_check_expr(expr).unwrap())))
+                        Ok(Type::Pointer(Box::new(expr_type)))
                     }
-                    UnaryOp::Dereference => Ok(self.type_check_expr(expr).unwrap()),
+                    UnaryOp::Dereference => {
+                        match expr_type {
+                            Type::Pointer(inner) => Ok(*inner.clone()),
+                            _ => Err("Cannot dereference a non-pointer type".to_string()),
+                        }
+                    }
                 }
             }
             Expr::Call { name, args, .. } => {
@@ -277,8 +291,23 @@ impl TypeChecker {
                     _ => Err("Attempted to index a non-array type or type mismatch".to_string()),
                 }
             }
-            Expr::AddressOf(expr) => Ok(expr.get_type()),
-            Expr::DerefAssign { target, .. } => Ok(target.get_type()),
+            Expr::AddressOf(expr) => Ok(Type::Pointer(Box::new(self.type_check_expr(expr)?))),
+            Expr::DerefAssign { target, value } => {
+                let target_type = self.type_check_expr(target)?;
+                match target_type {
+                    Type::Pointer(inner) => {
+                        let val_ty = self.type_check_expr(value)?;
+                        if val_ty != *inner {
+                            return Err(format!(
+                                "Type mismatch in deref assignment: expected {:?}, found {:?}",
+                                inner, val_ty
+                            ));
+                        }
+                        Ok(*inner)
+                    }
+                    _ => Err("Cannot assign through a non-pointer value".to_string()),
+                }
+            }
         }
     }
 

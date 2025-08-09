@@ -2,16 +2,23 @@ fn example()->void {
     var value: int = 5;
     var x: int* = &value;
     *x = 100;
+    print_int(value);
 }
 
 fn main() -> int {
     var x: bool = true;
     if (x) {
         var n: int = 0;
+        print_bool(x);
+        print_int(n);
     }    
+
+    example();
 
     return 0;
 }
 
 
 // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test
+
+// nasm -f macho64 test.asm -o test.o && clang -arch x86_64 -c runtime.c -o runtime.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o runtime.o && ./test

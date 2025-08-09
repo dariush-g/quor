@@ -12,6 +12,7 @@ pub enum Type {
     Void,
     Unknown,
     Char,
+
     Pointer(Box<Type>),
 }
 
@@ -73,6 +74,7 @@ pub enum Expr {
         expr: Box<Expr>,
         target_type: Type,
     },
+
     Array(Vec<Expr>, Type),
     ArrayAccess {
         array: Box<Expr>,
@@ -93,7 +95,7 @@ impl Expr {
             Expr::Unary { result_type, .. } => result_type.clone(),
             Expr::Call { return_type, .. } => return_type.clone(),
             Expr::Cast { target_type, .. } => target_type.clone(),
-            Expr::AddressOf(expr) => expr.get_type(),
+            Expr::AddressOf(expr) => Type::Pointer(Box::new(expr.get_type())),
             Expr::DerefAssign { target, .. } => target.get_type(),
             Expr::Array(_, element_type) => Type::Array(Box::new(element_type.clone()), 0),
             _ => Type::Unknown,
@@ -125,10 +127,10 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
-    Not,    // !
-    Negate, // -
-    AddressOf,
-    Dereference,
+    Not,         // !
+    Negate,      // -
+    AddressOf,   // &
+    Dereference, // *
 }
 
 #[derive(Debug, Clone)]

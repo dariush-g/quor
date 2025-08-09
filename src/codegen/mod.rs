@@ -1,12 +1,16 @@
-use crate::lexer::ast::{BinaryOp, Expr, Stmt, Type};
-use std::collections::VecDeque;
+use crate::lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp};
+use std::collections::{HashMap, HashSet, VecDeque};
+
+type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
 
 pub struct CodeGen {
     output: String,
     regs: VecDeque<String>,
-    used: VecDeque<(String, String)>,
     _jmp_count: u32,
-    functions: Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>,
+    functions: Functions,
+    locals: HashMap<String, i32>,
+    stack_size: i32,
+    externs: HashSet<String>,
 }
 
 impl CodeGen {
@@ -14,7 +18,6 @@ impl CodeGen {
         let mut code = CodeGen {
             output: String::new(),
             regs: VecDeque::from(vec![
-                "rax".to_string(),
                 "rcx".to_string(),
                 "rdx".to_string(),
                 "rsi".to_string(),
@@ -22,9 +25,11 @@ impl CodeGen {
                 "r10".to_string(),
                 "r11".to_string(),
             ]),
-            used: VecDeque::new(),
             _jmp_count: 0,
             functions: vec![],
+            locals: HashMap::new(),
+            stack_size: 0,
+            externs: HashSet::new(),
         };
 
         let mut has_main = false;
@@ -38,7 +43,7 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    code.generate_function("main", &vec![], body);
+                    code.generate_function("_start", &vec![], body);
                     has_main = true;
                 } else {
                     code.functions
@@ -63,77 +68,89 @@ impl CodeGen {
             }
         }
 
-        code.output
+        // Prepend extern declarations for any called-but-not-defined functions
+        let defined: HashSet<String> = code
+            .functions
+            .iter()
+            .map(|(n, _, _)| n.clone())
+            .collect();
+        let mut header = String::new();
+        for ext in code.externs.difference(&defined) {
+            header.push_str(&format!("extern _{ext}\n"));
+        }
+
+        format!("{header}{}", code.output)
+    }
+
+    fn alloc_local(&mut self, name: &str, _ty: &Type) -> i32 {
+        // For now, every local is 8 bytes
+        self.stack_size += 8;
+        self.output.push_str("sub rsp, 8\n");
+        let offset = self.stack_size; // addressable as [rbp - offset]
+        self.locals.insert(name.to_string(), offset);
+        offset
+    }
+
+    fn local_offset(&self, name: &str) -> Option<i32> {
+        self.locals.get(name).cloned()
     }
 
     fn handle_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::VarDecl {
                 name,
-                var_type: _,
+                var_type,
                 value,
             } => {
-                self.handle_expr(value, Some(name.clone()));
-            }
-            Stmt::Expression(expr) => match expr {
-                Expr::Call {
-                    name,
-                    args,
-                    return_type,
-                } => {
-                    // TODO: allow parameters through registers bf fn call
-                    self.output.push_str(&format!("call {}\n", name));
+                let _offset = if self.local_offset(name).is_none() {
+                    self.alloc_local(name, var_type)
+                } else {
+                    self.local_offset(name).unwrap()
+                };
+                if let Some(val_reg) = self.handle_expr(value, None) {
+                    let off = self.local_offset(name).unwrap();
+                    self.output
+                        .push_str(&format!("mov QWORD [rbp - {off}], {val_reg}\n"));
+                    // release temp register back to pool
+                    self.regs.push_back(val_reg);
                 }
-                _ => {}
-            },
+            }
+            Stmt::Expression(expr) => {
+                if let Some(reg) = self.handle_expr(expr, None) {
+                    // expression result unused; free temp register
+                    self.regs.push_back(reg);
+                }
+            }
+
             Stmt::If {
                 condition,
                 then_stmt,
                 else_stmt,
-            } => { match condition {
-                Expr::BoolLiteral(bool) => {
-                    let num = match bool {
-                        true => 1,
-                        false => 0,
-                    };
-                    let open = self.regs.pop_front().unwrap();
-                    self.output.push_str(&format!("mov {open}, {num}\n"));
-                    // self.output.push_str(&format!("xor {open}, {open}\n"));
-                    self.output.push_str(&format!("cmp {open}, 1\njne jmp{}\n", self._jmp_count));
-                  
-                }
-                Expr::Variable(string) => {
-                    // self.handle_expr(&Expr::Variable(string.to_string()), Some(string.to_string()));
-                        let val = self.used.iter().find(|x| x.1 == *string).unwrap();
-
-                        self.output.push_str(&format!("cmp {}, 1\n", val.0));
-
-                        self.output.push_str(&format!("jne .jmpne{}\n", self._jmp_count));
-                    }
-                Expr::Binary {
-                    left,
-                    op,
-                    right,
-                    result_type,
-                } => todo!(),
-                Expr::Unary {
-                    op,
-                    expr,
-                    result_type,
-                } => todo!(),
-                _ => {}
-                }
-
-
-
-                self.handle_stmt(&then_stmt);
-                
-
-
-                self.output.push_str(&format!(".jmpne{}:\n", self._jmp_count));
+            } => {
+                // Evaluate condition
+                let cond_reg = self.handle_expr(condition, None).expect("if condition should produce a register");
+                let jmp_id = self._jmp_count;
                 self._jmp_count += 1;
 
-            },
+                // Compare to 0, jump if equal (false)
+                self.output
+                    .push_str(&format!("cmp {cond_reg}, 0\nje .else{jmp_id}\n"));
+                // done with cond_reg
+                self.regs.push_back(cond_reg);
+
+                // then branch
+                self.handle_stmt(then_stmt);
+                if else_stmt.is_some() {
+                    self.output.push_str(&format!("jmp .endif{jmp_id}\n"));
+                }
+
+                // else label
+                self.output.push_str(&format!(".else{jmp_id}:\n"));
+                if let Some(else_s) = else_stmt {
+                    self.handle_stmt(else_s);
+                    self.output.push_str(&format!(".endif{jmp_id}:\n"));
+                }
+            }
             Stmt::Block(stmts) => {
                 for stmt in stmts {
                     self.handle_stmt(stmt);
@@ -144,60 +161,164 @@ impl CodeGen {
     }
 
     fn generate_function(&mut self, name: &str, _: &Vec<(String, Type)>, body: &Vec<Stmt>) {
-        self.output
-            .push_str(&format!("global {}\n{}:\n", name, name));
+        // Reset function-local state
+        self.locals.clear();
+        self.stack_size = 0;
+
+        self.output.push_str(&format!("global {name}\n{name}:\n"));
         self.output.push_str("push rbp\n");
         self.output.push_str("mov rbp, rsp\n");
 
         for stmt in body {
-          self.handle_stmt(stmt);
+            self.handle_stmt(stmt);
         }
 
+        // restore stack pointer before returning
+        self.output.push_str("mov rsp, rbp\n");
         self.output.push_str("pop rbp\n");
 
-        if name == "main" {
+        if name == "_start" {
+            // mov rax, 0x2000001 ; for mac
+            // mov rax, 60 ; linux
             self.output
-                .push_str(&format!("mov rax, 60\nxor rdi, rdi\nsyscall\n"));
+                .push_str("mov rax, 0x2000001\nxor rdi, rdi\nsyscall\n");
         } else {
             self.output.push_str("ret\n");
         }
     }
 
-    fn handle_expr(&mut self, expr: &Expr, ident: Option<String>) -> Option<String> {
+    fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
             Expr::Call {
                 name,
                 args,
                 return_type: _,
-            } => {}
+            } => {
+                // Evaluate args right-to-left so left-most ends in first regs
+                // Collect into temporary registers
+                let arg_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+                // For now, support up to 6 args
+                // Evaluate arguments left-to-right into temp regs, then move into arg regs
+                // to avoid clobbering
+                // Note: We reuse our caller-side temp regs; assume builtin won't clobber beyond ABI
+                let mut temps: Vec<String> = Vec::new();
+                for (idx, a) in args.iter().enumerate() {
+                    let r = self
+                        .handle_expr(a, None)
+                        .expect("argument should yield a register");
+                    temps.push(r);
+                    if idx >= arg_regs.len() {
+                        panic!("More than 6 arguments not supported yet");
+                    }
+                }
+                for (i, t) in temps.iter().enumerate() {
+                    self.output.push_str(&format!("mov {} , {}\n", arg_regs[i], t));
+                }
+                // Free temps used to compute arguments; callee owns arg regs
+                for t in temps {
+                    self.regs.push_back(t);
+                }
+                // Record as extern candidate
+                self.externs.insert(name.clone());
+                let is_defined = self.functions.iter().any(|(n, _, _)| n == name);
+                let target = if is_defined { name.clone() } else { format!("_{}", name) };
+                self.output.push_str(&format!("call {target}\n"));
+                // Return in rax for non-void; hand back rax as value
+                Some("rax".to_string())
+            }
+
             Expr::BoolLiteral(n) => {
                 let val = match n {
                     true => 1,
                     false => 0,
                 };
-                let av_reg = self.regs.pop_front().unwrap();
+                let av_reg = self.regs.pop_front().expect("No registers available");
                 self.output.push_str(&format!("mov {av_reg}, {val}\n"));
-
-                if let Some(id) = ident {
-                    self.used.push_back((av_reg.clone(), id));
-                }
-
                 return Some(av_reg.to_string());
             }
             Expr::IntLiteral(n) => {
-                let av_reg = self.regs.pop_front().unwrap();
-                self.output.push_str(&format!("mov {}, {n}\n", av_reg));
-                if let Some(id) = ident {
-                    self.used.push_back((av_reg.clone(), id));
-                }
+                let av_reg = self.regs.pop_front().expect("No registers available");
+                self.output.push_str(&format!("mov {av_reg}, {n}\n"));
                 return Some(av_reg.to_string());
             }
-            Expr::AddressOf(expr) => {}
             Expr::Variable(name) => {
-                let val = self.used.iter().find(|x| x.1 == name.to_string()).unwrap();
-                return Some(val.0.to_string());
+                let off = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown variable '{name}'"));
+                let av_reg = self.regs.pop_front().expect("No registers available");
+                self.output
+                    .push_str(&format!("mov {av_reg}, QWORD [rbp - {off}]\n"));
+                return Some(av_reg);
             }
-            Expr::Assign { name, value: _ } => {}
+            Expr::Assign { name, value } => {
+                if let Some(val_reg) = self.handle_expr(value, None) {
+                    let off = self
+                        .local_offset(name)
+                        .unwrap_or_else(|| panic!("Unknown variable '{name}'"));
+                    self.output
+                        .push_str(&format!("mov QWORD [rbp - {off}], {val_reg}\n"));
+                    // free temp
+                    self.regs.push_back(val_reg);
+                }
+                None
+            }
+            Expr::Unary {
+                op,
+                expr,
+                result_type: _,
+            } => match op {
+                UnaryOp::AddressOf => {
+                    // Only support taking address of a variable for now
+                    if let Expr::Variable(var_name) = &**expr {
+                        let off = self
+                            .local_offset(var_name)
+                            .unwrap_or_else(|| panic!("Unknown variable '{var_name}'"));
+                        let av_reg = self.regs.pop_front().expect("No registers available");
+                        self.output
+                            .push_str(&format!("lea {av_reg}, [rbp - {off}]\n"));
+                        return Some(av_reg);
+                    } else {
+                        panic!("Address-of is only supported on variables for now");
+                    }
+                }
+                UnaryOp::Dereference => {
+                    // Load value from pointer
+                    let ptr_reg = self
+                        .handle_expr(expr, None)
+                        .expect("Pointer expression should yield a register");
+                    self.output
+                        .push_str(&format!("mov {ptr_reg}, QWORD [{ptr_reg}]\n"));
+                    return Some(ptr_reg);
+                }
+                UnaryOp::Not => {
+                    let reg = self.handle_expr(expr, None).unwrap();
+                    self.output.push_str(&format!("cmp {reg}, 0\n"));
+                    self.output.push_str(&format!("sete al\n"));
+                    self.output.push_str(&format!("movzx {reg}, al\n"));
+                    return Some(reg);
+                }
+                UnaryOp::Negate => {
+                    let reg = self.handle_expr(expr, None).unwrap();
+                    self.output.push_str(&format!("neg {reg}\n"));
+                    return Some(reg);
+                }
+            },
+            Expr::DerefAssign { target, value } => {
+                let ptr_reg = self
+                    .handle_expr(target, None)
+                    .expect("Pointer target should yield a register");
+                if let Some(val_reg) = self.handle_expr(value, None) {
+                    self.output
+                        .push_str(&format!("mov QWORD [{ptr_reg}], {val_reg}\n"));
+                    // free temps
+                    self.regs.push_back(ptr_reg);
+                    self.regs.push_back(val_reg);
+                } else {
+                    // free ptr reg
+                    self.regs.push_back(ptr_reg);
+                }
+                None
+            }
             Expr::Binary {
                 left,
                 op,
@@ -207,66 +328,39 @@ impl CodeGen {
                 let lhs = self.handle_expr(left, None).unwrap();
                 let rhs = self.handle_expr(right, None).unwrap();
                 match op {
-                    BinaryOp::Add { .. } => {
-                        let av_reg = self.regs.pop_front().unwrap();
-                        self.output.push_str(&format!("mov {}, {}\n", av_reg, lhs));
-                        self.output.push_str(&format!("add {}, {}\n", av_reg, rhs));
-                        if let Some(id) = ident {
-                            self.used.push_back((av_reg.clone(), id));
-                        }
-                        return Some(av_reg.to_owned());
+                    BinaryOp::Add => {
+                        self.output.push_str(&format!("add {lhs}, {rhs}\n"));
+                        // free rhs
+                        self.regs.push_back(rhs);
+                        return Some(lhs);
                     }
-                    BinaryOp::Sub { .. } => {
-                        let av_reg = self.regs.pop_front().unwrap();
-                        self.output.push_str(&format!("mov {}, {}\n", av_reg, lhs));
-                        self.output.push_str(&format!("sub {}, {}\n", av_reg, rhs));
-                        if let Some(id) = ident {
-                            self.used.push_back((av_reg.clone(), id));
-                        }
-                        return Some(av_reg.to_owned());
+                    BinaryOp::Sub => {
+                        self.output.push_str(&format!("sub {lhs}, {rhs}\n"));
+                        self.regs.push_back(rhs);
+                        return Some(lhs);
                     }
-                    BinaryOp::Mul { .. } => {
-                        let av_reg = self.regs.pop_front().unwrap();
-                        self.output.push_str(&format!("mov {}, {}\n", av_reg, lhs));
-                        self.output.push_str(&format!("imul {}, {}\n", av_reg, rhs));
-                        if let Some(id) = ident {
-                            self.used.push_back((av_reg.clone(), id));
-                        }
-                        return Some(av_reg.to_owned());
+                    BinaryOp::Mul => {
+                        self.output.push_str(&format!("imul {lhs}, {rhs}\n"));
+                        self.regs.push_back(rhs);
+                        return Some(lhs);
                     }
-                    BinaryOp::Div { .. } => {
-                        let rax_index = self.used.iter().position(|(reg, _)| *reg == "rax");
-
-                        if let Some(idx) = rax_index {
-                            let (_, old_name) = self.used.remove(idx).unwrap();
-
-                            let tmp_reg = self
-                                .regs
-                                .pop_front()
-                                .expect("No free registers to save rax");
-                            self.output.push_str(&format!("mov {}, rax\n", tmp_reg));
-                            self.used.push_back((tmp_reg, old_name));
-                        }
-
-                        self.output.push_str(&format!("mov rax, {}\n", lhs));
+                    BinaryOp::Div => {
+                        // Use rax/rdx for division
+                        self.output.push_str(&format!("mov rax, {lhs}\n"));
                         self.output.push_str("xor rdx, rdx\n");
-                        self.output.push_str(&format!("div {}\n", rhs));
-
-                        let result_reg = self.regs.pop_front().expect("No free registers");
-                        self.output.push_str(&format!("mov {}, rax\n", result_reg));
-
-                        if let Some(id) = ident {
-                            self.used.push_back((result_reg.clone(), id));
-                        }
-
-                        return Some(result_reg.to_owned());
+                        self.output.push_str(&format!("div {rhs}\n"));
+                        // result in rax
+                        // free temps lhs, rhs
+                        self.regs.push_back(lhs);
+                        self.regs.push_back(rhs);
+                        // keep rax as result
+                        return Some("rax".to_string());
                     }
                     _ => {}
                 }
+                None
             }
-            _ => {}
+            _ => None,
         }
-
-        None
     }
 }
