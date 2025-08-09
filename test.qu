@@ -1,20 +1,5 @@
-fn example()->void {
-    var value: int = 5;
-    var x: int* = &value;
-    *x = 100;
-    print_int(value);
-}
-
-fn main() -> int {
-    var x: bool = true;
-    if (x) {
-        var n: int = 0;
-        print_bool(x);
-        print_int(n);
-    }    
-
-    example();
-
+fn main()->int {
+    var x: [int, 3] = [1, 2, 3];
     return 0;
 }
 

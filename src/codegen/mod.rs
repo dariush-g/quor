@@ -32,6 +32,13 @@ impl CodeGen {
             externs: HashSet::new(),
         };
 
+        code.output.push_str("global _start\n_start:\n");
+        code.output.push_str("call main\n"); // main(): returns int in rax
+        code.output.push_str("mov rbx, rax\n"); // keep a copy in RBX
+        // macOS x86_64 exit(status): rax=0x2000001, rdi=status
+        code.output.push_str("mov rdi, rax\n");
+        code.output.push_str("mov rax, 0x2000001\n");
+        code.output.push_str("syscall\n");
         let mut has_main = false;
 
         for stmt in stmts {
@@ -43,8 +50,11 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    code.generate_function("_start", &vec![], body);
+                    code.generate_function("main", &vec![], body);
                     has_main = true;
+
+                    // code.output
+                    //     .push_str("mov rax, 0x2000001\nxor rdi, rdi\nsyscall\n");
                 } else {
                     code.functions
                         .push((name.clone(), params.clone(), body.clone()));
@@ -68,12 +78,8 @@ impl CodeGen {
             }
         }
 
-        // Prepend extern declarations for any called-but-not-defined functions
-        let defined: HashSet<String> = code
-            .functions
-            .iter()
-            .map(|(n, _, _)| n.clone())
-            .collect();
+        let defined: HashSet<String> = code.functions.iter().map(|(n, _, _)| n.clone()).collect();
+
         let mut header = String::new();
         for ext in code.externs.difference(&defined) {
             header.push_str(&format!("extern _{ext}\n"));
@@ -83,7 +89,7 @@ impl CodeGen {
     }
 
     fn alloc_local(&mut self, name: &str, _ty: &Type) -> i32 {
-        // For now, every local is 8 bytes
+        // for now every local is 8 bytes
         self.stack_size += 8;
         self.output.push_str("sub rsp, 8\n");
         let offset = self.stack_size; // addressable as [rbp - offset]
@@ -121,14 +127,22 @@ impl CodeGen {
                     self.regs.push_back(reg);
                 }
             }
-
+            Stmt::Return(expr) =>
+            {
+                #[allow(clippy::collapsible_match)]
+                if let Some(ex) = expr {
+                    self.handle_expr(ex, None);
+                }
+            }
             Stmt::If {
                 condition,
                 then_stmt,
                 else_stmt,
             } => {
                 // Evaluate condition
-                let cond_reg = self.handle_expr(condition, None).expect("if condition should produce a register");
+                let cond_reg = self
+                    .handle_expr(condition, None)
+                    .expect("if condition should produce a register");
                 let jmp_id = self._jmp_count;
                 self._jmp_count += 1;
 
@@ -161,29 +175,43 @@ impl CodeGen {
     }
 
     fn generate_function(&mut self, name: &str, _: &Vec<(String, Type)>, body: &Vec<Stmt>) {
-        // Reset function-local state
         self.locals.clear();
         self.stack_size = 0;
 
+        let epilogue = format!(".Lret_{name}");
+
         self.output.push_str(&format!("global {name}\n{name}:\n"));
-        self.output.push_str("push rbp\n");
-        self.output.push_str("mov rbp, rsp\n");
+        self.output.push_str("push rbp\nmov rbp, rsp\n");
 
         for stmt in body {
-            self.handle_stmt(stmt);
+            self.handle_stmt_with_epilogue(stmt, &epilogue);
         }
 
-        // restore stack pointer before returning
-        self.output.push_str("mov rsp, rbp\n");
-        self.output.push_str("pop rbp\n");
+        if name == "main" {
+            self.output.push_str("xor rax, rax\n");
+        }
 
-        if name == "_start" {
-            // mov rax, 0x2000001 ; for mac
-            // mov rax, 60 ; linux
-            self.output
-                .push_str("mov rax, 0x2000001\nxor rdi, rdi\nsyscall\n");
-        } else {
-            self.output.push_str("ret\n");
+        self.output.push_str(&format!("{epilogue}:\n"));
+        self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
+    }
+
+    fn handle_stmt_with_epilogue(&mut self, stmt: &Stmt, epilogue: &str) {
+        match stmt {
+            Stmt::Return(opt) => {
+                if let Some(ex) = opt {
+                    if let Some(reg) = self.handle_expr(ex, None) {
+                        if reg != "rax" {
+                            self.output.push_str(&format!("mov rax, {reg}\n"));
+                            self.regs.push_back(reg);
+                        }
+                    } else {
+                        self.output.push_str("xor rax, rax\n");
+                    }
+                }
+
+                self.output.push_str(&format!("jmp {epilogue}\n"));
+            }
+            _ => self.handle_stmt(stmt),
         }
     }
 
@@ -194,13 +222,7 @@ impl CodeGen {
                 args,
                 return_type: _,
             } => {
-                // Evaluate args right-to-left so left-most ends in first regs
-                // Collect into temporary registers
                 let arg_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
-                // For now, support up to 6 args
-                // Evaluate arguments left-to-right into temp regs, then move into arg regs
-                // to avoid clobbering
-                // Note: We reuse our caller-side temp regs; assume builtin won't clobber beyond ABI
                 let mut temps: Vec<String> = Vec::new();
                 for (idx, a) in args.iter().enumerate() {
                     let r = self
@@ -212,7 +234,8 @@ impl CodeGen {
                     }
                 }
                 for (i, t) in temps.iter().enumerate() {
-                    self.output.push_str(&format!("mov {} , {}\n", arg_regs[i], t));
+                    self.output
+                        .push_str(&format!("mov {} , {}\n", arg_regs[i], t));
                 }
                 // Free temps used to compute arguments; callee owns arg regs
                 for t in temps {
@@ -221,7 +244,11 @@ impl CodeGen {
                 // Record as extern candidate
                 self.externs.insert(name.clone());
                 let is_defined = self.functions.iter().any(|(n, _, _)| n == name);
-                let target = if is_defined { name.clone() } else { format!("_{}", name) };
+                let target = if is_defined {
+                    name.clone()
+                } else {
+                    format!("_{name}")
+                };
                 self.output.push_str(&format!("call {target}\n"));
                 // Return in rax for non-void; hand back rax as value
                 Some("rax".to_string())
@@ -234,12 +261,12 @@ impl CodeGen {
                 };
                 let av_reg = self.regs.pop_front().expect("No registers available");
                 self.output.push_str(&format!("mov {av_reg}, {val}\n"));
-                return Some(av_reg.to_string());
+                Some(av_reg.to_string())
             }
             Expr::IntLiteral(n) => {
                 let av_reg = self.regs.pop_front().expect("No registers available");
                 self.output.push_str(&format!("mov {av_reg}, {n}\n"));
-                return Some(av_reg.to_string());
+                Some(av_reg.to_string())
             }
             Expr::Variable(name) => {
                 let off = self
@@ -248,7 +275,7 @@ impl CodeGen {
                 let av_reg = self.regs.pop_front().expect("No registers available");
                 self.output
                     .push_str(&format!("mov {av_reg}, QWORD [rbp - {off}]\n"));
-                return Some(av_reg);
+                Some(av_reg)
             }
             Expr::Assign { name, value } => {
                 if let Some(val_reg) = self.handle_expr(value, None) {
@@ -276,7 +303,7 @@ impl CodeGen {
                         let av_reg = self.regs.pop_front().expect("No registers available");
                         self.output
                             .push_str(&format!("lea {av_reg}, [rbp - {off}]\n"));
-                        return Some(av_reg);
+                        Some(av_reg)
                     } else {
                         panic!("Address-of is only supported on variables for now");
                     }
@@ -288,19 +315,19 @@ impl CodeGen {
                         .expect("Pointer expression should yield a register");
                     self.output
                         .push_str(&format!("mov {ptr_reg}, QWORD [{ptr_reg}]\n"));
-                    return Some(ptr_reg);
+                    Some(ptr_reg)
                 }
                 UnaryOp::Not => {
                     let reg = self.handle_expr(expr, None).unwrap();
                     self.output.push_str(&format!("cmp {reg}, 0\n"));
-                    self.output.push_str(&format!("sete al\n"));
+                    self.output.push_str("sete al\n");
                     self.output.push_str(&format!("movzx {reg}, al\n"));
-                    return Some(reg);
+                    Some(reg)
                 }
                 UnaryOp::Negate => {
                     let reg = self.handle_expr(expr, None).unwrap();
                     self.output.push_str(&format!("neg {reg}\n"));
-                    return Some(reg);
+                    Some(reg)
                 }
             },
             Expr::DerefAssign { target, value } => {
@@ -319,6 +346,7 @@ impl CodeGen {
                 }
                 None
             }
+
             Expr::Binary {
                 left,
                 op,

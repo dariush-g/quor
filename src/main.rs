@@ -12,7 +12,7 @@ fn main() {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(e) => {
-            eprintln!("Failed to read file: {}", e);
+            eprintln!("Failed to read file: {e}");
             return;
         }
     };
@@ -22,7 +22,7 @@ fn main() {
     let tokens = match lexer.tokenize() {
         Ok(tokens) => tokens,
         Err(e) => {
-            eprintln!("Lexer error: {:?}", e);
+            eprintln!("Lexer error: {e:?}");
             return;
         }
     };
@@ -32,7 +32,7 @@ fn main() {
     let program = match parser.parse() {
         Ok(program) => program,
         Err(e) => {
-            eprintln!("Parser error: {:?}", e);
+            eprintln!("Parser error: {e:?}");
             return;
         }
     };
@@ -41,7 +41,7 @@ fn main() {
     let typed = match TypeChecker::analyze_program(program) {
         Ok(typed_program) => typed_program,
         Err(e) => {
-            eprintln!("Type error: {:?}", e);
+            eprintln!("Type error: {e:?}");
             return;
         }
     };
