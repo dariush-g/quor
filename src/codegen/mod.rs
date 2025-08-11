@@ -213,7 +213,7 @@ impl CodeGen {
         }
     }
 
-    fn generate_function(&mut self, name: &str, _: &Vec<(String, Type)>, body: &Vec<Stmt>) {
+    fn generate_function(&mut self, name: &str, params: &Vec<(String, Type)>, body: &Vec<Stmt>) {
         self.locals.clear();
         self.stack_size = 0;
 
