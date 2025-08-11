@@ -1,52 +1,266 @@
-use std::fs;
-use std::path::Path;
-
 use quor::analyzer::TypeChecker;
 use quor::codegen::CodeGen;
 use quor::lexer::Lexer;
 use quor::parser::Parser;
 
+use std::env;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+#[cfg(target_os = "macos")]
+fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
+    // Ensure consistent deployment target and predictable working dir.
+    cmd.env("MACOSX_DEPLOYMENT_TARGET", "15.0")
+        .current_dir(workdir)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    // eprintln!("$ (cd {}) {:?}", workdir.display(), cmd);
+    let status = cmd.status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "command failed with status: {status:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Assemble + compile runtime + link + run, then delete the .asm.
+/// Targets macOS x86_64 (runs via Rosetta on Apple Silicon).
+///
+#[cfg(target_os = "macos")]
+pub fn build_link_run(
+    asm_text: &str,
+    workdir: &Path,        // where intermediates should go
+    out_name: &str,        // output binary name (no extension)
+    runtime_c_path: &Path, // path to runtime.c (absolute or relative to workdir)
+) -> io::Result<()> {
+    let asm = workdir.join(format!("{out_name}.asm"));
+    let obj = workdir.join(format!("{out_name}.o"));
+
+    let rt_c = if runtime_c_path.is_absolute() {
+        runtime_c_path.to_path_buf()
+    } else {
+        workdir.join(runtime_c_path)
+    };
+    let rt_o = workdir.join("runtime.o");
+    let bin = workdir.join(out_name);
+
+    if !rt_c.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("runtime not found: {}", rt_c.display()),
+        ));
+    }
+
+    // 1) write asm
+    fs::write(&asm, asm_text)?;
+
+    // 2) nasm → object (Mach-O). Note: NASM Mach-O lacks LC_BUILD_VERSION; ld will warn but it’s harmless.
+    {
+        let mut c = Command::new("nasm");
+        c.args([
+            "-f",
+            "macho64",
+            asm.to_str().unwrap(),
+            "-o",
+            obj.to_str().unwrap(),
+        ]);
+        run(&mut c, workdir)?;
+    }
+
+    // 3) clang → runtime.o (compile for x86_64 with a consistent min version)
+    {
+        let mut c = Command::new("clang");
+        c.args([
+            "-arch",
+            "x86_64",
+            "-mmacosx-version-min=15.0",
+            "-c",
+            rt_c.to_str().unwrap(),
+            "-o",
+            rt_o.to_str().unwrap(),
+        ]);
+        run(&mut c, workdir)?;
+    }
+
+    // 4) link (custom entry _start + explicit platform version)
+    {
+        let mut c = Command::new("clang");
+        c.args([
+            "-arch",
+            "x86_64",
+            "-nostartfiles",
+            "-Wl,-e,_start",
+            "-Wl,-platform_version,macos,15.0,15.0",
+            "-o",
+            bin.to_str().unwrap(),
+            obj.to_str().unwrap(),
+            rt_o.to_str().unwrap(),
+        ]);
+        run(&mut c, workdir)?;
+    }
+
+    // 5) run the produced binary
+    {
+        let mut c = Command::new(&bin);
+        run(&mut c, workdir)?;
+    }
+
+    // 6) cleanup requested: remove only the .asm (keep .o for debugging if you want)
+    let _ = fs::remove_file(&asm);
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
+    // eprintln!("$ (cd {}); {:?}", workdir.display(), cmd);
+    let status = cmd
+        .current_dir(workdir)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!("command failed: {status:?}")));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) -> io::Result<()> {
+    let workdir = workdir.into();
+    let asm = workdir.join(format!("{out}.asm"));
+    let obj = workdir.join(format!("{out}.o"));
+    let rt_c = workdir.join("runtime.c");
+    let rt_o = workdir.join("runtime.o");
+    let bin = workdir.join(out);
+
+    if !rt_c.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("missing {}", rt_c.display()),
+        ));
+    }
+
+    // 1) Write asm file
+    fs::write(&asm, asm_text)?;
+
+    // 2) NASM -> object
+    run(
+        Command::new("nasm").args([
+            "-f",
+            "elf64",
+            asm.to_str().unwrap(),
+            "-o",
+            obj.to_str().unwrap(),
+        ]),
+        &workdir,
+    )?;
+
+    // 3) GCC -> runtime.o
+    run(
+        Command::new("gcc").args(["-c", rt_c.to_str().unwrap(), "-o", rt_o.to_str().unwrap()]),
+        &workdir,
+    )?;
+
+    // 4) Link
+    run(
+        Command::new("gcc").args([
+            "-no-pie",
+            "-nostartfiles",
+            "-Wl,-e,_start",
+            obj.to_str().unwrap(),
+            rt_o.to_str().unwrap(),
+            "-o",
+            bin.to_str().unwrap(),
+        ]),
+        &workdir,
+    )?;
+
+    // 5) Run the binary
+    run(&mut Command::new(bin.to_str().unwrap()), &workdir)?;
+
+    // 6) Clean up the asm file
+    let _ = fs::remove_file(&asm);
+    Ok(())
+}
+
 fn main() {
-    // 1. Read source file
-    let path = Path::new("test.qu");
-    let source = match fs::read_to_string(path) {
-        Ok(source) => source,
+    // CLI: quor <source-file>
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: quor <source-file>");
+        std::process::exit(1);
+    }
+
+    let mut src_path = PathBuf::from(&args[1]);
+
+    if !args[1].contains("/") {
+        src_path = PathBuf::from(format!("./{}", &args[1]));
+    }
+
+    // Workdir = directory of the source file; output name = file stem
+    let workdir = src_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let out_name = src_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("out");
+
+    // Read source
+    let source = match fs::read_to_string(&src_path) {
+        Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to read file: {e}");
-            return;
+            eprintln!("Failed to read {}: {e}", src_path.display());
+            std::process::exit(1);
         }
     };
 
-    // 2. Lexing
+    // Lex
     let mut lexer = Lexer::new(source);
     let tokens = match lexer.tokenize() {
-        Ok(tokens) => tokens,
+        Ok(t) => t,
         Err(e) => {
             eprintln!("Lexer error: {e:?}");
-            return;
+            std::process::exit(1);
         }
     };
 
-    // 3. Parsing
+    // Parse
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {
-        Ok(program) => program,
+        Ok(p) => p,
         Err(e) => {
             eprintln!("Parser error: {e:?}");
-            return;
+            std::process::exit(1);
         }
     };
 
-    // 4. Type checking
+    // Type check
     let typed = match TypeChecker::analyze_program(program) {
-        Ok(typed_program) => typed_program,
+        Ok(tp) => tp,
         Err(e) => {
             eprintln!("Type error: {e:?}");
-            return;
+            std::process::exit(1);
         }
     };
 
-    let code = CodeGen::generate(&typed);
+    // Codegen → ASM
+    let asm = CodeGen::generate(&typed);
 
-    let _ = std::fs::write("test.asm", code);
+    // Build → link → run
+    // Adjust runtime path if yours lives elsewhere:
+    let runtime = Path::new("runtime.c");
+
+    if let Err(e) = build_link_run(&asm, &workdir, out_name, runtime) {
+        eprintln!("build failed: {e}");
+        std::process::exit(1);
+    }
 }
