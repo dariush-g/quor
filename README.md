@@ -1,7 +1,4 @@
-# Compiler
-
-This is a little compiler I’m working on that takes a very simple language and spits out NASM assembly for x86_64.  
-Right now it’s pretty basic, but it can handle variables, pointers, arrays, functions, etc.
+# Quor
 
 ## What it can do so far
 
