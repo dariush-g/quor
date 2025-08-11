@@ -92,6 +92,10 @@ impl Parser {
             return Ok(Stmt::Block(self.block()?));
         }
 
+        // if self.match_token(&[TokenType::LeftBracket]) {
+        //     return Ok(Stmt::)
+        // }
+
         let expr = self.expression()?;
         if semi {
             self.consume(TokenType::Semicolon, "Expected ';' after expression")?;
@@ -216,6 +220,8 @@ impl Parser {
 
             match expr {
                 Expr::Variable(name) => {
+                    self.advance();
+
                     return Ok(Expr::Assign {
                         name,
                         value: Box::new(value),
@@ -237,6 +243,7 @@ impl Parser {
 
         Ok(expr)
     }
+
     fn logic_or(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.logic_and()?;
 
@@ -459,11 +466,6 @@ impl Parser {
                 self.advance();
                 Ok(Expr::BoolLiteral(false))
             }
-            TokenType::Identifier(name) => {
-                let name = name.clone();
-                self.advance();
-                Ok(Expr::Variable(name))
-            }
             TokenType::LeftBracket => {
                 self.advance();
                 let mut elements = Vec::new();
@@ -490,6 +492,50 @@ impl Parser {
 
                 Ok(Expr::Array(elements, element_type))
             }
+            TokenType::Identifier(name) => {
+                let name = name.clone();
+                self.advance();
+
+                if self.peek().token_type == TokenType::LeftBracket {
+                    let array = Box::new(Expr::Variable(name.clone()));
+                    self.advance();
+                    let peeked = self.peek().clone().token_type;
+                    match peeked {
+                        TokenType::IntLiteral(index) => {
+                            self.advance();
+
+                            self.consume(
+                                TokenType::RightBracket,
+                                "Right bracket expected for array indexing",
+                            )?;
+
+                            return Ok(Expr::ArrayAccess {
+                                array,
+                                index: Box::new(Expr::IntLiteral(index as i64)),
+                            });
+                        }
+                        TokenType::Identifier(name) => {
+                            self.advance();
+
+                            self.consume(
+                                TokenType::RightBracket,
+                                "Right bracket expected for array indexing",
+                            )?;
+
+                            return Ok(Expr::ArrayAccess {
+                                array,
+                                index: Box::new(Expr::Variable(name.to_string())),
+                            });
+                        }
+                        _ => {
+                            return Err(ParseError::UnexpectedToken(self.peek().clone()));
+                        }
+                    }
+                }
+
+                Ok(Expr::Variable(name.clone()))
+            }
+
             TokenType::LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
@@ -543,10 +589,11 @@ impl Parser {
                 self.advance();
                 Type::Void
             }
-            TokenType::Char => {
-                self.advance();
-                Type::Char
-            }
+            
+            // TokenType::Char => {
+            //     self.advance();
+            //     Type::Char
+            // }
             _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
         };
 

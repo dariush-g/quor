@@ -89,7 +89,7 @@ impl CodeGen {
     }
 
     fn alloc_local(&mut self, name: &str, _ty: &Type) -> i32 {
-        // for now every local is 8 bytes
+        // every local is 8 bytes
         self.stack_size += 8;
         self.output.push_str("sub rsp, 8\n");
         let offset = self.stack_size; // addressable as [rbp - offset]
@@ -108,19 +108,58 @@ impl CodeGen {
                 var_type,
                 value,
             } => {
-                let _offset = if self.local_offset(name).is_none() {
-                    self.alloc_local(name, var_type)
-                } else {
-                    self.local_offset(name).unwrap()
-                };
-                if let Some(val_reg) = self.handle_expr(value, None) {
-                    let off = self.local_offset(name).unwrap();
-                    self.output
-                        .push_str(&format!("mov QWORD [rbp - {off}], {val_reg}\n"));
-                    // release temp register back to pool
-                    self.regs.push_back(val_reg);
+                match value {
+                    Expr::Array(elements, _ty) => {
+                        let count = elements.len();
+                        let total_size = (count as i32) * 8; // assuming 8 bytes per slot
+                        self.stack_size += total_size;
+                        self.output.push_str(&format!("sub rsp, {total_size}\n"));
+
+                        let base_offset = self.stack_size;
+                        self.locals.insert(name.clone(), base_offset);
+
+                        for (i, element) in elements.iter().enumerate() {
+                            let offset = base_offset - (i as i32) * 8;
+
+                            match element {
+                                Expr::IntLiteral(n) => {
+                                    self.output
+                                        .push_str(&format!("mov QWORD [rbp - {offset}], {n}\n"));
+                                }
+                                Expr::BoolLiteral(b) => {
+                                    let val = if *b { 1 } else { 0 };
+                                    self.output
+                                        .push_str(&format!("mov QWORD [rbp - {offset}], {val}\n"));
+                                }
+                                _ => {
+                                    if let Some(val_reg) = self.handle_expr(element, None) {
+                                        self.output.push_str(&format!(
+                                            "mov QWORD [rbp - {offset}], {val_reg}\n"
+                                        ));
+                                        self.regs.push_back(val_reg);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    _ => {
+                        // fall back to scalar variable allocation
+                        let offset = if self.local_offset(name).is_none() {
+                            self.alloc_local(name, var_type)
+                        } else {
+                            self.local_offset(name).unwrap()
+                        };
+
+                        if let Some(val_reg) = self.handle_expr(value, None) {
+                            self.output
+                                .push_str(&format!("mov QWORD [rbp - {offset}], {val_reg}\n"));
+                            self.regs.push_back(val_reg);
+                        }
+                    }
                 }
             }
+
             Stmt::Expression(expr) => {
                 if let Some(reg) = self.handle_expr(expr, None) {
                     // expression result unused; free temp register
@@ -277,59 +316,185 @@ impl CodeGen {
                     .push_str(&format!("mov {av_reg}, QWORD [rbp - {off}]\n"));
                 Some(av_reg)
             }
-            Expr::Assign { name, value } => {
-                if let Some(val_reg) = self.handle_expr(value, None) {
-                    let off = self
-                        .local_offset(name)
-                        .unwrap_or_else(|| panic!("Unknown variable '{name}'"));
-                    self.output
-                        .push_str(&format!("mov QWORD [rbp - {off}], {val_reg}\n"));
-                    // free temp
-                    self.regs.push_back(val_reg);
-                }
-                None
-            }
-            Expr::Unary {
-                op,
-                expr,
-                result_type: _,
-            } => match op {
-                UnaryOp::AddressOf => {
-                    // Only support taking address of a variable for now
-                    if let Expr::Variable(var_name) = &**expr {
-                        let off = self
-                            .local_offset(var_name)
-                            .unwrap_or_else(|| panic!("Unknown variable '{var_name}'"));
-                        let av_reg = self.regs.pop_front().expect("No registers available");
+            Expr::ArrayAccess { array, index } => {
+                let (_name, base_off) = match &**array {
+                    Expr::Variable(n) => {
+                        let off = *self
+                            .locals
+                            .get(n)
+                            .unwrap_or_else(|| panic!("Could not find array {n}?!"));
+                        (n, off)
+                    }
+                    _ => panic!("ArrayAccess: only local stack arrays are supported right now"),
+                };
+
+                // Result register
+                let dst = self.regs.pop_front().expect("No registers available");
+
+                match &**index {
+                    Expr::IntLiteral(n) => {
+                        let off = base_off - (*n as i32) * 8;
                         self.output
-                            .push_str(&format!("lea {av_reg}, [rbp - {off}]\n"));
-                        Some(av_reg)
-                    } else {
-                        panic!("Address-of is only supported on variables for now");
+                            .push_str(&format!("mov {dst}, QWORD [rbp - {off}]\n"));
+                        Some(dst)
+                    }
+
+                    _ => {
+                        let idx = self
+                            .handle_expr(index, None)
+                            .expect("index should produce a register");
+                        // mov dst, [rbp + idx*8 - base_off]
+                        self.output
+                            .push_str(&format!("mov {dst}, QWORD [rbp + {idx}*8 - {base_off}]\n"));
+                        // free idx temp
+                        self.regs.push_back(idx);
+                        Some(dst)
                     }
                 }
-                UnaryOp::Dereference => {
-                    // Load value from pointer
-                    let ptr_reg = self
-                        .handle_expr(expr, None)
-                        .expect("Pointer expression should yield a register");
+            }
+
+            // Expr::Array(elements, _ty) => {
+            //     for element in elements {
+            //         self.handle_expr(element, None);
+            //     }
+
+            //     None
+            // }
+            Expr::Assign { name, value } => {
+                let offset = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown variable '{name}'"));
+
+                match **value {
+                    Expr::IntLiteral(n) => {
+                        self.output
+                            .push_str(&format!("mov QWORD [rbp - {offset}], {n}\n"));
+                    }
+                    Expr::BoolLiteral(b) => {
+                        let val = if b { 1 } else { 0 };
+                        self.output
+                            .push_str(&format!("mov QWORD [rbp - {offset}], {val}\n"));
+                    }
+                    _ => {
+                        if let Some(val_reg) = self.handle_expr(value, None) {
+                            self.output
+                                .push_str(&format!("mov QWORD [rbp - {offset}], {val_reg}\n"));
+                            self.regs.push_back(val_reg);
+                        }
+                    }
+                }
+
+                None
+            }
+            // Expr::Unary {
+            //     op,
+            //     expr,
+            //     result_type: _,
+            // } => match op {
+            //     UnaryOp::AddressOf => {
+            //         Only support taking address of a variable for now
+            //         if let Expr::Variable(var_name) = &**expr {
+            //             let off = self
+            //                 .local_offset(var_name)
+            //                 .unwrap_or_else(|| panic!("Unknown variable '{var_name}'"));
+            //             let av_reg = self.regs.pop_front().expect("No registers available");
+            //             self.output
+            //                 .push_str(&format!("lea {av_reg}, [rbp - {off}]\n"));
+            //             Some(av_reg)
+            //         } else {
+            //             panic!("Address-of is only supported on variables for now");
+            //         }
+            //     }
+            //     UnaryOp::Dereference => {
+            //         Load value from pointer
+            //         let ptr_reg = self
+            //             .handle_expr(expr, None)
+            //             .expect("Pointer expression should yield a register");
+            //         self.output
+            //             .push_str(&format!("mov {ptr_reg}, QWORD [{ptr_reg}]\n"));
+            //         Some(ptr_reg)
+            //     }
+            //     UnaryOp::Not => {
+            //         let reg = self.handle_expr(expr, None).unwrap();
+            //         self.output.push_str(&format!("cmp {reg}, 0\n"));
+            //         self.output.push_str("sete al\n");
+            //         self.output.push_str(&format!("movzx {reg}, al\n"));
+            //         Some(reg)
+            //     }
+            //     UnaryOp::Negate => {
+            //         let reg = self.handle_expr(expr, None).unwrap();
+            //         self.output.push_str(&format!("neg {reg}\n"));
+            //         Some(reg)
+            //     }
+            // },
+            // in handle_expr(...)
+            Expr::Unary {
+                op: UnaryOp::AddressOf,
+                expr,
+                ..
+            } => match &**expr {
+                Expr::Unary {
+                    op: UnaryOp::Dereference,
+                    expr: inner,
+                    ..
+                } => self.handle_expr(inner, None),
+
+                Expr::Variable(var_name) => {
+                    let off = self
+                        .local_offset(var_name)
+                        .unwrap_or_else(|| panic!("Unknown variable '{var_name}'"));
+                    let reg = self.regs.pop_front().expect("No registers available");
+                    self.output.push_str(&format!("lea {reg}, [rbp - {off}]\n"));
+                    Some(reg)
+                }
+
+                Expr::ArrayAccess { array, index, .. } => {
+                    let base_off = *self
+                        .locals
+                        .get(match &**array {
+                            Expr::Variable(n) => n,
+                            _ => panic!("ArrayAccess base must be a local array for now"),
+                        })
+                        .expect("unknown array");
+                    let idx_reg = match &**index {
+                        Expr::IntLiteral(n) => {
+                            let r = self.regs.pop_front().expect("No registers");
+                            self.output.push_str(&format!("mov {r}, {n}\n"));
+                            r
+                        }
+                        _ => self.handle_expr(index, None).expect("index reg"),
+                    };
+                    let addr = self.regs.pop_front().expect("No registers");
                     self.output
-                        .push_str(&format!("mov {ptr_reg}, QWORD [{ptr_reg}]\n"));
-                    Some(ptr_reg)
+                        .push_str(&format!("lea {addr}, [rbp + {idx_reg}*8 - {base_off}]\n"));
+                    self.regs.push_back(idx_reg);
+                    Some(addr)
                 }
-                UnaryOp::Not => {
-                    let reg = self.handle_expr(expr, None).unwrap();
-                    self.output.push_str(&format!("cmp {reg}, 0\n"));
-                    self.output.push_str("sete al\n");
-                    self.output.push_str(&format!("movzx {reg}, al\n"));
-                    Some(reg)
-                }
-                UnaryOp::Negate => {
-                    let reg = self.handle_expr(expr, None).unwrap();
-                    self.output.push_str(&format!("neg {reg}\n"));
-                    Some(reg)
-                }
+
+                _ => panic!("Address-of only supported on lvalues for now"),
             },
+
+            Expr::Unary {
+                op: UnaryOp::Dereference,
+                expr,
+                ..
+            } => {
+                match &**expr {
+                    // *&E  ==>  E
+                    Expr::Unary {
+                        op: UnaryOp::AddressOf,
+                        expr: inner,
+                        ..
+                    } => self.handle_expr(inner, None),
+                    _ => {
+                        // generic *ptr load
+                        let ptr = self.handle_expr(expr, None).expect("pointer reg");
+                        self.output.push_str(&format!("mov {ptr}, QWORD [{ptr}]\n"));
+                        Some(ptr)
+                    }
+                }
+            }
+
             Expr::DerefAssign { target, value } => {
                 let ptr_reg = self
                     .handle_expr(target, None)

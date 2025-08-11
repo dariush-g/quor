@@ -76,10 +76,11 @@ pub enum Expr {
     },
 
     Array(Vec<Expr>, Type),
+    
     ArrayAccess {
         array: Box<Expr>,
         index: Box<Expr>,
-        element_type: Type,
+        //element_type: Type,
     },
 }
 

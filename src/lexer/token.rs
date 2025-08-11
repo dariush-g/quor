@@ -31,6 +31,9 @@ impl Token {
 pub enum TokenType {
     IntLiteral(i32),
     FloatLiteral(f32),
+    
+    
+
     Boolean,
 
     Var,
@@ -76,10 +79,12 @@ pub enum TokenType {
     Period,
     Colon,
 
-    // Special
     Newline,
+
+    // end of file
     Eof,
 
+    // names, etc
     Identifier(String),
 
     Void,

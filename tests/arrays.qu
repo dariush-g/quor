@@ -1,5 +1,5 @@
 fn main()->int {
-    var array: [int, 3] = {1, 2, 3};
+    var array: [int, 3] = [1, 2, 3];
     
     // array[0] = 1;
     

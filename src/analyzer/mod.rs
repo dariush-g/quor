@@ -8,17 +8,28 @@ pub struct TypeChecker {
     in_loop: bool,                         // for validating break/continue
 }
 
+impl Default for TypeChecker {
+    fn default() -> Self {
+        Self {
+            variables: vec![HashMap::new()],
+            functions: HashMap::new(),
+            current_return_type: None,
+            in_loop: false,
+        }
+    }
+}
+
 impl TypeChecker {
     pub fn analyze_program(program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
-        let mut type_checker = TypeChecker::new();
+        let mut type_checker = TypeChecker::default();
 
         // Register builtins
         type_checker
             .declare_fn("print_int", vec![Type::int], Type::Void)
-            .map_err(|e| format!("Global scope error: {}", e))?;
+            .map_err(|e| format!("Global scope error: {e}"))?;
         type_checker
             .declare_fn("print_bool", vec![Type::Bool], Type::Void)
-            .map_err(|e| format!("Global scope error: {}", e))?;
+            .map_err(|e| format!("Global scope error: {e}"))?;
 
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
@@ -34,12 +45,12 @@ impl TypeChecker {
                 let param_types = params.iter().map(|(_, ty)| ty.clone()).collect();
 
                 if !function_names.insert(name) {
-                    return Err(format!("Function '{}' already declared", name));
+                    return Err(format!("Function '{name}' already declared"));
                 }
 
                 type_checker
                     .declare_fn(name, param_types, return_type.clone())
-                    .map_err(|e| format!("Global scope error: {}", e))?;
+                    .map_err(|e| format!("Global scope error: {e}"))?;
             }
         }
 
@@ -49,15 +60,6 @@ impl TypeChecker {
         }
 
         Ok(checked_program)
-    }
-
-    pub fn new() -> Self {
-        Self {
-            variables: vec![HashMap::new()],
-            functions: HashMap::new(),
-            current_return_type: None,
-            in_loop: false,
-        }
     }
 
     fn enter_scope(&mut self) {
@@ -70,10 +72,7 @@ impl TypeChecker {
 
     fn declare_var(&mut self, name: &str, ty: Type) -> Result<(), String> {
         if self.variables.last().unwrap().contains_key(name) {
-            return Err(format!(
-                "Variable '{}' already declared in this scope",
-                name
-            ));
+            return Err(format!("Variable '{name}' already declared in this scope"));
         }
         self.variables
             .last_mut()
@@ -112,17 +111,16 @@ impl TypeChecker {
             Expr::Variable(name) => self
                 .lookup_var(name)
                 .cloned()
-                .ok_or_else(|| format!("Undeclared variable '{}'", name)),
+                .ok_or_else(|| format!("Undeclared variable '{name}'")),
             Expr::Assign { name, value } => {
                 let value_type = self.type_check_expr(value)?;
                 let var_type = self
                     .lookup_var(name)
-                    .ok_or_else(|| format!("Assignment to undeclared variable '{}'", name))?;
+                    .ok_or_else(|| format!("Assignment to undeclared variable '{name}'"))?;
 
                 if &value_type != var_type {
                     return Err(format!(
-                        "Type mismatch in assignment to '{}': expected {:?}, found {:?}",
-                        name, var_type, value_type
+                        "Type mismatch in assignment to '{name}': expected {var_type:?}, found {value_type:?}"
                     ));
                 }
                 Ok(value_type)
@@ -135,8 +133,7 @@ impl TypeChecker {
 
                 if left_type != right_type {
                     return Err(format!(
-                        "Type mismatch in binary operation: left is {:?}, right is {:?}",
-                        left_type, right_type
+                        "Type mismatch in binary operation: left is {left_type:?}, right is {right_type:?}"
                     ));
                 }
 
@@ -149,8 +146,7 @@ impl TypeChecker {
                     | BinaryOp::Mod => {
                         if !matches!(left_type, Type::int | Type::float) {
                             return Err(format!(
-                                "Arithmetic operations require numeric types, found {:?}",
-                                left_type
+                                "Arithmetic operations require numeric types, found {left_type:?}"
                             ));
                         }
                     }
@@ -161,8 +157,7 @@ impl TypeChecker {
                     | BinaryOp::GreaterEqual => {
                         if !matches!(left_type, Type::int | Type::float) {
                             return Err(format!(
-                                "Comparison operations require numeric types, found {:?}",
-                                left_type
+                                "Comparison operations require numeric types, found {left_type:?}"
                             ));
                         }
                     }
@@ -202,21 +197,17 @@ impl TypeChecker {
                         }
                         Ok(expr_type)
                     }
-                    UnaryOp::AddressOf => {
-                        Ok(Type::Pointer(Box::new(expr_type)))
-                    }
-                    UnaryOp::Dereference => {
-                        match expr_type {
-                            Type::Pointer(inner) => Ok(*inner.clone()),
-                            _ => Err("Cannot dereference a non-pointer type".to_string()),
-                        }
-                    }
+                    UnaryOp::AddressOf => Ok(Type::Pointer(Box::new(expr_type))),
+                    UnaryOp::Dereference => match expr_type {
+                        Type::Pointer(inner) => Ok(*inner.clone()),
+                        _ => Err("Cannot dereference a non-pointer type".to_string()),
+                    },
                 }
             }
             Expr::Call { name, args, .. } => {
                 let (param_types, ret_type) = self
                     .lookup_fn(name)
-                    .ok_or_else(|| format!("Undefined function '{}'", name))?
+                    .ok_or_else(|| format!("Undefined function '{name}'"))?
                     .clone();
 
                 if param_types.len() != args.len() {
@@ -232,8 +223,7 @@ impl TypeChecker {
                     let arg_type = self.type_check_expr(arg_expr)?;
                     if &arg_type != expected_type {
                         return Err(format!(
-                            "Argument type mismatch in call to '{}': expected {:?}, got {:?}",
-                            name, expected_type, arg_type
+                            "Argument type mismatch in call to '{name}': expected {expected_type:?}, got {arg_type:?}"
                         ));
                     }
                 }
@@ -250,8 +240,7 @@ impl TypeChecker {
                     (from, to) if from == to => {}
                     _ => {
                         return Err(format!(
-                            "Invalid cast from {:?} to {:?}",
-                            expr_type, target_type
+                            "Invalid cast from {expr_type:?} to {target_type:?}"
                         ));
                     }
                 }
@@ -275,21 +264,46 @@ impl TypeChecker {
             Expr::ArrayAccess {
                 array,
                 index,
-                element_type,
+                // element_type,
             } => {
-                let array_type = self.type_check_expr(array)?;
+                // let array_type = self.type_check_expr(array)?;
                 let index_type = self.type_check_expr(index)?;
 
                 if index_type != Type::int {
                     return Err("Array index must be of type int".to_string());
                 }
 
-                match array_type {
-                    Type::Array(inner_type, _) if *inner_type == *element_type => {
-                        Ok(element_type.clone())
+                let arr = *array.clone();
+
+                let name = match arr {
+                    Expr::Variable(name) => name,
+                    _ => return Err("Array type error".to_string()),
+                };
+
+                let array_full = self.type_check_expr(&Expr::Variable(name))?;
+
+                match array_full {
+                    Type::Array(ty, len) => {
+                        let element_type = *ty;
+                        if let Expr::IntLiteral(n) = **index {
+                            if n >= len
+                                .try_into()
+                                .expect("Error comparing index to array length")
+                            {
+                                return Err("Index out of bounds".to_string());
+                            }
+                        }
+                        Ok(element_type)
                     }
-                    _ => Err("Attempted to index a non-array type or type mismatch".to_string()),
+                    _ => Err("Array type error".to_string()),
                 }
+
+                // match array_type {
+                //     Type::Array(inner_type, _) if *inner_type == *element_type => {
+                //         Ok(element_type.clone())
+                //     }
+                //     _ => Err("Attempted to index a non-array type or type mismatch".to_string()),
+                // }
             }
             Expr::AddressOf(expr) => Ok(Type::Pointer(Box::new(self.type_check_expr(expr)?))),
             Expr::DerefAssign { target, value } => {
@@ -299,8 +313,7 @@ impl TypeChecker {
                         let val_ty = self.type_check_expr(value)?;
                         if val_ty != *inner {
                             return Err(format!(
-                                "Type mismatch in deref assignment: expected {:?}, found {:?}",
-                                inner, val_ty
+                                "Type mismatch in deref assignment: expected {inner:?}, found {val_ty:?}"
                             ));
                         }
                         Ok(*inner)

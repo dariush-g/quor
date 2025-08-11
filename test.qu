@@ -1,9 +1,17 @@
 fn main()->int {
-    var x: [int, 3] = [1, 2, 3];
+    
+    var x: int = 5;
+    var n: int* = &x;
+
+    var y: int* = &*n;
+
+
+
+
     return 0;
 }
 
 
 // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test
 
-// nasm -f macho64 test.asm -o test.o && clang -arch x86_64 -c runtime.c -o runtime.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o runtime.o && ./test
+// nasm -f macho64 test.asm -o test.o && clang -arch x86_64 -c runtime.c -o runtime.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o runtime.o && ./test>
