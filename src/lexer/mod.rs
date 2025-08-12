@@ -68,6 +68,8 @@ impl Lexer {
         let c = self.advance();
 
         match c {
+            '\'' => tokens.push(self.scan_char()?),
+            '"' => tokens.push(self.make_token(TokenType::DoubleQuote)),
             '(' => tokens.push(self.make_token(TokenType::LeftParen)),
             ')' => tokens.push(self.make_token(TokenType::RightParen)),
             '{' => tokens.push(self.make_token(TokenType::LeftBrace)),
@@ -234,6 +236,68 @@ impl Lexer {
                 start_pos,
             ))
         }
+    }
+
+    fn scan_char(&mut self) -> Result<Token, LexError> {
+        let start_line = self.line;
+        let start_col = self.column - 1; // we already consumed the opening quote
+        let start_pos = self.current - 1;
+
+        if self.is_at_end() || self.peek() == '\n' {
+            return Err(LexError::InvalidCharacter('\'', start_line, start_col));
+        }
+
+        // Read the character (support common escapes)
+        let ch = match self.advance() {
+            '\\' => {
+                // escaped sequence
+                let esc = if self.is_at_end() {
+                    '\0'
+                } else {
+                    self.advance()
+                };
+                match esc {
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    '\\' => '\\',
+                    '\'' => '\'',
+                    '0' => '\0',
+                    'x' => {
+                        // Optional: \xHH (two hex digits), fallback to error if malformed
+                        let h1 = self.peek();
+                        let h2 = self.peek_next();
+                        if h1.is_ascii_hexdigit() && h2.is_ascii_hexdigit() {
+                            // consume both
+                            let _ = self.advance();
+                            let _ = self.advance();
+                            let hex = format!("{h1}{h2}");
+                            let val = u8::from_str_radix(&hex, 16).map_err(|_| {
+                                LexError::InvalidCharacter('x', start_line, start_col)
+                            })?;
+                            val as char
+                        } else {
+                            return Err(LexError::InvalidCharacter('x', start_line, start_col));
+                        }
+                    }
+                    _ => return Err(LexError::InvalidCharacter(esc, start_line, start_col)),
+                }
+            }
+            c => c,
+        };
+
+        // Expect closing quote
+        if self.peek() != '\'' {
+            return Err(LexError::InvalidCharacter('\'', start_line, start_col));
+        }
+        self.advance(); // consume closing quote
+
+        Ok(Token::new(
+            TokenType::CharLiteral(ch),
+            start_line,
+            start_col,
+            start_pos,
+        ))
     }
 
     fn advance(&mut self) -> char {

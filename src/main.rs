@@ -34,27 +34,13 @@ fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
 #[cfg(target_os = "macos")]
 pub fn build_link_run(
     asm_text: &str,
-    workdir: &Path,        // where intermediates should go
-    out_name: &str,        // output binary name (no extension)
-    runtime_c_path: &Path, // path to runtime.c (absolute or relative to workdir)
+    workdir: &Path, // where intermediates should go
+    out_name: &str, // output binary name (no extension)
 ) -> io::Result<()> {
     let asm = workdir.join(format!("{out_name}.asm"));
     let obj = workdir.join(format!("{out_name}.o"));
 
-    let rt_c = if runtime_c_path.is_absolute() {
-        runtime_c_path.to_path_buf()
-    } else {
-        workdir.join(runtime_c_path)
-    };
-    let rt_o = workdir.join("runtime.o");
     let bin = workdir.join(out_name);
-
-    if !rt_c.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("runtime not found: {}", rt_c.display()),
-        ));
-    }
 
     // 1) write asm
     fs::write(&asm, asm_text)?;
@@ -73,19 +59,20 @@ pub fn build_link_run(
     }
 
     // 3) clang → runtime.o (compile for x86_64 with a consistent min version)
-    {
-        let mut c = Command::new("clang");
-        c.args([
-            "-arch",
-            "x86_64",
-            "-mmacosx-version-min=15.0",
-            "-c",
-            rt_c.to_str().unwrap(),
-            "-o",
-            rt_o.to_str().unwrap(),
-        ]);
-        run(&mut c, workdir)?;
-    }
+    // {
+    //     let mut c = Command::new("clang");
+    //     c.args([
+    //         "-arch",
+    //         "x86_64",
+    //         "-mmacosx-version-min=15.0",
+
+    // "-c",
+    // rt_c.to_str().unwrap(),
+    // "-o",
+    // rt_o.to_str().unwrap(),
+    //     ]);
+    //     run(&mut c, workdir)?;
+    // }
 
     // 4) link (custom entry _start + explicit platform version)
     {
@@ -99,7 +86,6 @@ pub fn build_link_run(
             "-o",
             bin.to_str().unwrap(),
             obj.to_str().unwrap(),
-            rt_o.to_str().unwrap(),
         ]);
         run(&mut c, workdir)?;
     }
@@ -111,7 +97,9 @@ pub fn build_link_run(
     }
 
     // 6) cleanup requested: remove only the .asm (keep .o for debugging if you want)
-    let _ = fs::remove_file(&asm);
+
+
+    // let _ = fs::remove_file(&asm);
 
     Ok(())
 }
@@ -162,9 +150,11 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
         &workdir,
     )?;
 
+    // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test
+
     // 3) GCC -> runtime.o
     run(
-        Command::new("gcc").args(["-c", rt_c.to_str().unwrap(), "-o", rt_o.to_str().unwrap()]),
+        Command::new("ld").args(["-c", rt_c.to_str().unwrap(), "-o", rt_o.to_str().unwrap()]),
         &workdir,
     )?;
 
@@ -257,9 +247,8 @@ fn main() {
 
     // Build → link → run
     // Adjust runtime path if yours lives elsewhere:
-    let runtime = Path::new("runtime.c");
 
-    if let Err(e) = build_link_run(&asm, &workdir, out_name, runtime) {
+    if let Err(e) = build_link_run(&asm, &workdir, out_name) {
         eprintln!("build failed: {e}");
         std::process::exit(1);
     }

@@ -31,8 +31,7 @@ impl Token {
 pub enum TokenType {
     IntLiteral(i32),
     FloatLiteral(f32),
-    
-    
+    CharLiteral(char),
 
     Boolean,
 
@@ -78,6 +77,9 @@ pub enum TokenType {
     Semicolon,
     Period,
     Colon,
+
+    SingleQuote,
+    DoubleQuote,
 
     Newline,
 

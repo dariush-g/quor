@@ -336,8 +336,7 @@ impl TypeChecker {
                 // Check if the value type matches the declared type
                 if &value_type != var_type {
                     return Err(format!(
-                        "Type mismatch in declaration of '{}': expected {:?}, found {:?}",
-                        name, var_type, value_type
+                        "Type mismatch in declaration of '{name}': expected {var_type:?}, found {value_type:?}"
                     ));
                 }
 
@@ -399,8 +398,7 @@ impl TypeChecker {
                         .any(|stmt| matches!(stmt, Stmt::Return(_)));
                     if !has_return {
                         return Err(format!(
-                            "Function '{}' with return type {:?} is missing a return statement",
-                            name, return_type
+                            "Function '{name}' with return type {return_type:?} is missing a return statement"
                         ));
                     }
                 }
@@ -529,8 +527,7 @@ impl TypeChecker {
                 match &self.current_return_type {
                     Some(expected) if *expected != return_type => {
                         return Err(format!(
-                            "Return type mismatch: expected {:?}, found {:?}",
-                            expected, return_type
+                            "Return type mismatch: expected {expected:?}, found {return_type:?}"
                         ));
                     }
                     None => return Err("Return statement outside of function".to_string()),

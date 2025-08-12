@@ -3,6 +3,8 @@
 pub enum Type {
     int,
     float,
+    Char,
+
     Bool,
     Array(Box<Type>, usize),
     Function {
@@ -11,7 +13,6 @@ pub enum Type {
     },
     Void,
     Unknown,
-    Char,
 
     Pointer(Box<Type>),
 }
@@ -38,6 +39,7 @@ pub enum Expr {
     IntLiteral(i64),
     FloatLiteral(f64),
     BoolLiteral(bool),
+
     CharLiteral(char),
 
     AddressOf(Box<Expr>), // &expr
@@ -76,7 +78,7 @@ pub enum Expr {
     },
 
     Array(Vec<Expr>, Type),
-    
+
     ArrayAccess {
         array: Box<Expr>,
         index: Box<Expr>,

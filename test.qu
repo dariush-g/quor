@@ -1,8 +1,7 @@
 fn main()->int {
     
-    var x: int = 5;
+    var x: char = 'h';
 
-    print_int(x);
 
     return 0;
 }

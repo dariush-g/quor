@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 use crate::lexer::{
     ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
     token::{Token, TokenType},
@@ -448,6 +450,18 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         match &self.peek().token_type {
+            // TokenType::SingleQuote => {
+            //     self.advance();
+            //     let ce = self.peek().token_type.clone();
+
+            //     if let TokenType::Identifier(str) = ce {
+            //         if let Some(cha) = str.chars().nth(0) {
+            //             return Ok(Expr::CharLiteral(cha));
+            //         }
+            //     }
+
+            //     Err(ParseError::UnexpectedToken(self.peek().clone()))
+            // }
             TokenType::IntLiteral(val) => {
                 let val = *val;
                 self.advance();
@@ -465,6 +479,13 @@ impl Parser {
             TokenType::False => {
                 self.advance();
                 Ok(Expr::BoolLiteral(false))
+            }
+
+            TokenType::CharLiteral(c) => {
+                let c = *c;
+
+                self.advance();
+                Ok(Expr::CharLiteral(c))
             }
             TokenType::LeftBracket => {
                 self.advance();
@@ -589,7 +610,11 @@ impl Parser {
                 self.advance();
                 Type::Void
             }
-            
+            TokenType::Char => {
+                self.advance();
+                Type::Char
+            }
+
             // TokenType::Char => {
             //     self.advance();
             //     Type::Char
