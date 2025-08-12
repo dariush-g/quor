@@ -1,7 +1,17 @@
-fn main()->int {
-    
-    var x: char = 'h';
 
+
+class Example {
+    x: int;
+
+    fn func(self: Example*)->void {
+    }
+}
+
+
+fn main()->int {
+    var x: [char, 5] = ['h', 'e', 'l', 'l', 'o'];
+
+    var string: char* = &x[0];
 
     return 0;
 }

@@ -4,8 +4,9 @@ use std::collections::{HashMap, HashSet};
 pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>, // stack of scopes
     functions: HashMap<String, (Vec<Type>, Type)>, // fn_name -> (param types, return type)
-    current_return_type: Option<Type>,     // for validating return statements
-    in_loop: bool,                         // for validating break/continue
+    classes: Vec<String>,
+    current_return_type: Option<Type>, // for validating return statements
+    in_loop: bool,                     // for validating break/continue
 }
 
 impl Default for TypeChecker {
@@ -13,6 +14,7 @@ impl Default for TypeChecker {
         Self {
             variables: vec![HashMap::new()],
             functions: HashMap::new(),
+            classes: Vec::new(),
             current_return_type: None,
             in_loop: false,
         }
@@ -24,15 +26,16 @@ impl TypeChecker {
         let mut type_checker = TypeChecker::default();
 
         // Register builtins
-        type_checker
-            .declare_fn("print_int", vec![Type::int], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
-        type_checker
-            .declare_fn("print_bool", vec![Type::Bool], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn("print_int", vec![Type::int], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
+        let mut classes = Vec::new();
 
         for stmt in &program {
             if let Stmt::FunDecl {
@@ -51,6 +54,9 @@ impl TypeChecker {
                 type_checker
                     .declare_fn(name, param_types, return_type.clone())
                     .map_err(|e| format!("Global scope error: {e}"))?;
+            }
+            if let Stmt::ClassDecl { name, .. } = stmt {
+                classes.push(name);
             }
         }
 
@@ -259,7 +265,10 @@ impl TypeChecker {
                     }
                 }
 
-                Ok(Type::Array(Box::new(expr_elem_type.clone()), exprs.len()))
+                Ok(Type::Array(
+                    Box::new(expr_elem_type.clone()),
+                    Some(exprs.len()),
+                ))
             }
             Expr::ArrayAccess {
                 array,
@@ -287,6 +296,7 @@ impl TypeChecker {
                         let element_type = *ty;
                         if let Expr::IntLiteral(n) = **index {
                             if n >= len
+                                .unwrap()
                                 .try_into()
                                 .expect("Error comparing index to array length")
                             {
@@ -342,7 +352,8 @@ impl TypeChecker {
 
                 // For arrays, verify size matches if the literal has elements
                 if let (Type::Array(_, decl_size), Expr::Array(elems, _)) = (var_type, value) {
-                    if !elems.is_empty() && elems.len() != *decl_size {
+                    let decl_size = decl_size.expect("Error with array length");
+                    if !elems.is_empty() && elems.len() != decl_size {
                         return Err(format!(
                             "Array size mismatch in '{}': expected {}, found {}",
                             name,
@@ -360,7 +371,6 @@ impl TypeChecker {
                     value: value.clone(),
                 })
             }
-
             Stmt::FunDecl {
                 name,
                 params,
@@ -413,7 +423,6 @@ impl TypeChecker {
                     body: checked_body,
                 })
             }
-
             Stmt::If {
                 condition,
                 then_stmt,
@@ -436,7 +445,6 @@ impl TypeChecker {
                     else_stmt: checked_else.map(Box::new),
                 })
             }
-
             Stmt::While { condition, body } => {
                 let cond_type = self.type_check_expr(condition)?;
                 if cond_type != Type::Bool {
@@ -456,7 +464,6 @@ impl TypeChecker {
                     body: Box::new(checked_body),
                 })
             }
-
             Stmt::For {
                 init,
                 condition,
@@ -500,7 +507,6 @@ impl TypeChecker {
                     body: Box::new(checked_body),
                 })
             }
-
             Stmt::Block(stmts) => {
                 self.enter_scope();
                 let mut checked_stmts = Vec::new();
@@ -512,12 +518,10 @@ impl TypeChecker {
                 self.exit_scope();
                 Ok(Stmt::Block(checked_stmts))
             }
-
             Stmt::Expression(expr) => {
                 self.type_check_expr(expr)?;
                 Ok(Stmt::Expression(expr.clone()))
             }
-
             Stmt::Return(expr) => {
                 let return_type = match expr {
                     Some(expr) => self.type_check_expr(expr)?,
@@ -536,19 +540,70 @@ impl TypeChecker {
 
                 Ok(Stmt::Return(expr.clone()))
             }
-
             Stmt::Break => {
                 if !self.in_loop {
                     return Err("Break statement outside of loop".to_string());
                 }
                 Ok(Stmt::Break)
             }
-
             Stmt::Continue => {
                 if !self.in_loop {
                     return Err("Continue statement outside of loop".to_string());
                 }
                 Ok(Stmt::Continue)
+            }
+            Stmt::ClassDecl {
+                name,
+                instances,
+                funcs,
+            } => {
+                for (i, instance) in instances.clone().iter().enumerate() {
+                    for (j, instance1) in instances.iter().enumerate() {
+                        let name = instance.0.clone();
+                        if name == instance1.0 && i != j {
+                            return Err("Instances may not share a name".to_string());
+                        }
+
+                        if let Type::Class(_) = instance.1
+                            && !self.classes.contains(&name)
+                        {
+                            return Err(
+                                format!("Type of instance '{name}' not recognized").to_string()
+                            );
+                        }
+                    }
+                }
+
+                for (i, stmt) in funcs.clone().iter().enumerate() {
+                    match stmt {
+                        Stmt::FunDecl { name, .. } => {
+                            let name1 = name;
+                            for (j, stmt1) in funcs.iter().enumerate() {
+                                match stmt1 {
+                                    Stmt::FunDecl { name, .. } => {
+                                        if name1 == name && i != j {
+                                            return Err(
+                                                "Functions may not share a name".to_string()
+                                            );
+                                        }
+                                    }
+                                    _ => {
+                                        return Err("Class functions must be functions".to_string());
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err("Class functions must be functions".to_string());
+                        }
+                    }
+                }
+
+                Ok(Stmt::ClassDecl {
+                    name: name.to_string(),
+                    instances: instances.to_vec(),
+                    funcs: funcs.to_vec(),
+                })
             }
         }
     }

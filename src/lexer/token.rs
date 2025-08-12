@@ -33,6 +33,9 @@ pub enum TokenType {
     FloatLiteral(f32),
     CharLiteral(char),
 
+
+    Class,
+
     Boolean,
 
     Var,

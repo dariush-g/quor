@@ -20,11 +20,13 @@ fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
 
     // eprintln!("$ (cd {}) {:?}", workdir.display(), cmd);
     let status = cmd.status()?;
+
     if !status.success() {
         return Err(io::Error::other(format!(
             "command failed with status: {status:?}"
         )));
     }
+
     Ok(())
 }
 
@@ -91,12 +93,10 @@ pub fn build_link_run(
     }
 
     // 5) run the produced binary
-    {
-        let mut c = Command::new(&bin);
-        run(&mut c, workdir)?;
-    }
-
-    // 6) cleanup requested: remove only the .asm (keep .o for debugging if you want)
+    // {
+    //     let mut c = Command::new(&bin);
+    //     run(&mut c, workdir)?;
+    // }
 
 
     // let _ = fs::remove_file(&asm);

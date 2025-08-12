@@ -1,5 +1,3 @@
-use std::ops::Index;
-
 use crate::lexer::{
     ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
     token::{Token, TokenType},
@@ -81,6 +79,9 @@ impl Parser {
         if self.match_token(&[TokenType::While]) {
             return self.while_statement();
         }
+        if self.match_token(&[TokenType::Class]) {
+            return self.class_dec();
+        }
         if self.match_token(&[TokenType::Return]) {
             return self.return_statement();
         }
@@ -125,6 +126,49 @@ impl Parser {
             name: var_name,
             var_type,
             value: initializer,
+        })
+    }
+
+    fn class_dec(&mut self) -> Result<Stmt, ParseError> {
+        // class <Name> { ... }
+        let name_tok = self.consume(TokenType::Identifier("".into()), "Expected class name")?;
+        let class_name = if let TokenType::Identifier(n) = &name_tok.token_type {
+            n.clone()
+        } else {
+            return Err(ParseError::UnexpectedToken(name_tok.clone()));
+        };
+
+        self.consume(TokenType::LeftBrace, "Expected '{' after class name")?;
+
+        let mut functions = Vec::new();
+        let mut fields = Vec::new();
+
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            if self.match_token(&[TokenType::Fn]) {
+                functions.push(self.fn_dec()?);
+            } else {
+                let field_name_tok =
+                    self.consume(TokenType::Identifier("".into()), "Expected field name")?;
+                let field_name = if let TokenType::Identifier(n) = &field_name_tok.token_type {
+                    n.clone()
+                } else {
+                    return Err(ParseError::UnexpectedToken(field_name_tok.clone()));
+                };
+
+                self.consume(TokenType::Colon, "Expected ':' after field name")?;
+                let ty = self.parse_type()?;
+
+                self.consume(TokenType::Semicolon, "Expected ';' after field declaration")?;
+                fields.push((field_name, ty));
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expected '}' after class body")?;
+
+        Ok(Stmt::ClassDecl {
+            name: class_name,
+            instances: fields,
+            funcs: functions,
         })
     }
 
@@ -532,7 +576,7 @@ impl Parser {
 
                             return Ok(Expr::ArrayAccess {
                                 array,
-                                index: Box::new(Expr::IntLiteral(index as i64)),
+                                index: Box::new(Expr::IntLiteral(index)),
                             });
                         }
                         TokenType::Identifier(name) => {
@@ -580,17 +624,25 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         if self.match_token(&[TokenType::LeftBracket]) {
-            let element_type = self.parse_type()?;
-            self.consume(TokenType::Comma, "Expected ',' after array element type")?;
+            let elem = self.parse_type()?;
 
-            let size_token = self.consume(TokenType::IntLiteral(0), "Expected array size")?;
-            let size = match size_token.token_type {
-                TokenType::IntLiteral(size) => size as usize,
-                _ => return Err(ParseError::UnexpectedToken(size_token.clone())),
+            // allow `[T]` (no length)
+            if self.match_token(&[TokenType::RightBracket]) {
+                return Ok(Type::Array(Box::new(elem), None));
+            }
+
+            // or `[T, N]`
+            self.consume(
+                TokenType::Comma,
+                "Expected ',' after element type or ']' for slice",
+            )?;
+            let size_tok = self.consume(TokenType::IntLiteral(0), "Expected array size")?;
+            let size = match size_tok.token_type {
+                TokenType::IntLiteral(n) => n as usize,
+                _ => return Err(ParseError::UnexpectedToken(size_tok.clone())),
             };
-
             self.consume(TokenType::RightBracket, "Expected ']' after array size")?;
-            return Ok(Type::Array(Box::new(element_type), size));
+            return Ok(Type::Array(Box::new(elem), Some(size)));
         }
 
         let mut base_type = match &self.peek().token_type {
@@ -613,6 +665,10 @@ impl Parser {
             TokenType::Char => {
                 self.advance();
                 Type::Char
+            }
+            TokenType::Identifier(_) => {
+                self.advance();
+                Type::Class(Vec::new())
             }
 
             // TokenType::Char => {

@@ -170,6 +170,8 @@ impl Lexer {
             "fn" => TokenType::Fn,
             "if" => TokenType::If,
 
+            "class" => TokenType::Class,
+
             "else" => TokenType::Else,
             "while" => TokenType::While,
             "for" => TokenType::For,

@@ -6,12 +6,15 @@ pub enum Type {
     Char,
 
     Bool,
-    Array(Box<Type>, usize),
-    Function {
-        params: Vec<Type>,
-        return_type: Box<Type>,
-    },
+
+    Array(Box<Type>, Option<usize>),
+
+    Function,
+
+    Class(Vec<Type>),
+
     Void,
+
     Unknown,
 
     Pointer(Box<Type>),
@@ -36,8 +39,8 @@ impl Type {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    IntLiteral(i64),
-    FloatLiteral(f64),
+    IntLiteral(i32),
+    FloatLiteral(f32),
     BoolLiteral(bool),
 
     CharLiteral(char),
@@ -100,7 +103,7 @@ impl Expr {
             Expr::Cast { target_type, .. } => target_type.clone(),
             Expr::AddressOf(expr) => Type::Pointer(Box::new(expr.get_type())),
             Expr::DerefAssign { target, .. } => target.get_type(),
-            Expr::Array(_, element_type) => Type::Array(Box::new(element_type.clone()), 0),
+            Expr::Array(_, element_type) => Type::Array(Box::new(element_type.clone()), None),
             _ => Type::Unknown,
         }
     }
@@ -148,6 +151,11 @@ pub enum Stmt {
         params: Vec<(String, Type)>,
         return_type: Type,
         body: Vec<Stmt>,
+    },
+    ClassDecl {
+        name: String,
+        instances: Vec<(String, Type)>,
+        funcs: Vec<Stmt>,
     },
     If {
         condition: Expr,

@@ -11,6 +11,87 @@ pub struct CodeGen {
     locals: HashMap<String, i32>,
     stack_size: i32,
     externs: HashSet<String>,
+    classes: HashMap<String, (ClassLayout, Stmt)>, // stmt = classdec
+}
+#[inline]
+fn align_up(x: usize, a: usize) -> usize {
+    debug_assert!(a.is_power_of_two()); // FIX: check `a`, not `x`
+    (x + a - 1) & !(a - 1)
+}
+
+fn size_align_of(ty: &Type) -> (usize, usize) {
+    match ty {
+        Type::Char | Type::Bool => (1, 1),
+        Type::int => (4, 4),
+        Type::float => (4, 4),
+        Type::Pointer(_) => (8, 8),
+        Type::Array(elem, Some(n)) => {
+            let (es, ea) = size_align_of(elem);
+            (es * *n, ea)
+        }
+        Type::Array(_, None) => (16, 8),
+        Type::Class(instances) => layout_of_class(instances),
+        Type::Void | Type::Unknown => (0, 1),
+        _ => (0, 1),
+    }
+}
+
+fn layout_of_class(instances: &[Type]) -> (usize, usize) {
+    // Empty class: size 0, align 1 (you can choose to make size at least 1 if you prefer)
+    if instances.is_empty() {
+        return (0, 1);
+    }
+
+    let mut off = 0usize;
+    let mut max_a = 1usize;
+
+    for ty in instances {
+        let (sz, al) = size_align_of(ty);
+        // Treat unsized as error if you don't want to allow it here:
+        // if sz == 0 { return (0, 1); } // or panic/Result
+        let al = al.max(1);
+        off = align_up(off, al);
+        off += sz;
+        max_a = max_a.max(al);
+    }
+
+    let size = align_up(off, max_a);
+    (size, max_a)
+}
+
+struct FieldLayout {
+    name: String,
+    offset: usize,
+}
+struct ClassLayout {
+    size: usize,
+    align: usize,
+    fields: Vec<FieldLayout>,
+}
+
+fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
+    let mut off = 0usize;
+    let mut max_a = 1usize;
+    let mut out = Vec::with_capacity(fields.len());
+
+    for (name, ty) in fields {
+        let (sz, al) = size_align_of(ty);
+        let al = al.max(1);
+        off = align_up(off, al);
+        out.push(FieldLayout {
+            name: name.clone(),
+            offset: off,
+        });
+        off += sz;
+        max_a = max_a.max(al);
+    }
+
+    let size = align_up(off, max_a);
+    ClassLayout {
+        size,
+        align: max_a,
+        fields: out,
+    }
 }
 
 impl CodeGen {
@@ -30,7 +111,9 @@ impl CodeGen {
             locals: HashMap::new(),
             stack_size: 0,
             externs: HashSet::new(),
+            classes: HashMap::new(),
         };
+        code.output.push_str("extern malloc\n");
 
         code.output.push_str("global _start\n_start:\n");
         code.output.push_str("call main\n"); // main(): returns int in rax
@@ -160,12 +243,44 @@ impl CodeGen {
                 }
             }
 
+            Stmt::ClassDecl {
+                name,
+                instances,
+                funcs,
+            } => {
+                let cname = name;
+                for func in funcs {
+                    if let Stmt::FunDecl {
+                        name, params, body, ..
+                    } = func
+                    {
+                        // Example.function so that no regular function name overlaps
+                        self.generate_function(&format!("{cname}.{name}"), params, body);
+                    }
+                }
+
+                let class_layout = layout_fields(instances);
+
+                self.classes.insert(
+                    name.to_string(),
+                    (
+                        class_layout,
+                        Stmt::ClassDecl {
+                            name: name.to_string(),
+                            instances: instances.to_vec(),
+                            funcs: funcs.to_vec(),
+                        },
+                    ),
+                );
+            }
+
             Stmt::Expression(expr) => {
                 if let Some(reg) = self.handle_expr(expr, None) {
                     // expression result unused; free temp register
                     self.regs.push_back(reg);
                 }
             }
+
             Stmt::Return(expr) =>
             {
                 #[allow(clippy::collapsible_match)]
@@ -307,6 +422,13 @@ impl CodeGen {
                 self.output.push_str(&format!("mov {av_reg}, {n}\n"));
                 Some(av_reg.to_string())
             }
+            Expr::CharLiteral(n) => {
+                let av_reg = self.regs.pop_front().expect("No registers available");
+
+                self.output.push_str(&format!("mov {av_reg}, '{n}'\n"));
+
+                Some(av_reg.to_string())
+            }
             Expr::Variable(name) => {
                 let off = self
                     .local_offset(name)
@@ -333,7 +455,7 @@ impl CodeGen {
 
                 match &**index {
                     Expr::IntLiteral(n) => {
-                        let off = base_off - (*n as i32) * 8;
+                        let off = base_off - *n * 8;
                         self.output
                             .push_str(&format!("mov {dst}, QWORD [rbp - {off}]\n"));
                         Some(dst)
