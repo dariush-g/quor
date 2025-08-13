@@ -10,9 +10,14 @@ global main
 main:
 push rbp
 mov rbp, rsp
+mov rcx, 5
+mov rdx, 'h'
+mov rdi, rcx
+mov rsi, rdx
+call Example_new
 sub rsp, 8
-mov rcx, 0
-mov rax, rcx
+mov QWORD [rbp - 8], rax
+mov rax, 0
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
@@ -28,16 +33,15 @@ global Example_new
 Example_new:
 push rbp
 mov rbp, rsp
-push rdx
-push rsi
 mov rdi, Example_size
 call _malloc
+mov rcx, rax
 mov eax, dword [rbp - 8]
-mov dword [rax + 0], eax
+mov dword [rcx + 0], eax
 mov al, byte [rbp - 16]
-mov byte [rax + 4], al
-add rsp, 8
-add rsp, 8
+mov byte [rcx + 4], al
+mov rax, rcx
+add rsp, 16
 mov rsp, rbp
 pop rbp
 ret
