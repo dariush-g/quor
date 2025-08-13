@@ -95,10 +95,6 @@ impl Parser {
             return Ok(Stmt::Block(self.block()?));
         }
 
-        // if self.match_token(&[TokenType::LeftBracket]) {
-        //     return Ok(Stmt::)
-        // }
-
         let expr = self.expression()?;
         if semi {
             self.consume(TokenType::Semicolon, "Expected ';' after expression")?;
@@ -130,7 +126,6 @@ impl Parser {
     }
 
     fn class_dec(&mut self) -> Result<Stmt, ParseError> {
-        // class <Name> { ... }
         let name_tok = self.consume(TokenType::Identifier("".into()), "Expected class name")?;
         let class_name = if let TokenType::Identifier(n) = &name_tok.token_type {
             n.clone()
@@ -494,27 +489,15 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         match &self.peek().token_type {
-            // TokenType::SingleQuote => {
-            //     self.advance();
-            //     let ce = self.peek().token_type.clone();
-
-            //     if let TokenType::Identifier(str) = ce {
-            //         if let Some(cha) = str.chars().nth(0) {
-            //             return Ok(Expr::CharLiteral(cha));
-            //         }
-            //     }
-
-            //     Err(ParseError::UnexpectedToken(self.peek().clone()))
-            // }
             TokenType::IntLiteral(val) => {
                 let val = *val;
                 self.advance();
-                Ok(Expr::IntLiteral(val.into()))
+                Ok(Expr::IntLiteral(val))
             }
             TokenType::FloatLiteral(val) => {
                 let val = *val;
                 self.advance();
-                Ok(Expr::FloatLiteral(val.into()))
+                Ok(Expr::FloatLiteral(val))
             }
             TokenType::True => {
                 self.advance();
@@ -524,10 +507,8 @@ impl Parser {
                 self.advance();
                 Ok(Expr::BoolLiteral(false))
             }
-
             TokenType::CharLiteral(c) => {
                 let c = *c;
-
                 self.advance();
                 Ok(Expr::CharLiteral(c))
             }
@@ -598,9 +579,43 @@ impl Parser {
                     }
                 }
 
+                if self.peek().token_type == TokenType::LeftBrace {
+                    let mut inits: Vec<(String, Expr)> = Vec::new();
+                    self.advance();
+
+                    if !self.check(&TokenType::RightBrace) {
+                        loop {
+                            let fname_tok = self
+                                .consume(TokenType::Identifier("".into()), "Expected field name")?;
+                            let fname = if let TokenType::Identifier(n) = &fname_tok.token_type {
+                                n.clone()
+                            } else {
+                                return Err(ParseError::UnexpectedToken(fname_tok.clone()));
+                            };
+
+                            self.consume(TokenType::Colon, "Expected ':' after field name")?;
+                            let val = self.expression()?;
+                            inits.push((fname, val));
+
+                            if !self.match_token(&[TokenType::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.consume(
+                        TokenType::RightBrace,
+                        "Expected '}' after class initializer",
+                    )?;
+
+                    return Ok(Expr::ClassInit {
+                        name,
+                        params: inits,
+                    });
+                }
+
                 Ok(Expr::Variable(name.clone()))
             }
-
             TokenType::LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
@@ -626,12 +641,10 @@ impl Parser {
         if self.match_token(&[TokenType::LeftBracket]) {
             let elem = self.parse_type()?;
 
-            // allow `[T]` (no length)
             if self.match_token(&[TokenType::RightBracket]) {
                 return Ok(Type::Array(Box::new(elem), None));
             }
 
-            // or `[T, N]`
             self.consume(
                 TokenType::Comma,
                 "Expected ',' after element type or ']' for slice",
@@ -670,11 +683,6 @@ impl Parser {
                 self.advance();
                 Type::Class(Vec::new())
             }
-
-            // TokenType::Char => {
-            //     self.advance();
-            //     Type::Char
-            // }
             _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
         };
 

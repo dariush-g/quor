@@ -6,6 +6,7 @@ type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
 pub struct CodeGen {
     output: String,
     regs: VecDeque<String>,
+    _fp_regs: VecDeque<String>,
     _jmp_count: u32,
     functions: Functions,
     locals: HashMap<String, i32>,
@@ -17,6 +18,39 @@ pub struct CodeGen {
 fn align_up(x: usize, a: usize) -> usize {
     debug_assert!(a.is_power_of_two()); // FIX: check `a`, not `x`
     (x + a - 1) & !(a - 1)
+}
+
+fn gpr_name(i: usize, ty: &Type) -> &'static str {
+    match ty {
+        Type::int => match i {
+            0 => "edi",
+            1 => "esi",
+            2 => "edx",
+            3 => "ecx",
+            4 => "r8d",
+            5 => "r9d",
+            _ => unreachable!(),
+        },
+        Type::Pointer(_) => match i {
+            0 => "rdi",
+            1 => "rsi",
+            2 => "rdx",
+            3 => "rcx",
+            4 => "r8",
+            5 => "r9",
+            _ => unreachable!(),
+        },
+        Type::Char | Type::Bool => match i {
+            0 => "dil",
+            1 => "sil",
+            2 => "dl",
+            3 => "cl",
+            4 => "r8b",
+            5 => "r9b",
+            _ => unreachable!(),
+        },
+        _ => "rax", // fallback
+    }
 }
 
 fn size_align_of(ty: &Type) -> (usize, usize) {
@@ -106,6 +140,16 @@ impl CodeGen {
                 "r10".to_string(),
                 "r11".to_string(),
             ]),
+            _fp_regs: VecDeque::from(vec![
+                "xmm0".to_string(),
+                "xmm1".to_string(),
+                "xmm2".to_string(),
+                "xmm3".to_string(),
+                "xmm4".to_string(),
+                "xmm5".to_string(),
+                "xmm6".to_string(),
+                "xmm7".to_string(),
+            ]),
             _jmp_count: 0,
             functions: vec![],
             locals: HashMap::new(),
@@ -113,6 +157,11 @@ impl CodeGen {
             externs: HashSet::new(),
             classes: HashMap::new(),
         };
+
+        #[cfg(target_arch = "aarch64")]
+        code.output.push_str("extern _malloc\n");
+
+        #[cfg(target_arch = "x86_64")]
         code.output.push_str("extern malloc\n");
 
         code.output.push_str("global _start\n_start:\n");
@@ -120,7 +169,12 @@ impl CodeGen {
         code.output.push_str("mov rbx, rax\n"); // keep a copy in RBX
         // macOS x86_64 exit(status): rax=0x2000001, rdi=status
         code.output.push_str("mov rdi, rax\n");
+        #[cfg(target_arch = "aarch64")]
         code.output.push_str("mov rax, 0x2000001\n");
+
+        #[cfg(target_arch = "x86_64")]
+        code.output.push_str("mov rax, 1\n");
+
         code.output.push_str("syscall\n");
         let mut has_main = false;
 
@@ -248,30 +302,7 @@ impl CodeGen {
                 instances,
                 funcs,
             } => {
-                let cname = name;
-                for func in funcs {
-                    if let Stmt::FunDecl {
-                        name, params, body, ..
-                    } = func
-                    {
-                        // Example.function so that no regular function name overlaps
-                        self.generate_function(&format!("{cname}.{name}"), params, body);
-                    }
-                }
-
-                let class_layout = layout_fields(instances);
-
-                self.classes.insert(
-                    name.to_string(),
-                    (
-                        class_layout,
-                        Stmt::ClassDecl {
-                            name: name.to_string(),
-                            instances: instances.to_vec(),
-                            funcs: funcs.to_vec(),
-                        },
-                    ),
-                );
+                self.generate_class(name, instances.to_vec(), funcs.to_vec());
             }
 
             Stmt::Expression(expr) => {
@@ -347,6 +378,163 @@ impl CodeGen {
 
         self.output.push_str(&format!("{epilogue}:\n"));
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
+    }
+
+    fn generate_class(&mut self, name: &str, instances: Vec<(String, Type)>, functions: Vec<Stmt>) {
+        let cname = name;
+
+        // 1) Layout defines
+        let class_layout = layout_fields(&instances);
+        self.output
+            .push_str(&format!("; ----- Layout: {cname} -----\n"));
+        self.output
+            .push_str(&format!("%define {}_size {}\n", cname, class_layout.size));
+        for fld in &class_layout.fields {
+            self.output
+                .push_str(&format!("%define {}_{} {}\n", cname, fld.name, fld.offset));
+        }
+        self.output.push('\n');
+
+        let arg_regs64 = self.regs.clone();
+
+        let ctor_sym = format!("{cname}_new");
+        self.output
+            .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
+        self.output.push_str("push rbp\nmov rbp, rsp\n");
+
+        for _ in instances.iter() {
+            let reg = self.regs.pop_front().unwrap(); //gpr_name(i, ty);
+            self.output.push_str(&format!("push {reg}\n"));
+            self.regs.push_back(reg);
+        }
+
+        // Save arg registers we’ll overwrite by calling malloc.
+        let n_fields = instances.len();
+        let n_gpr = n_fields.min(arg_regs64.len());
+
+        let _ = (0..n_gpr).map(|i| {
+            self.output.push_str(&format!("push {}\n", arg_regs64[i]));
+        });
+
+        if n_gpr % 2 == 1 {
+            self.output.push_str("sub rsp, 8\n");
+        }
+
+        self.output.push_str(&format!("mov rdi, {cname}_size\n"));
+
+        #[cfg(target_arch = "aarch64")]
+        self.output.push_str("call _malloc\n");
+
+        #[cfg(target_arch = "x86_64")]
+        self.output.push_str("call malloc\n");
+
+        if n_gpr % 2 == 1 {
+            self.output.push_str("add rsp, 8\n");
+        }
+
+        for (i, (_, ty)) in instances.iter().enumerate().take(n_gpr) {
+            let off_in_obj = class_layout.fields[i].offset;
+            let slot_off = (i + 1) * 8; // [rbp - slot_off]
+            match ty {
+                Type::int => {
+                    self.output
+                        .push_str(&format!("mov eax, dword [rbp - {slot_off}]\n"));
+                    self.output
+                        .push_str(&format!("mov dword [rax + {off_in_obj}], eax\n"));
+                }
+                Type::Char | Type::Bool => {
+                    self.output
+                        .push_str(&format!("mov al, byte [rbp - {slot_off}]\n"));
+                    self.output
+                        .push_str(&format!("mov byte [rax + {off_in_obj}], al\n"));
+                }
+                Type::Pointer(_) => {
+                    self.output
+                        .push_str(&format!("mov rcx, qword [rbp - {slot_off}]\n"));
+                    self.output
+                        .push_str(&format!("mov qword [rax + {off_in_obj}], rcx\n"));
+                }
+                _ => {
+                    self.output
+                        .push_str("; TODO: unsupported field type in ctor\n");
+                }
+            }
+        }
+
+        // Pop saved registers (not strictly required since we’re returning)
+        for _ in 0..n_gpr {
+            self.output.push_str("add rsp, 8\n");
+        }
+
+        self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
+
+        // 3) Generate class methods (mangled: Class_method) and mark as defined
+        for func in functions.clone() {
+            if let Stmt::FunDecl {
+                name: mname,
+                params,
+                body,
+                ..
+            } = func
+            {
+                let sym = format!("{}_{}", cname, mname);
+                self.generate_function(&sym, &params, &body);
+                self.functions.push((sym, params.clone(), body.clone()));
+            }
+        }
+
+        // 4) Remember the class
+        self.classes.insert(
+            name.to_string(),
+            (
+                class_layout,
+                Stmt::ClassDecl {
+                    name: name.to_string(),
+                    instances: instances.to_vec(),
+                    funcs: functions,
+                },
+            ),
+        );
+    }
+
+    fn reg32(r: &str) -> &'static str {
+        match r {
+            "rax" => "eax",
+            "rbx" => "ebx",
+            "rcx" => "ecx",
+            "rdx" => "edx",
+            "rsi" => "esi",
+            "rdi" => "edi",
+            "r8" => "r8d",
+            "r9" => "r9d",
+            "r10" => "r10d",
+            "r11" => "r11d",
+            "r12" => "r12d",
+            "r13" => "r13d",
+            "r14" => "r14d",
+            "r15" => "r15d",
+            _ => "eax",
+        }
+    }
+
+    fn reg8(r: &str) -> &'static str {
+        match r {
+            "rax" => "al",
+            "rbx" => "bl",
+            "rcx" => "cl",
+            "rdx" => "dl",
+            "rsi" => "sil",
+            "rdi" => "dil",
+            "r8" => "r8b",
+            "r9" => "r9b",
+            "r10" => "r10b",
+            "r11" => "r11b",
+            "r12" => "r12b",
+            "r13" => "r13b",
+            "r14" => "r14b",
+            "r15" => "r15b",
+            _ => "al",
+        }
     }
 
     fn handle_stmt_with_epilogue(&mut self, stmt: &Stmt, epilogue: &str) {

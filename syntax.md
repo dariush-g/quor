@@ -21,21 +21,21 @@ class Circle: Shape {
     @[private, const]
     radius: float;
 
-    @constructor
-    fn new(radius: int) -> Circle {
-        self~radius = radius;
-        return self;
+    fn new(radius: float) -> Circle {
+        Circle {
+            radius: radius,
+        }
     }
 
     @override
-    fn area() -> float {
-        return 3.14 * self~radius * self~radius;
+    fn area(self: Circle*) -> float {
+        return 3.14 * self.radius * self.radius;
     }
 }
 
 fn main()->int {
     let circle: Circle = Circle::new(5);
-    let area: float = circle~area();
+    let area: float = circle.area();
 
     io::print(area);
 

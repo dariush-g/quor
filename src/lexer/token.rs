@@ -1,3 +1,5 @@
+use crate::lexer::ast::Type;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
@@ -32,7 +34,6 @@ pub enum TokenType {
     IntLiteral(i32),
     FloatLiteral(f32),
     CharLiteral(char),
-
 
     Class,
 
@@ -96,4 +97,22 @@ pub enum TokenType {
     Char,
     Float,
     Int,
+}
+
+impl TokenType {
+    pub fn get_type(&self) -> Type {
+        match self {
+            TokenType::IntLiteral(_) => Type::int,
+            TokenType::FloatLiteral(_) => Type::float,
+            TokenType::CharLiteral(_) => Type::Char,
+            TokenType::Class => Type::Class(Vec::new()),
+            TokenType::Boolean => Type::Bool,
+
+            TokenType::Void => Type::Void,
+            TokenType::Char => Type::Char,
+            TokenType::Float => Type::float,
+            TokenType::Int => Type::int,
+            _ => Type::Unknown,
+        }
+    }
 }

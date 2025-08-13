@@ -2,20 +2,19 @@
 
 class Example {
     x: int;
-
-    fn func(self: Example*)->void {
-    }
+    y: char;
 }
 
+fn main() -> int {
 
-fn main()->int {
-    var x: [char, 5] = ['h', 'e', 'l', 'l', 'o'];
+    var x: Example = Example {
+        x: 5,
+        y: 'h'
+    };
 
-    var string: char* = &x[0];
 
     return 0;
 }
-
 
 // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test 
 

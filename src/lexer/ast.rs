@@ -1,3 +1,5 @@
+use crate::lexer::token::TokenType;
+
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -44,6 +46,11 @@ pub enum Expr {
     BoolLiteral(bool),
 
     CharLiteral(char),
+
+    ClassInit {
+        name: String,
+        params: Vec<(String, Expr)>,
+    },
 
     AddressOf(Box<Expr>), // &expr
 
