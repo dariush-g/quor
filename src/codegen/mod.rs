@@ -128,6 +128,14 @@ impl CodeGen {
                 "rcx".to_string(),
                 "rdx".to_string(),
                 "rax".to_string(),
+                "r8".to_string(),
+                "r9".to_string(),
+                "r10".to_string(),
+                "r11".to_string(),
+                "r12".to_string(),
+                "r13".to_string(),
+                "r14".to_string(),
+                "r15".to_string(),
             ]),
             _fp_regs: VecDeque::from(vec![
                 "xmm0".to_string(),
@@ -164,7 +172,7 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    code.generate_function("main", &vec![], body);
+                    code.generate_function("main", vec![], body);
                     has_main = true;
                 } else {
                     code.functions
@@ -179,7 +187,7 @@ impl CodeGen {
 
         let functions = &code.functions.clone();
         for (name, params, body) in functions {
-            code.generate_function(name, params, body);
+            code.generate_function(name, params.clone(), body);
         }
 
         for stmt in stmts {
@@ -210,7 +218,7 @@ impl CodeGen {
     }
 
     fn call_with_alignment(&mut self, target: &str) {
-        let slots = (self.stack_size / 8) as i32;
+        let slots = (self.stack_size / 8);
         let need_pad = (slots & 1) != 0;
         if need_pad {
             self.output.push_str("sub rsp, 8\n");
@@ -315,11 +323,10 @@ impl CodeGen {
                 }
             }
 
-            Stmt::Return(expr) => {
-                if let Some(ex) = expr {
-                    self.handle_expr(ex, None);
-                }
+            Stmt::Return(Some(ex)) => {
+                self.handle_expr(ex, None);
             }
+            Stmt::Return(None) => {}
             Stmt::If {
                 condition,
                 then_stmt,
@@ -353,7 +360,7 @@ impl CodeGen {
         }
     }
 
-    fn generate_function(&mut self, name: &str, _params: &Vec<(String, Type)>, body: &Vec<Stmt>) {
+    fn generate_function(&mut self, name: &str, _params: Vec<(String, Type)>, body: &Vec<Stmt>) {
         self.locals.clear();
         self.stack_size = 0;
 
@@ -397,13 +404,14 @@ impl CodeGen {
         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
         let n_fields = instances.len().min(save_regs.len());
 
-        let _ = (0..n_fields).map(|n| {
-            self.output.push_str(&format!("push {}\n", save_regs[n]));
-        });
-
         if (n_fields & 1) == 1 {
             self.output.push_str("sub rsp, 8\n");
         }
+
+        for i in 0..n_fields {
+            self.output.push_str(&format!("push {}\n", save_regs[i]));
+        }
+
         self.output.push_str(&format!("mov rdi, {cname}_size\n"));
         self.output.push_str("call _malloc\n");
         if (n_fields & 1) == 1 {
@@ -459,7 +467,7 @@ impl CodeGen {
             } = func
             {
                 let sym = format!("{cname}_{mname}");
-                self.generate_function(&sym, &params, &body);
+                self.generate_function(&sym, params.clone(), &body);
                 self.functions.push((sym, params.clone(), body.clone()));
             }
         }

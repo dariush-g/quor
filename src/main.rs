@@ -1,7 +1,7 @@
-use quor::analyzer::TypeChecker;
-use quor::codegen::CodeGen;
-use quor::lexer::Lexer;
-use quor::parser::Parser;
+use quco::analyzer::TypeChecker;
+use quco::codegen::CodeGen;
+use quco::lexer::Lexer;
+use quco::parser::Parser;
 
 use std::env;
 use std::fs;
@@ -97,7 +97,6 @@ pub fn build_link_run(
     //     let mut c = Command::new(&bin);
     //     run(&mut c, workdir)?;
     // }
-
 
     // let _ = fs::remove_file(&asm);
 
