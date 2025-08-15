@@ -5,11 +5,12 @@ type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
 
 pub struct CodeGen {
     output: String,
+    imports: Vec<String>,
     regs: VecDeque<String>,
     _fp_regs: VecDeque<String>,
     _jmp_count: u32,
     functions: Functions,
-    locals: HashMap<String, i32>,
+    locals: HashMap<String, (Option<String>, i32)>,
     stack_size: i32,
     externs: HashSet<String>,
     classes: HashMap<String, (ClassLayout, Stmt)>,
@@ -57,12 +58,18 @@ fn size_align_of(ty: &Type) -> (usize, usize) {
         Type::int => (4, 4),
         Type::float => (4, 4),
         Type::Pointer(_) => (8, 8),
-        Type::Array(elem, Some(n)) => {
-            let (es, ea) = size_align_of(elem);
-            (es * *n, ea)
-        }
-        Type::Array(_, None) => (16, 8),
-        Type::Class(instances) => layout_of_class(instances),
+        // Type::Array(_elem, Some(_n)) => {
+        // let (es, ea) = size_align_of(elem);
+        // (es * *n, ea)
+        //     (8, 8)
+        // }
+        Type::Array(_, _) => (8, 8),
+        Type::Class { instances, .. } => layout_of_class(
+            &instances
+                .iter()
+                .map(|(_, ty)| ty.clone())
+                .collect::<Vec<Type>>(),
+        ),
         Type::Void | Type::Unknown => (0, 1),
         _ => (0, 1),
     }
@@ -89,6 +96,7 @@ struct FieldLayout {
     name: String,
     offset: usize,
 }
+
 struct ClassLayout {
     size: usize,
     align: usize,
@@ -121,7 +129,8 @@ fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
 }
 
 impl CodeGen {
-    pub fn generate(stmts: &Vec<Stmt>) -> String {
+    // asm      import paths
+    pub fn generate(stmts: &Vec<Stmt>) -> (String, Vec<String>) {
         let mut code = CodeGen {
             output: String::new(),
             regs: VecDeque::from(vec![
@@ -135,7 +144,6 @@ impl CodeGen {
                 "r12".to_string(),
                 "r13".to_string(),
                 "r14".to_string(),
-                "r15".to_string(),
             ]),
             _fp_regs: VecDeque::from(vec![
                 "xmm0".to_string(),
@@ -153,6 +161,7 @@ impl CodeGen {
             stack_size: 0,
             externs: HashSet::new(),
             classes: HashMap::new(),
+            imports: Vec::new(),
         };
 
         code.output.push_str("extern _malloc\n");
@@ -179,6 +188,14 @@ impl CodeGen {
                         .push((name.clone(), params.clone(), body.clone()));
                 }
             }
+            if let Stmt::ClassDecl {
+                name,
+                instances,
+                funcs,
+            } = stmt
+            {
+                code.generate_class(name, instances.clone(), funcs.to_vec());
+            }
         }
 
         if !has_main {
@@ -202,23 +219,33 @@ impl CodeGen {
             header.push_str(&format!("extern _{ext}\n"));
         }
 
-        format!("{header}{}", code.output)
+        (format!("{header}{}", code.output), code.imports)
     }
 
-    fn alloc_local(&mut self, name: &str, _ty: &Type) -> i32 {
+    fn alloc_local(&mut self, name: &str, class_name: Option<String>, _ty: &Type) -> i32 {
         self.stack_size += 8;
         self.output.push_str("sub rsp, 8\n");
         let offset = self.stack_size;
-        self.locals.insert(name.to_string(), offset);
+        self.locals.insert(name.to_string(), (class_name, offset));
         offset
     }
 
     fn local_offset(&self, name: &str) -> Option<i32> {
-        self.locals.get(name).cloned()
+        if self.locals.contains_key(name) {
+            return Some(
+                self.locals
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("Error with local variable: {name}"))
+                    .1,
+            );
+        }
+
+        None
     }
 
     fn call_with_alignment(&mut self, target: &str) {
-        let slots = (self.stack_size / 8);
+        let slots = self.stack_size / 8;
         let need_pad = (slots & 1) != 0;
         if need_pad {
             self.output.push_str("sub rsp, 8\n");
@@ -231,6 +258,12 @@ impl CodeGen {
 
     fn handle_stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::AtDecl(decl, param) => if decl.as_str() == "import" {
+                let param = param
+                    .clone()
+                    .unwrap_or_else(|| panic!("Unable to locate import"));
+                self.imports.push(param);
+            },
             Stmt::VarDecl {
                 name,
                 var_type,
@@ -242,24 +275,28 @@ impl CodeGen {
                     self.stack_size += total_size;
                     self.output.push_str(&format!("sub rsp, {total_size}\n"));
                     let base_offset = self.stack_size;
-                    self.locals.insert(name.clone(), base_offset);
+                    self.locals.insert(name.clone(), (None, base_offset));
 
                     for (i, element) in elements.iter().enumerate() {
                         let offset = base_offset - (i as i32) * 8;
                         match element {
                             Expr::IntLiteral(n) => {
                                 self.output
-                                    .push_str(&format!("mov QWORD [rbp - {offset}], {n}\n"));
+                                    .push_str(&format!("mov qword [rbp - {offset}], {n}\n"));
                             }
                             Expr::BoolLiteral(b) => {
                                 let val = if *b { 1 } else { 0 };
                                 self.output
-                                    .push_str(&format!("mov QWORD [rbp - {offset}], {val}\n"));
+                                    .push_str(&format!("mov qword [rbp - {offset}], {val}\n"));
+                            }
+                            Expr::CharLiteral(c) => {
+                                self.output
+                                    .push_str(&format!("mov qword [rbp - {offset}], '{c}'\n"));
                             }
                             _ => {
                                 if let Some(val_reg) = self.handle_expr(element, None) {
                                     self.output.push_str(&format!(
-                                        "mov QWORD [rbp - {offset}], {val_reg}\n"
+                                        "mov qword [rbp - {offset}], {val_reg}\n"
                                     ));
                                     self.regs.push_back(val_reg);
                                 }
@@ -268,16 +305,47 @@ impl CodeGen {
                     }
                 }
                 Expr::ClassInit { name: cls, params } => {
-                    let mut arg_vals: Vec<String> = Vec::new();
-                    for p in params {
-                        let r = self.handle_expr(&p.1, None).expect("ctor arg");
-                        arg_vals.push(r);
+                    // Get the class layout to map named parameters to field positions
+                    let class_info = self.classes.get(cls);
+                    if class_info.is_none() {
+                        panic!("Class {} not found", cls);
                     }
+                    let (class_layout, _) = class_info.unwrap();
+                    
+                    // Clone the field names and positions to avoid borrowing issues
+                    let field_positions: HashMap<String, usize> = class_layout.fields.iter()
+                        .enumerate()
+                        .map(|(i, field)| (field.name.clone(), i))
+                        .collect();
+                    let field_count = class_layout.fields.len();
+                    
+                    // First, evaluate all expressions to get their register values
+                    let mut param_values = Vec::new();
+                    for (param_name, param_expr) in params {
+                        let r = self.handle_expr(param_expr, None).expect("ctor arg");
+                        param_values.push((param_name, r));
+                    }
+                    
+                    // Map named parameters to their correct positions
+                    let mut ordered_args = vec![String::new(); field_count];
+                    for (param_name, reg) in param_values {
+                        if let Some(&pos) = field_positions.get(param_name) {
+                            ordered_args[pos] = reg;
+                        } else {
+                            panic!("Field {} not found in class {}", param_name, cls);
+                        }
+                    }
+                    
+                    // Filter out empty strings and get the actual argument values
+                    let arg_vals: Vec<String> = ordered_args.into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect();
 
                     let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
                     if arg_vals.len() > abi_regs.len() {
                         panic!("More than 5 constructor args not supported yet");
                     }
+
                     for (i, r) in arg_vals.iter().enumerate() {
                         if r != abi_regs[i] {
                             self.output
@@ -288,35 +356,43 @@ impl CodeGen {
                         self.regs.push_back(r);
                     }
 
-                    let ctor = format!("{cls}_new");
+                    let ctor = format!("{cls}.new");
                     self.call_with_alignment(&ctor);
 
-                    let off = self.alloc_local(name, &Type::Pointer(Box::new(Type::Unknown)));
+                    let off = self.alloc_local(
+                        name,
+                        Some(cls.to_string()),
+                        &Type::Pointer(Box::new(Type::Class {
+                            name: cls.to_string(),
+                            instances: params
+                                .iter()
+                                .map(|(name, expr)| (name.clone(), expr.get_type()))
+                                .collect(),
+                        })),
+                    );
+
                     self.output
-                        .push_str(&format!("mov QWORD [rbp - {off}], rax\n"));
+                        .push_str(&format!("mov qword [rbp - {off}], rax\n"));
                 }
                 _ => {
                     let offset = if self.local_offset(name).is_none() {
-                        self.alloc_local(name, var_type)
+                        self.alloc_local(name, None, var_type)
                     } else {
                         self.local_offset(name).unwrap()
                     };
                     if let Some(val_reg) = self.handle_expr(value, None) {
                         self.output
-                            .push_str(&format!("mov QWORD [rbp - {offset}], {val_reg}\n"));
+                            .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n"));
                         self.regs.push_back(val_reg);
                     }
                 }
             },
 
-            Stmt::ClassDecl {
-                name,
-                instances,
-                funcs,
-            } => {
-                self.generate_class(name, instances.to_vec(), funcs.to_vec());
-            }
-
+            // Stmt::ClassDecl {
+            //     name,
+            //     instances,
+            //     funcs,
+            // } => {}
             Stmt::Expression(expr) => {
                 if let Some(reg) = self.handle_expr(expr, None) {
                     self.regs.push_back(reg);
@@ -360,14 +436,29 @@ impl CodeGen {
         }
     }
 
-    fn generate_function(&mut self, name: &str, _params: Vec<(String, Type)>, body: &Vec<Stmt>) {
+    fn generate_function(&mut self, name: &str, params: Vec<(String, Type)>, body: &Vec<Stmt>) {
         self.locals.clear();
         self.stack_size = 0;
 
         let epilogue = format!(".Lret_{name}");
 
+        let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+
         self.output.push_str(&format!("global {name}\n{name}:\n"));
         self.output.push_str("push rbp\nmov rbp, rsp\n");
+
+        #[allow(clippy::needless_range_loop)]
+        for (i, param) in params.iter().enumerate() {
+            let off = match &param.1 {
+                Type::Class { name, .. } => {
+                    self.alloc_local(&param.0, Some(name.to_string()), &param.1)
+                }
+                _ => self.alloc_local(&param.0, None, &param.1),
+            };
+
+            self.output
+                .push_str(&format!("mov {}, qword [rbp - {off}]\n", save_regs[i]));
+        }
 
         for stmt in body {
             self.handle_stmt_with_epilogue(stmt, &epilogue);
@@ -381,21 +472,19 @@ impl CodeGen {
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
     }
 
-    fn generate_class(&mut self, name: &str, instances: Vec<(String, Type)>, functions: Vec<Stmt>) {
-        let cname = name;
-
+    fn generate_class(&mut self, name: &str, instances: Vec<(String, Type)>, funcs: Vec<Stmt>) {
         let class_layout = layout_fields(&instances);
         self.output
-            .push_str(&format!("; ----- Layout: {cname} -----\n"));
+            .push_str(&format!("; ----- Layout: {name} -----\n"));
         self.output
-            .push_str(&format!("%define {}_size {}\n", cname, class_layout.size));
+            .push_str(&format!("%define {}_size {}\n", name, class_layout.size));
         for fld in &class_layout.fields {
             self.output
-                .push_str(&format!("%define {}_{} {}\n", cname, fld.name, fld.offset));
+                .push_str(&format!("%define {}_{} {}\n", name, fld.name, fld.offset));
         }
         self.output.push('\n');
 
-        let ctor_sym = format!("{cname}_new");
+        let ctor_sym = format!("{name}.new");
         self.output
             .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
         self.output.push_str("push rbp\nmov rbp, rsp\n");
@@ -404,18 +493,27 @@ impl CodeGen {
         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
         let n_fields = instances.len().min(save_regs.len());
 
-        if (n_fields & 1) == 1 {
-            self.output.push_str("sub rsp, 8\n");
+        // Ensure 16-byte stack alignment for malloc call
+        let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
+        if stack_adjust > 0 {
+            self.output.push_str(&format!("sub rsp, {}\n", stack_adjust));
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..n_fields {
             self.output.push_str(&format!("push {}\n", save_regs[i]));
         }
 
-        self.output.push_str(&format!("mov rdi, {cname}_size\n"));
+        self.output.push_str(&format!("mov rdi, {name}_size\n"));
+
+        #[cfg(target_arch = "aarch64")]
         self.output.push_str("call _malloc\n");
-        if (n_fields & 1) == 1 {
-            self.output.push_str("add rsp, 8\n");
+
+        #[cfg(target_arch = "x86_64")]
+        self.output.push_str("call _malloc\n");
+
+        if stack_adjust > 0 {
+            self.output.push_str(&format!("add rsp, {}\n", stack_adjust));
         }
 
         self.output.push_str("mov rcx, rax\n");
@@ -424,6 +522,12 @@ impl CodeGen {
             let off_in_obj = class_layout.fields[i].offset;
             let slot_off = (i + 1) * 8;
             match ty {
+                Type::Array(_, _) => {
+                    self.output
+                        .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
+                    self.output
+                        .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
+                }
                 Type::int => {
                     self.output
                         .push_str(&format!("mov eax, dword [rbp - {slot_off}]\n"));
@@ -438,9 +542,9 @@ impl CodeGen {
                 }
                 Type::Pointer(_) => {
                     self.output
-                        .push_str(&format!("mov rcx, qword [rbp - {slot_off}]\n"));
+                        .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
                     self.output
-                        .push_str(&format!("mov qword [rcx + {off_in_obj}], rcx\n"));
+                        .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
                 }
                 _ => {
                     self.output
@@ -458,7 +562,7 @@ impl CodeGen {
 
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
 
-        for func in functions.clone() {
+        for func in funcs.clone() {
             if let Stmt::FunDecl {
                 name: mname,
                 params,
@@ -466,8 +570,8 @@ impl CodeGen {
                 ..
             } = func
             {
-                let sym = format!("{cname}_{mname}");
-                self.generate_function(&sym, params.clone(), &body);
+                let sym = format!("{name}.{mname}");
+                // self.generate_function(&sym, params.clone(), &body);
                 self.functions.push((sym, params.clone(), body.clone()));
             }
         }
@@ -479,7 +583,7 @@ impl CodeGen {
                 Stmt::ClassDecl {
                     name: name.to_string(),
                     instances: instances.to_vec(),
-                    funcs: functions,
+                    funcs: funcs.to_vec(),
                 },
             ),
         );
@@ -532,6 +636,38 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
+            // alloc to stack -> pointer to loc
+            Expr::Array(elements, ty) => {
+                let size_1 = size_align_of(ty);
+                let size = size_1.0 * elements.len();
+                let size = align_up(size, size_1.1);
+
+                self.output.push_str(&format!(
+                    "sub rsp, 8\npush rdi\nmov rdi, {size}\nadd rsp, 8\n"
+                ));
+
+                #[cfg(target_arch = "aarch64")]
+                self.output.push_str("call _malloc\n");
+
+                #[cfg(target_arch = "x86_64")]
+                self.output.push_str("call malloc\n");
+
+                // let _ = self.regs.clone().iter().enumerate().map(|(i, _)| {
+                //     if self.regs[i] == "rax" {
+                //         self.regs.remove(i);
+                //     }
+                // });
+
+                let reg = self
+                    .regs
+                    .pop_front()
+                    .unwrap_or_else(|| panic!("No register"));
+
+                self.output.push_str(&format!("mov {reg}, rax\n"));
+                //self.output.push_str("mov r15, rax\n");
+
+                Some(reg)
+            }
             Expr::Call { name, args, .. } => {
                 let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
                 let mut temps: Vec<String> = Vec::new();
@@ -561,7 +697,7 @@ impl CodeGen {
                 self.call_with_alignment(&target);
                 Some("rax".to_string())
             }
-
+            Expr::FloatLiteral(_f) => None,
             Expr::BoolLiteral(n) => {
                 let val = if *n { 1 } else { 0 };
                 let av_reg = self.regs.pop_front().expect("No registers");
@@ -578,19 +714,66 @@ impl CodeGen {
                 self.output.push_str(&format!("mov {av_reg}, '{n}'\n"));
                 Some(av_reg.to_string())
             }
+            Expr::InstanceVar(class_name, instance_name) => {
+                let av_reg = self.regs.pop_front().expect("No registers");
+                let mut off = self
+                    .local_offset(class_name)
+                    .expect("Error reading class name");
+
+                let class_ptr_reg = self
+                    .handle_expr(&Expr::Variable(class_name.to_string()), None)
+                    .unwrap_or_else(|| panic!("Could not locate: '{class_name}'"));
+
+                let class_type = self
+                    .locals
+                    .get(class_name)
+                    .unwrap_or_else(|| {
+                        panic!("Error parsing class type for variable: {class_name}")
+                    })
+                    .0
+                    .clone()
+                    .unwrap_or_else(|| {
+                        panic!("Error parsing class type for variable: {class_name}")
+                    });
+
+                let class_layout = &self
+                    .classes
+                    .get(class_type.trim())
+                    .unwrap_or_else(|| {
+                        panic!("Error parsing class type for variable: {class_name}")
+                    })
+                    .0;
+
+                for field in &class_layout.fields {
+                    if &field.name == instance_name {
+                        off += field.offset as i32;
+                    }
+                }
+
+                self.output
+                    .push_str(&format!("mov {av_reg}, qword [{class_ptr_reg} - {off}]\n"));
+
+                self.regs.push_front(class_ptr_reg);
+
+                Some(av_reg)
+            }
             Expr::Variable(name) => {
                 let off = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
                 let av_reg = self.regs.pop_front().expect("No registers");
                 self.output
-                    .push_str(&format!("mov {av_reg}, QWORD [rbp - {off}]\n"));
+                    .push_str(&format!("mov {av_reg}, qword [rbp - {off}]\n"));
                 Some(av_reg)
             }
             Expr::ArrayAccess { array, index } => {
                 let (_name, base_off) = match &**array {
                     Expr::Variable(n) => {
-                        let off = *self.locals.get(n).unwrap_or_else(|| panic!("No array {n}"));
+                        let off = self
+                            .locals
+                            .get(n)
+                            .unwrap_or_else(|| panic!("No array {n}"))
+                            .1;
                         (n, off)
                     }
                     _ => panic!("ArrayAccess only supports local arrays"),
@@ -599,15 +782,15 @@ impl CodeGen {
 
                 match &**index {
                     Expr::IntLiteral(n) => {
-                        let off = base_off - *n * 8;
+                        let off = base_off - n * 8;
                         self.output
-                            .push_str(&format!("mov {dst}, QWORD [rbp - {off}]\n"));
+                            .push_str(&format!("mov {dst}, qword [rbp - {off}]\n"));
                         Some(dst)
                     }
                     _ => {
                         let idx = self.handle_expr(index, None).expect("index reg");
                         self.output
-                            .push_str(&format!("mov {dst}, QWORD [rbp + {idx}*8 - {base_off}]\n"));
+                            .push_str(&format!("mov {dst}, qword [rbp + {idx}*8 - {base_off}]\n"));
                         self.regs.push_back(idx);
                         Some(dst)
                     }
@@ -621,17 +804,17 @@ impl CodeGen {
                 match **value {
                     Expr::IntLiteral(n) => {
                         self.output
-                            .push_str(&format!("mov QWORD [rbp - {offset}], {n}\n"));
+                            .push_str(&format!("mov qword [rbp - {offset}], {n}\n"));
                     }
                     Expr::BoolLiteral(b) => {
                         let val = if b { 1 } else { 0 };
                         self.output
-                            .push_str(&format!("mov QWORD [rbp - {offset}], {val}\n"));
+                            .push_str(&format!("mov qword [rbp - {offset}], {val}\n"));
                     }
                     _ => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
                             self.output
-                                .push_str(&format!("mov QWORD [rbp - {offset}], {val_reg}\n"));
+                                .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n"));
                             self.regs.push_back(val_reg);
                         }
                     }
@@ -658,13 +841,14 @@ impl CodeGen {
                     Some(reg)
                 }
                 Expr::ArrayAccess { array, index, .. } => {
-                    let base_off = *self
+                    let base_off = self
                         .locals
                         .get(match &**array {
                             Expr::Variable(n) => n,
                             _ => panic!("Array base must be var"),
                         })
-                        .expect("unknown array");
+                        .expect("Error accessing array")
+                        .1;
                     let idx_reg = match &**index {
                         Expr::IntLiteral(n) => {
                             let r = self.regs.pop_front().expect("No registers");
@@ -692,9 +876,14 @@ impl CodeGen {
                     expr: inner,
                     ..
                 } => self.handle_expr(inner, None),
+                Expr::Unary {
+                    op: UnaryOp::Dereference,
+                    expr: inner,
+                    ..
+                } => self.handle_expr(inner, None),
                 _ => {
                     let ptr = self.handle_expr(expr, None).expect("ptr reg");
-                    self.output.push_str(&format!("mov {ptr}, QWORD [{ptr}]\n"));
+                    self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
                     Some(ptr)
                 }
             },
@@ -703,7 +892,7 @@ impl CodeGen {
                 let ptr_reg = self.handle_expr(target, None).expect("ptr reg");
                 if let Some(val_reg) = self.handle_expr(value, None) {
                     self.output
-                        .push_str(&format!("mov QWORD [{ptr_reg}], {val_reg}\n"));
+                        .push_str(&format!("mov qword [{ptr_reg}], {val_reg}\n"));
                     self.regs.push_back(ptr_reg);
                     self.regs.push_back(val_reg);
                 } else {

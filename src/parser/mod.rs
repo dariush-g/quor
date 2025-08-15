@@ -72,9 +72,50 @@ impl Parser {
         false
     }
 
+    fn at_declaration(&mut self) -> Result<Stmt, ParseError> {
+        if let TokenType::Identifier(decl) = &self.peek().token_type.clone() {
+            self.advance();
+
+            if let TokenType::LeftParen = self.peek().token_type {
+                let str = self.expression()?;
+
+                self.current -= 1;
+
+                match str {
+                    Expr::StringLiteral(param) => {
+                        let stmt = Stmt::AtDecl(decl.to_string(), Some(param));
+
+                        self.consume(TokenType::RightParen, "Expected ')'")?;
+
+                        self.consume(TokenType::Semicolon, "Expected ';'")?;
+                        return Ok(stmt);
+                    }
+                    _ => {
+                        return Err(ParseError::Expected {
+                            expected: TokenType::Identifier("declaration".to_string()),
+                            found: self.peek().clone(),
+                            message: "Expected declaration after '@'".to_owned(),
+                        });
+                    }
+                }
+            }
+
+            return Ok(Stmt::AtDecl(decl.to_string(), None));
+        }
+
+        Err(ParseError::Expected {
+            expected: TokenType::Identifier("declaration".to_string()),
+            found: self.peek().clone(),
+            message: "Expected declaration after '@'".to_owned(),
+        })
+    }
+
     fn statement(&mut self, semi: bool) -> Result<Stmt, ParseError> {
         if self.match_token(&[TokenType::If]) {
             return self.if_statement();
+        }
+        if self.match_token(&[TokenType::At]) {
+            return self.at_declaration();
         }
         if self.match_token(&[TokenType::While]) {
             return self.while_statement();
@@ -112,7 +153,9 @@ impl Parser {
         self.consume(TokenType::Colon, "Expected ':' after variable name")?;
         let var_type = self.parse_type()?;
         self.consume(TokenType::Equal, "Expected '=' after variable type")?;
+
         let initializer = self.expression()?;
+
         self.consume(
             TokenType::Semicolon,
             "Expected ';' after variable declaration",
@@ -489,6 +532,11 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         match &self.peek().token_type {
+            TokenType::StringLiteral(str) => {
+                let str = str.clone();
+                self.advance();
+                Ok(Expr::StringLiteral(str))
+            }
             TokenType::IntLiteral(val) => {
                 let val = *val;
                 self.advance();
@@ -512,6 +560,7 @@ impl Parser {
                 self.advance();
                 Ok(Expr::CharLiteral(c))
             }
+            TokenType::DoubleQuote => Ok(Expr::StringLiteral("".to_string())),
             TokenType::LeftBracket => {
                 self.advance();
                 let mut elements = Vec::new();
@@ -532,7 +581,10 @@ impl Parser {
                     Expr::FloatLiteral(_) => Type::float,
                     Expr::BoolLiteral(_) => Type::Bool,
                     Expr::CharLiteral(_) => Type::Char,
-                    Expr::Array(_, ty) => ty.clone(),
+                    // Expr::Array(exprs, ty) => Type::Array(
+                    //     Box::new(Type::Array(Box::new(exprs[0].get_type(), None))),
+                    //     Some(exprs.len()),
+                    // ),
                     _ => Type::Unknown,
                 });
 
@@ -541,6 +593,41 @@ impl Parser {
             TokenType::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
+
+                if self.peek().token_type == TokenType::LeftBrace {
+                    let mut inits: Vec<(String, Expr)> = Vec::new();
+                    self.advance();
+
+                    if !self.check(&TokenType::RightBrace) {
+                        loop {
+                            let fname_tok = self
+                                .consume(TokenType::Identifier("".into()), "Expected field name")?;
+                            let fname = if let TokenType::Identifier(n) = &fname_tok.token_type {
+                                n.clone()
+                            } else {
+                                return Err(ParseError::UnexpectedToken(fname_tok.clone()));
+                            };
+
+                            self.consume(TokenType::Colon, "Expected ':' after field name")?;
+                            let val = self.expression()?;
+                            inits.push((fname, val));
+
+                            if !self.match_token(&[TokenType::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.consume(
+                        TokenType::RightBrace,
+                        "Expected '}' after class initializer",
+                    )?;
+
+                    return Ok(Expr::ClassInit {
+                        name,
+                        params: inits,
+                    });
+                }
 
                 if self.peek().token_type == TokenType::LeftBracket {
                     let array = Box::new(Expr::Variable(name.clone()));
@@ -579,39 +666,15 @@ impl Parser {
                     }
                 }
 
-                if self.peek().token_type == TokenType::LeftBrace {
-                    let mut inits: Vec<(String, Expr)> = Vec::new();
+                if self.peek().token_type == TokenType::Period {
                     self.advance();
-
-                    if !self.check(&TokenType::RightBrace) {
-                        loop {
-                            let fname_tok = self
-                                .consume(TokenType::Identifier("".into()), "Expected field name")?;
-                            let fname = if let TokenType::Identifier(n) = &fname_tok.token_type {
-                                n.clone()
-                            } else {
-                                return Err(ParseError::UnexpectedToken(fname_tok.clone()));
-                            };
-
-                            self.consume(TokenType::Colon, "Expected ':' after field name")?;
-                            let val = self.expression()?;
-                            inits.push((fname, val));
-
-                            if !self.match_token(&[TokenType::Comma]) {
-                                break;
-                            }
-                        }
+                    if let TokenType::Identifier(var_name) = &self.peek().token_type.clone() {
+                        self.consume(
+                            TokenType::Identifier(var_name.to_string()),
+                            "Could not find instance",
+                        )?;
+                        return Ok(Expr::InstanceVar(name, var_name.to_string()));
                     }
-
-                    self.consume(
-                        TokenType::RightBrace,
-                        "Expected '}' after class initializer",
-                    )?;
-
-                    return Ok(Expr::ClassInit {
-                        name,
-                        params: inits,
-                    });
                 }
 
                 Ok(Expr::Variable(name.clone()))
@@ -623,6 +686,14 @@ impl Parser {
                 Ok(expr)
             }
             _ => Err(ParseError::UnexpectedToken(self.peek().clone())),
+        }
+    }
+
+    fn _peek_next(&mut self) -> &Token {
+        if self.current + 1 >= self.tokens.len() {
+            &self.tokens[self.current]
+        } else {
+            &self.tokens[self.current + 1]
         }
     }
 
@@ -658,7 +729,8 @@ impl Parser {
             return Ok(Type::Array(Box::new(elem), Some(size)));
         }
 
-        let mut base_type = match &self.peek().token_type {
+        let token_type = &self.peek().token_type;
+        let mut base_type = match token_type {
             TokenType::Int => {
                 self.advance();
                 Type::int
@@ -679,9 +751,14 @@ impl Parser {
                 self.advance();
                 Type::Char
             }
-            TokenType::Identifier(_) => {
+            TokenType::Identifier(name) => {
+                // Handle class names as types
+                let class_name = name.clone();
                 self.advance();
-                Type::Class(Vec::new())
+                Type::Class {
+                    name: class_name,
+                    instances: Vec::new(), // Will be filled in during analysis
+                }
             }
             _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
         };

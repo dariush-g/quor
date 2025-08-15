@@ -1,5 +1,3 @@
-use crate::lexer::token::TokenType;
-
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -13,7 +11,10 @@ pub enum Type {
 
     Function,
 
-    Class(Vec<Type>),
+    Class {
+        name: String,
+        instances: Vec<(String, Type)>,
+    },
 
     Void,
 
@@ -44,7 +45,8 @@ pub enum Expr {
     IntLiteral(i32),
     FloatLiteral(f32),
     BoolLiteral(bool),
-
+    StringLiteral(String),
+    // name of class
     CharLiteral(char),
 
     ClassInit {
@@ -58,6 +60,9 @@ pub enum Expr {
         target: Box<Expr>,
         value: Box<Expr>,
     },
+
+    //          class, iname
+    InstanceVar(String, String),
 
     Variable(String),
 
@@ -99,6 +104,13 @@ pub enum Expr {
 impl Expr {
     pub fn get_type(&self) -> Type {
         match self {
+            Expr::ClassInit { name, params } => Type::Class {
+                name: name.to_string(),
+                instances: params
+                    .iter()
+                    .map(|(name, expr)| (name.clone(), expr.get_type()))
+                    .collect(),
+            },
             Expr::IntLiteral(_) => Type::int,
             Expr::FloatLiteral(_) => Type::float,
             Expr::BoolLiteral(_) => Type::Bool,
@@ -110,7 +122,9 @@ impl Expr {
             Expr::Cast { target_type, .. } => target_type.clone(),
             Expr::AddressOf(expr) => Type::Pointer(Box::new(expr.get_type())),
             Expr::DerefAssign { target, .. } => target.get_type(),
-            Expr::Array(_, element_type) => Type::Array(Box::new(element_type.clone()), None),
+            Expr::Array(elements, element_type) => {
+                Type::Array(Box::new(element_type.clone()), Some(elements.len()))
+            }
             _ => Type::Unknown,
         }
     }
@@ -148,6 +162,7 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
+    AtDecl(String, Option<String>),
     VarDecl {
         name: String,
         var_type: Type,

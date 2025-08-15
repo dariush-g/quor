@@ -68,8 +68,19 @@ impl Lexer {
         let c = self.advance();
 
         match c {
+            '@' => tokens.push(self.make_token(TokenType::At)),
             '\'' => tokens.push(self.scan_char()?),
-            '"' => tokens.push(self.make_token(TokenType::DoubleQuote)),
+            '"' => {
+                let mut string = String::new();
+                let mut ch = self.advance();
+                while ch != '"' {
+                    string.push(ch);
+                    ch = self.advance();
+                }
+                tokens.push(self.make_token(TokenType::StringLiteral(string)));
+            }
+            '.' => tokens.push(self.make_token(TokenType::Period)),
+
             '(' => tokens.push(self.make_token(TokenType::LeftParen)),
             ')' => tokens.push(self.make_token(TokenType::RightParen)),
             '{' => tokens.push(self.make_token(TokenType::LeftBrace)),
