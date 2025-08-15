@@ -125,7 +125,6 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
     let obj = workdir.join(format!("{out}.o"));
 
     // let bin = workdir.join(out);
-
     // 1) Write asm file
     fs::write(&asm, asm_text)?;
 
@@ -140,10 +139,16 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
         ]),
         &workdir,
     )?;
-
-    // 3) GCC -> runtime.o
+    //  -nostartfiles -no-pie
+    // 3) GCC
     run(
-        Command::new("ld").args([obj, "-o".into(), out.to_string().into()]),
+        Command::new("gcc").args([
+            "-nostartfiles",
+            "-no-pie",
+            obj.to_str().unwrap(),
+            "-o".into(),
+            out,
+        ]),
         &workdir,
     )?;
 

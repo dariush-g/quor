@@ -1,10 +1,10 @@
-extern _malloc
+extern malloc
 global _start
 _start:
 call main
 mov rbx, rax
 mov rdi, rax
-mov rax, 0x2000001
+mov rax, 60
 syscall
 ; ----- Layout: Point -----
 %define Point_size 8
@@ -18,7 +18,7 @@ mov rbp, rsp
 push rdi
 push rsi
 mov rdi, Point_size
-call _malloc
+call malloc
 mov rcx, rax
 mov eax, dword [rbp - 8]
 mov dword [rcx + 0], eax
