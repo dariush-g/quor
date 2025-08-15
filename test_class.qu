@@ -1,0 +1,9 @@
+class Point {
+    x: int;
+    y: int;
+}
+
+fn main() -> int {
+    var p: Point = Point{x: 10, y: 20};
+    return 0;
+}

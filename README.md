@@ -1,14 +1,14 @@
 # Quor
 
-## What it can do so far
+## Current Features
 
-- Integers and booleans
+- Integers, chars, and booleans
 - Pointers (`&` for address-of, `*` for dereference)
-- Arrays (stack allocated)
+- Arrays
+- Basic classes (heap-allocated) with functions
 - Variables (stack-allocated for now, 8 bytes each)
 - Functions and function calls
 - `if` / `while` / `return`
-- Basic math and comparisons
 
 ## Example
 
@@ -24,6 +24,16 @@ fn main() -> int {
         return y;
     } else {
         return 0;
+    }
+}
+```
+
+```quor
+class Circle {
+    radius: int;
+
+    fn area(self: Circle) -> int {
+        return 3 * self.radius;
     }
 }
 ```

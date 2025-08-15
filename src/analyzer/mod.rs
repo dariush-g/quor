@@ -5,6 +5,7 @@ pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
     functions: HashMap<String, (Vec<Type>, Type)>,
     classes: Vec<String>,
+    //                  class name, instances
     class_fields: HashMap<String, Vec<(String, Type)>>,
     current_return_type: Option<Type>,
     in_loop: bool,
@@ -26,6 +27,15 @@ impl Default for TypeChecker {
 impl TypeChecker {
     pub fn analyze_program(program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
+
+        // Register builtins
+        type_checker
+            .declare_fn("print_int", vec![Type::int], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
 
@@ -103,6 +113,10 @@ impl TypeChecker {
 
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
         match expr {
+            Expr::StringLiteral(_) => Ok(Type::Class {
+                name: "string".to_owned(),
+                instances: vec![("chars".to_string(), Type::Array(Box::new(Type::Char), None))],
+            }),
             Expr::BoolLiteral(_) => Ok(Type::Bool),
             Expr::IntLiteral(_) => Ok(Type::int),
             Expr::FloatLiteral(_) => Ok(Type::float),
@@ -218,7 +232,10 @@ impl TypeChecker {
 
                 for (arg_expr, expected_type) in args.iter().zip(param_types.iter()) {
                     let arg_type = self.type_check_expr(arg_expr)?;
-                    if &arg_type != expected_type {
+
+                    let arg_type = base_type(&arg_type);
+
+                    if arg_type != *expected_type {
                         return Err(format!(
                             "Argument type mismatch in call to '{name}': expected {expected_type:?}, got {arg_type:?}"
                         ));
@@ -278,10 +295,11 @@ impl TypeChecker {
                     Type::Array(ty, len) => {
                         let element_type = *ty;
                         if let Expr::IntLiteral(n) = **index {
-                            if n >= len
-                                .unwrap()
-                                .try_into()
-                                .expect("Error comparing index to array length")
+                            if len.is_some()
+                                && n >= len
+                                    .unwrap()
+                                    .try_into()
+                                    .expect("Error comparing index to array length")
                             {
                                 return Err("Index out of bounds".to_string());
                             }
@@ -308,62 +326,203 @@ impl TypeChecker {
                 }
             }
             Expr::ClassInit { name, params } => {
-                let decl = self
+                let class_fields = self
                     .class_fields
                     .get(name)
-                    .ok_or_else(|| format!("Unknown class '{name}'"))?
+                    .ok_or_else(|| format!("Undefined class: '{name}'"))?
                     .clone();
+
                 let mut decl_map: HashMap<&str, Type> = HashMap::new();
                 let mut decl_order: Vec<(&str, Type)> = Vec::new();
-                for (fname, fty) in &decl {
+
+                for (fname, fty) in &class_fields {
                     decl_map.insert(fname.as_str(), fty.clone());
                     decl_order.push((fname.as_str(), fty.clone()));
                 }
+
                 let mut seen = HashSet::new();
                 for (fname, fexpr) in params {
-                    if !seen.insert(fname) {
+                    if !seen.insert(fname.clone()) {
                         return Err(format!("Duplicate field initializer '{fname}'"));
                     }
                     let expected = decl_map
                         .get(fname.as_str())
-                        .ok_or_else(|| format!("'{name}' has no field '{fname}'"))?;
+                        .ok_or_else(|| format!("Class '{name}' has no field '{fname}'"))?;
                     let got = self.type_check_expr(fexpr)?;
-                    if &got != expected {
-                        return Err(format!(
-                            "Type mismatch for field '{name}.{fname}': expected {expected:?}, got {got:?}"
-                        ));
+
+                    let got = if let Type::Array(ty, len) = got {
+                        // println!("{len:?}");
+                        Type::Array(ty.clone(), len)
+                    } else {
+                        got.clone()
+                    };
+
+                    let got = match got {
+                        Type::Class { name, .. } => Type::Class {
+                            name,
+                            instances: Vec::new(),
+                        },
+                        _ => got,
+                    };
+
+                    match got {
+                        Type::Array(_, _) => {}
+                        _ => {
+                            if &got != expected {
+                                return Err(format!(
+                                    "Type mismatch for field '{fname}': expected {expected:?}, got {got:?}"
+                                ));
+                            }
+                        }
                     }
                 }
-                for (fname, _) in &decl {
+
+                // Check that all required fields are initialized
+                for (fname, _) in &class_fields {
                     if !seen.contains(fname) {
                         return Err(format!("Missing initializer for field '{name}.{fname}'"));
                     }
                 }
-                Ok(Type::Class(
-                    decl_order.into_iter().map(|(_, t)| t).collect(),
-                ))
+
+                Ok(Type::Class {
+                    name: name.clone(),
+                    instances: decl_order
+                        .iter()
+                        .map(|(name, ty)| (name.to_string(), ty.clone()))
+                        .collect(),
+                })
             }
+            Expr::InstanceVar(class_name, instance_name) => {
+                let ty = self
+                    .lookup_var(class_name)
+                    .ok_or_else(|| format!("Unknown variable: '{class_name}'"))?;
+
+                match ty {
+                    Type::Pointer(ty) => match *ty.clone() {
+                        Type::Class { name, .. } => {
+                            let fields = self
+                                .class_fields
+                                .get(&name)
+                                .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
+
+                            // Find the field in the class instances
+                            for (field_name, field_type) in fields {
+                                if field_name == instance_name {
+                                    return Ok(field_type.clone());
+                                }
+                            }
+                            Err(format!(
+                                "Unknown field '{instance_name}' in class '{class_name}'"
+                            ))
+                        }
+                        _ => Err(format!("'{class_name}' is not a class instance")),
+                    },
+                    Type::Class { name, .. } => {
+                        let fields = self
+                            .class_fields
+                            .get(name)
+                            .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
+
+                        // Find the field in the class instances
+                        for (field_name, field_type) in fields {
+                            if field_name == instance_name {
+                                return Ok(field_type.clone());
+                            }
+                        }
+                        Err(format!(
+                            "Unknown field '{instance_name}' in class '{class_name}'"
+                        ))
+                    }
+                    _ => Err(format!("'{class_name}' is not a class instance")),
+                }
+            } // Expr::ClassLiteral(name) => Ok(Type::Class {
+              //     name: name.to_string(),
+              //     instances: Vec::new(),
+              // }),
         }
     }
 
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
+            Stmt::AtDecl(decl, _) => match decl.as_str() {
+                "import" => Ok(stmt.clone()),
+                "public" => Ok(stmt.clone()),
+                "private" => Ok(stmt.clone()),
+
+                _ => Err(format!("unknown declaration '{decl}'")),
+            },
+
             Stmt::VarDecl {
                 name,
                 var_type,
                 value,
             } => {
-                let value_type = self.type_check_expr(value)?;
-                let value_type = match value_type {
-                    Type::Class(_) => Type::Class(Vec::new()),
-                    _ => value_type,
+                // Resolve class types to include field information
+                let resolved_type = if let Type::Class {
+                    name: class_name,
+                    instances,
+                } = &var_type
+                {
+                    if instances.is_empty() {
+                        // This is a class type reference, look up the actual class definition
+                        let class_fields = self
+                            .class_fields
+                            .get(class_name)
+                            .ok_or_else(|| format!("Undefined class: '{class_name}'"))?;
+                        Type::Class {
+                            name: class_name.clone(),
+                            instances: class_fields.clone(),
+                        }
+                    } else {
+                        var_type.clone()
+                    }
+                } else {
+                    var_type.clone()
                 };
 
-                if &value_type != var_type {
-                    return Err(format!(
-                        "Type mismatch in declaration of '{name}': expected {var_type:?}, found {value_type:?}"
-                    ));
+                let value_type = self.type_check_expr(value)?;
+
+                // For class types, we need to check that the value is a valid class instance
+                if let Type::Class {
+                    name: class_name, ..
+                } = &resolved_type
+                {
+                    match value_type {
+                        Type::Class {
+                            name: value_class_name,
+                            ..
+                        } => {
+                            if class_name != &value_class_name {
+                                return Err(format!(
+                                    "Type mismatch in declaration of '{name}': expected class '{class_name}', found class '{value_class_name}'"
+                                ));
+                            }
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Type mismatch in declaration of '{name}': expected class '{class_name}', found {value_type:?}"
+                            ));
+                        }
+                    }
+                } else if value_type != resolved_type {
+                    if let Type::Array(ty1, _) = value_type.clone() {
+                        match resolved_type.clone() {
+                            Type::Array(ty, _) => {
+                                if ty1 != ty {
+                                    return Err(format!(
+                                        "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                                    ));
+                                }
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                                ));
+                            }
+                        }
+                    }
                 }
+
                 if let (Type::Array(_, decl_size), Expr::Array(elems, _)) = (var_type, value) {
                     let decl_size = decl_size.expect("Error with array length");
                     if !elems.is_empty() && elems.len() != decl_size {
@@ -375,10 +534,10 @@ impl TypeChecker {
                         ));
                     }
                 }
-                self.declare_var(name, var_type.clone())?;
+                self.declare_var(name, resolved_type.clone())?;
                 Ok(Stmt::VarDecl {
                     name: name.clone(),
-                    var_type: var_type.clone(),
+                    var_type: resolved_type,
                     value: value.clone(),
                 })
             }
@@ -511,10 +670,12 @@ impl TypeChecker {
                 Ok(Stmt::Expression(expr.clone()))
             }
             Stmt::Return(expr) => {
-                let return_type = match expr {
+                let mut return_type = match expr {
                     Some(expr) => self.type_check_expr(expr)?,
                     None => Type::Void,
                 };
+
+                return_type = base_type(&return_type);
 
                 match &self.current_return_type {
                     Some(expected) if *expected != return_type => {
@@ -586,5 +747,17 @@ impl TypeChecker {
                 })
             }
         }
+    }
+}
+
+fn base_type(ty: &Type) -> Type {
+    match ty {
+        Type::Array(ty, ..) => Type::Array(ty.clone(), None),
+        Type::Class { name, .. } => Type::Class {
+            name: name.clone(),
+            instances: Vec::new(),
+        },
+        Type::Pointer(inside) => Type::Pointer(Box::new(base_type(inside))),
+        _ => ty.clone(),
     }
 }

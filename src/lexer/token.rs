@@ -34,6 +34,7 @@ pub enum TokenType {
     IntLiteral(i32),
     FloatLiteral(f32),
     CharLiteral(char),
+    StringLiteral(String),
 
     Class,
 
@@ -54,6 +55,7 @@ pub enum TokenType {
     As,
 
     // Operators
+    At,
     Plus,
     Minus,
     Star,
@@ -105,7 +107,10 @@ impl TokenType {
             TokenType::IntLiteral(_) => Type::int,
             TokenType::FloatLiteral(_) => Type::float,
             TokenType::CharLiteral(_) => Type::Char,
-            TokenType::Class => Type::Class(Vec::new()),
+            TokenType::Class => Type::Class {
+                name: String::new(),
+                instances: Vec::new(),
+            },
             TokenType::Boolean => Type::Bool,
 
             TokenType::Void => Type::Void,

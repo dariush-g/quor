@@ -1,23 +1,10 @@
 
 
-class Example {
-    x: int;
-    y: char;
-    z: int;
-    n: int;
-    w: int;
-}
+
 
 fn main() -> int {
 
-    var x: Example = Example {
-        x: 5,
-        y: 'h',
-        z: 1,
-        n: 1,
-        w: 1
-    };
-
+    
 
     return 0;
 }
