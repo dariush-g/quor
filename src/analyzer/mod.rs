@@ -1,5 +1,14 @@
-use crate::lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp};
-use std::collections::{HashMap, HashSet};
+use crate::{
+    lexer::{
+        Lexer,
+        ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+    },
+    parser::Parser,
+};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+};
 
 pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
@@ -25,8 +34,47 @@ impl Default for TypeChecker {
 }
 
 impl TypeChecker {
-    pub fn analyze_program(program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
+    pub fn analyze_program(mut program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
+
+        for stmt in program.clone() {
+            if let Stmt::AtDecl(decl, param) = stmt {
+                if decl.as_str() == "import" {
+                    let path = param.unwrap_or_else(|| panic!("error reading filename"));
+
+                    let source = match fs::read_to_string(&path) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Failed to read {path}: {e}");
+                            std::process::exit(1);
+                        }
+                    };
+
+                    let mut lexer = Lexer::new(source);
+                    let tokens = match lexer.tokenize() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("Lexer error: {e:?}");
+                            std::process::exit(1);
+                        }
+                    };
+
+                    let mut parser = Parser::new(tokens);
+                    let mut program_new = match parser.parse() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Parser error: {e:?}");
+                            std::process::exit(1);
+                        }
+                    };
+
+                    program_new.append(&mut program);
+                    program = program_new
+                }
+            }
+        }
+
+        println!("{program:?}");
 
         // Register builtins
         type_checker

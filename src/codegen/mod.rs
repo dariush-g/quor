@@ -164,13 +164,20 @@ impl CodeGen {
             imports: Vec::new(),
         };
 
+        #[cfg(target_arch = "aarch64")]
         code.output.push_str("extern _malloc\n");
+        #[cfg(target_arch = "x86_64")]
+        code.output.push_str("extern malloc\n");
 
         code.output.push_str("global _start\n_start:\n");
         code.output.push_str("call main\n");
         code.output.push_str("mov rbx, rax\n");
         code.output.push_str("mov rdi, rax\n");
+
+        #[cfg(target_arch = "aarch64")]
         code.output.push_str("mov rax, 0x2000001\n");
+        #[cfg(target_arch = "x86_64")]
+        code.output.push_str("mov rax, 60\n");
         code.output.push_str("syscall\n");
 
         let mut has_main = false;
@@ -514,7 +521,7 @@ impl CodeGen {
         self.output.push_str("call _malloc\n");
 
         #[cfg(target_arch = "x86_64")]
-        self.output.push_str("call _malloc\n");
+        self.output.push_str("call malloc\n");
 
         if stack_adjust > 0 {
             self.output

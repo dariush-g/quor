@@ -1,13 +1,15 @@
 
-
-
+@import("test_class.qu");
 
 fn main() -> int {
+    var point: Point = Point {x: 1, y: 1};
 
+    var n: x = x {};
     
-
     return 0;
 }
+
+
 
 // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test 
 
