@@ -123,16 +123,8 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
     let workdir = workdir.into();
     let asm = workdir.join(format!("{out}.asm"));
     let obj = workdir.join(format!("{out}.o"));
-    let rt_c = workdir.join("runtime.c");
-    let rt_o = workdir.join("runtime.o");
-    let bin = workdir.join(out);
 
-    if !rt_c.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("missing {}", rt_c.display()),
-        ));
-    }
+    // let bin = workdir.join(out);
 
     // 1) Write asm file
     fs::write(&asm, asm_text)?;
@@ -149,33 +141,14 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
         &workdir,
     )?;
 
-    // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test
-
     // 3) GCC -> runtime.o
     run(
-        Command::new("ld").args(["-c", rt_c.to_str().unwrap(), "-o", rt_o.to_str().unwrap()]),
+        Command::new("ld").args([obj, "-o".into(), out.to_string().into()]),
         &workdir,
     )?;
 
-    // 4) Link
-    run(
-        Command::new("gcc").args([
-            "-no-pie",
-            "-nostartfiles",
-            "-Wl,-e,_start",
-            obj.to_str().unwrap(),
-            rt_o.to_str().unwrap(),
-            "-o",
-            bin.to_str().unwrap(),
-        ]),
-        &workdir,
-    )?;
+    // let _ = fs::remove_file(&asm);
 
-    // 5) Run the binary
-    run(&mut Command::new(bin.to_str().unwrap()), &workdir)?;
-
-    // 6) Clean up the asm file
-    let _ = fs::remove_file(&asm);
     Ok(())
 }
 

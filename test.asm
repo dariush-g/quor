@@ -18,20 +18,3 @@ xor rax, rax
 mov rsp, rbp
 pop rbp
 ret
-global add
-add:
-push rbp
-mov rbp, rsp
-sub rsp, 8
-mov rdi, qword [rbp - 8]
-sub rsp, 8
-mov rsi, qword [rbp - 16]
-mov rdx, qword [rbp - 8]
-mov rax, qword [rbp - 16]
-add rdx, rax
-mov rax, rdx
-jmp .Lret_add
-.Lret_add:
-mov rsp, rbp
-pop rbp
-ret

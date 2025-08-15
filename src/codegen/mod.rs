@@ -258,12 +258,14 @@ impl CodeGen {
 
     fn handle_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::AtDecl(decl, param) => if decl.as_str() == "import" {
-                let param = param
-                    .clone()
-                    .unwrap_or_else(|| panic!("Unable to locate import"));
-                self.imports.push(param);
-            },
+            Stmt::AtDecl(decl, param) => {
+                if decl.as_str() == "import" {
+                    let param = param
+                        .clone()
+                        .unwrap_or_else(|| panic!("Unable to locate import"));
+                    self.imports.push(param);
+                }
+            }
             Stmt::VarDecl {
                 name,
                 var_type,
@@ -311,21 +313,23 @@ impl CodeGen {
                         panic!("Class {} not found", cls);
                     }
                     let (class_layout, _) = class_info.unwrap();
-                    
+
                     // Clone the field names and positions to avoid borrowing issues
-                    let field_positions: HashMap<String, usize> = class_layout.fields.iter()
+                    let field_positions: HashMap<String, usize> = class_layout
+                        .fields
+                        .iter()
                         .enumerate()
                         .map(|(i, field)| (field.name.clone(), i))
                         .collect();
                     let field_count = class_layout.fields.len();
-                    
+
                     // First, evaluate all expressions to get their register values
                     let mut param_values = Vec::new();
                     for (param_name, param_expr) in params {
                         let r = self.handle_expr(param_expr, None).expect("ctor arg");
                         param_values.push((param_name, r));
                     }
-                    
+
                     // Map named parameters to their correct positions
                     let mut ordered_args = vec![String::new(); field_count];
                     for (param_name, reg) in param_values {
@@ -335,11 +339,10 @@ impl CodeGen {
                             panic!("Field {} not found in class {}", param_name, cls);
                         }
                     }
-                    
+
                     // Filter out empty strings and get the actual argument values
-                    let arg_vals: Vec<String> = ordered_args.into_iter()
-                        .filter(|s| !s.is_empty())
-                        .collect();
+                    let arg_vals: Vec<String> =
+                        ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
 
                     let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
                     if arg_vals.len() > abi_regs.len() {
@@ -496,7 +499,8 @@ impl CodeGen {
         // Ensure 16-byte stack alignment for malloc call
         let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
         if stack_adjust > 0 {
-            self.output.push_str(&format!("sub rsp, {}\n", stack_adjust));
+            self.output
+                .push_str(&format!("sub rsp, {}\n", stack_adjust));
         }
 
         #[allow(clippy::needless_range_loop)]
@@ -513,7 +517,8 @@ impl CodeGen {
         self.output.push_str("call _malloc\n");
 
         if stack_adjust > 0 {
-            self.output.push_str(&format!("add rsp, {}\n", stack_adjust));
+            self.output
+                .push_str(&format!("add rsp, {}\n", stack_adjust));
         }
 
         self.output.push_str("mov rcx, rax\n");
@@ -766,7 +771,7 @@ impl CodeGen {
                     .push_str(&format!("mov {av_reg}, qword [rbp - {off}]\n"));
                 Some(av_reg)
             }
-            Expr::ArrayAccess { array, index } => {
+            Expr::ArrayAccess { array, index, .. } => {
                 let (_name, base_off) = match &**array {
                     Expr::Variable(n) => {
                         let off = self
