@@ -1,26 +1,3 @@
-extern malloc
-global _start
-_start:
-call main
-mov rbx, rax
-mov rdi, rax
-mov rax, 60
-syscall
-global main
-main:
-push rbp
-mov rbp, rsp
-mov rcx, 'a'
-mov rdi , rcx
-call print_char
-mov rdx, 0
-mov rax, rdx
-jmp .Lret_main
-xor rax, rax
-.Lret_main:
-mov rsp, rbp
-pop rbp
-ret
 extern printf
 
 ; print_int: rdi = int

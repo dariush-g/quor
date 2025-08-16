@@ -1,11 +1,14 @@
 use crate::lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    fs,
+};
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
 
 pub struct CodeGen {
     output: String,
-    imports: Vec<String>,
+    // imports: Vec<String>,
     regs: VecDeque<String>,
     _fp_regs: VecDeque<String>,
     _jmp_count: u32,
@@ -121,6 +124,7 @@ fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
     }
 
     let size = align_up(off, max_a);
+
     ClassLayout {
         size,
         align: max_a,
@@ -130,7 +134,7 @@ fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
 
 impl CodeGen {
     // asm      import paths
-    pub fn generate(stmts: &Vec<Stmt>) -> (String, Vec<String>) {
+    pub fn generate(stmts: &Vec<Stmt>) -> String {
         let mut code = CodeGen {
             output: String::new(),
             regs: VecDeque::from(vec![
@@ -161,7 +165,6 @@ impl CodeGen {
             stack_size: 0,
             externs: HashSet::new(),
             classes: HashMap::new(),
-            imports: Vec::new(),
         };
 
         #[cfg(target_arch = "aarch64")]
@@ -222,11 +225,18 @@ impl CodeGen {
 
         let defined: HashSet<String> = code.functions.iter().map(|(n, _, _)| n.clone()).collect();
         let mut header = String::new();
+
+        #[cfg(target_arch = "aarch64")]
         for ext in code.externs.difference(&defined) {
             header.push_str(&format!("extern _{ext}\n"));
         }
 
-        (format!("{header}{}", code.output), code.imports)
+        #[cfg(target_arch = "x86_64")]
+        for ext in code.externs.difference(&defined) {
+            header.push_str(&format!("extern {ext}\n"));
+        }
+
+        format!("{header}{}", code.output)
     }
 
     fn alloc_local(&mut self, name: &str, class_name: Option<String>, _ty: &Type) -> i32 {
@@ -270,7 +280,16 @@ impl CodeGen {
                     let param = param
                         .clone()
                         .unwrap_or_else(|| panic!("Unable to locate import"));
-                    self.imports.push(param);
+
+                    match param.as_str() {
+                        "io" => {
+                            let print = fs::read_to_string("./src/bltin/print.asm")
+                                .unwrap_or_else(|_| panic!("Error importing io"));
+
+                            let _ = &self.output.push_str(&print);
+                        }
+                        _ => {}
+                    }
                 }
             }
             Stmt::VarDecl {
@@ -699,12 +718,12 @@ impl CodeGen {
                 for t in temps {
                     self.regs.push_back(t);
                 }
-                self.externs.insert(name.clone());
+                // self.externs.insert(name.clone());
                 let is_defined = self.functions.iter().any(|(n, _, _)| n == name);
                 let target = if is_defined {
                     name.clone()
                 } else {
-                    format!("_{name}")
+                    format!("{name}")
                 };
                 self.call_with_alignment(&target);
                 Some("rax".to_string())

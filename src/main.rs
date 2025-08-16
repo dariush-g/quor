@@ -224,7 +224,7 @@ fn main() {
     // Codegen → ASM
     let codegen = CodeGen::generate(&typed);
 
-    let asm = codegen.0;
+    let asm = codegen;
 
     // for st in codegen.1 {
     //     gen_asm(st, asm.clone());
@@ -239,61 +239,61 @@ fn main() {
     }
 }
 
-fn gen_asm(input_path: String, mut current: String) -> String {
-    let mut src_path = PathBuf::from(input_path.clone());
+// fn gen_asm(input_path: String, mut current: String) -> String {
+//     let mut src_path = PathBuf::from(input_path.clone());
 
-    if !input_path.contains("/") {
-        src_path = PathBuf::from(format!("./{}", &input_path));
-    }
+//     if !input_path.contains("/") {
+//         src_path = PathBuf::from(format!("./{}", &input_path));
+//     }
 
-    // Read source
-    let source = match fs::read_to_string(&src_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to read {}: {e}", src_path.display());
-            std::process::exit(1);
-        }
-    };
+//     // Read source
+//     let source = match fs::read_to_string(&src_path) {
+//         Ok(s) => s,
+//         Err(e) => {
+//             eprintln!("Failed to read {}: {e}", src_path.display());
+//             std::process::exit(1);
+//         }
+//     };
 
-    // Lex
-    let mut lexer = Lexer::new(source);
-    let tokens = match lexer.tokenize() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Lexer error: {e:?}");
-            std::process::exit(1);
-        }
-    };
+//     // Lex
+//     let mut lexer = Lexer::new(source);
+//     let tokens = match lexer.tokenize() {
+//         Ok(t) => t,
+//         Err(e) => {
+//             eprintln!("Lexer error: {e:?}");
+//             std::process::exit(1);
+//         }
+//     };
 
-    // Parse
-    let mut parser = Parser::new(tokens);
-    let program = match parser.parse() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Parser error: {e:?}");
-            std::process::exit(1);
-        }
-    };
+//     // Parse
+//     let mut parser = Parser::new(tokens);
+//     let program = match parser.parse() {
+//         Ok(p) => p,
+//         Err(e) => {
+//             eprintln!("Parser error: {e:?}");
+//             std::process::exit(1);
+//         }
+//     };
 
-    // println!("{program:?}");
+//     // println!("{program:?}");
 
-    // Type check
-    let typed = match TypeChecker::analyze_program(program) {
-        Ok(tp) => tp,
-        Err(e) => {
-            eprintln!("Type error: {e:?}");
-            std::process::exit(1);
-        }
-    };
+//     // Type check
+//     let typed = match TypeChecker::analyze_program(program) {
+//         Ok(tp) => tp,
+//         Err(e) => {
+//             eprintln!("Type error: {e:?}");
+//             std::process::exit(1);
+//         }
+//     };
 
-    // Codegen → ASM
-    let codegen = CodeGen::generate(&typed);
+//     // Codegen → ASM
+//     let codegen = CodeGen::generate(&typed);
 
-    current.push_str(&codegen.0);
+//     current.push_str(&codegen);
 
-    for path in codegen.1 {
-        gen_asm(path, current.clone());
-    }
+//     for path in codegen {
+//         gen_asm(path, current.clone());
+//     }
 
-    current
-}
+//     current
+// }
