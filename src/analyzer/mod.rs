@@ -40,49 +40,62 @@ impl TypeChecker {
         for stmt in program.clone() {
             if let Stmt::AtDecl(decl, param) = stmt {
                 if decl.as_str() == "import" {
-                    let path = param.unwrap_or_else(|| panic!("error reading filename"));
+                    let path = param.unwrap_or_else(|| panic!("error reading import"));
 
-                    let source = match fs::read_to_string(&path) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("Failed to read {path}: {e}");
-                            std::process::exit(1);
+                    match path.as_str() {
+                        "io" => {
+                            type_checker
+                                .declare_fn("print_int", vec![Type::int], Type::Void)
+                                .map_err(|e| format!("Global scope error: {e}"))?;
+                            type_checker
+                                .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+                                .map_err(|e| format!("Global scope error: {e}"))?;
+                            type_checker
+                                .declare_fn("print_char", vec![Type::Char], Type::Void)
+                                .map_err(|e| format!("Global scope error: {e}"))?;
                         }
-                    };
+                        _ => {
+                            let source = match fs::read_to_string(&path) {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    eprintln!("Failed to read {path}: {e}");
+                                    std::process::exit(1);
+                                }
+                            };
 
-                    let mut lexer = Lexer::new(source);
-                    let tokens = match lexer.tokenize() {
-                        Ok(t) => t,
-                        Err(e) => {
-                            eprintln!("Lexer error: {e:?}");
-                            std::process::exit(1);
+                            let mut lexer = Lexer::new(source);
+                            let tokens = match lexer.tokenize() {
+                                Ok(t) => t,
+                                Err(e) => {
+                                    eprintln!("Lexer error: {e:?}");
+                                    std::process::exit(1);
+                                }
+                            };
+
+                            let mut parser = Parser::new(tokens);
+                            let mut program_new = match parser.parse() {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!("Parser error: {e:?}");
+                                    std::process::exit(1);
+                                }
+                            };
+
+                            program_new.append(&mut program);
+                            program = program_new
                         }
-                    };
-
-                    let mut parser = Parser::new(tokens);
-                    let mut program_new = match parser.parse() {
-                        Ok(p) => p,
-                        Err(e) => {
-                            eprintln!("Parser error: {e:?}");
-                            std::process::exit(1);
-                        }
-                    };
-
-                    program_new.append(&mut program);
-                    program = program_new
+                    }
                 }
             }
         }
 
-        println!("{program:?}");
+        // println!("{program:?}");
 
         // Register builtins
-        type_checker
-            .declare_fn("print_int", vec![Type::int], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
-        type_checker
-            .declare_fn("print_bool", vec![Type::Bool], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
@@ -264,6 +277,15 @@ impl TypeChecker {
                 }
             }
             Expr::Call { name, args, .. } => {
+                // match name.as_str() {
+                //     "print_int" => return Ok(Type::Void),
+                //     "print_char" => return Ok(Type::Void),
+                //     "print_bool" => return Ok(Type::Void),
+                //     "write" => return Ok(Type::Void),
+                //     // "malloc" => return Ok(Type::Void),
+                //     _ => {}
+                // }
+
                 let (param_types, ret_type) = self
                     .lookup_fn(name)
                     .ok_or_else(|| format!("Undefined function '{name}'"))?
