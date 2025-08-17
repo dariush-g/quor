@@ -5,8 +5,6 @@ def main() :: int {
     
     let point: Point = Point {x: 0, y: 0};
 
-    point.x = 1;
-
     let n: int = point.x;
 
     print_int(n);

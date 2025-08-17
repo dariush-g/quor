@@ -874,7 +874,7 @@ impl TypeChecker {
     }
 }
 
-fn base_type(ty: &Type) -> Type {
+pub fn base_type(ty: &Type) -> Type {
     match ty {
         Type::Array(ty, ..) => Type::Array(ty.clone(), None),
         Type::Class { name, .. } => Type::Class {

@@ -42,18 +42,15 @@ mov rsi, rdx
 call Point.new
 sub rsp, 8
 mov qword [rbp - 8], rax
-mov rax, 1
-mov r8, qword [rbp - 8 - 0]
-mov dword [r8], eax
 sub rsp, 8
-mov r10, qword [rbp - 8]
-mov eax, dword [r10 + 0]
+mov r8, qword [rbp - 8]
+mov eax, dword [r8 + 0]
 mov dword [rbp - 16], eax
-mov r11, qword [rbp - 16]
-mov rdi , r11
+mov r9, qword [rbp - 16]
+mov rdi , r9
 call print_int
-mov r12, 0
-mov rax, r12
+mov r10, 0
+mov rax, r10
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
