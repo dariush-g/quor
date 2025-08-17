@@ -174,6 +174,20 @@ impl TypeChecker {
 
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
         match expr {
+            Expr::FieldAssign {
+                class_name,
+                field,
+                value,
+            } => {
+                let ty = self
+                    .type_check_expr(&Expr::InstanceVar(class_name.clone(), field.to_string()))?;
+
+                if ty != self.type_check_expr(&value)? {
+                    return Err(format!("Error with class: {class_name}, field: {field}"));
+                }
+
+                Ok(ty)
+            }
             Expr::StringLiteral(_) => Ok(Type::Class {
                 name: "string".to_owned(),
                 instances: vec![("chars".to_string(), Type::Array(Box::new(Type::Char), None))],
@@ -462,53 +476,93 @@ impl TypeChecker {
                         .collect(),
                 })
             }
+            // Expr::InstanceVar(class_name, instance_name) => {
+            //     let ty = self
+            //         .lookup_var(class_name)
+            //         .ok_or_else(|| format!("Unknown variable: '{class_name}'"))?;
+
+            //     match ty {
+            //         Type::Pointer(ty) => match *ty.clone() {
+            //             Type::Class { name, .. } => {
+            //                 let fields = self
+            //                     .class_fields
+            //                     .get(&name)
+            //                     .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
+
+            //                 // Find the field in the class instances
+            //                 for (field_name, field_type) in fields {
+            //                     if field_name == instance_name {
+            //                         return Ok(field_type.clone());
+            //                     }
+            //                 }
+            //                 Err(format!(
+            //                     "Unknown field '{instance_name}' in class '{class_name}'"
+            //                 ))
+            //             }
+            //             _ => Err(format!("'{class_name}' is not a class instance")),
+            //         },
+            //         Type::Class { name, .. } => {
+            //             let fields = self
+            //                 .class_fields
+            //                 .get(name)
+            //                 .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
+
+            //             // Find the field in the class instances
+            //             for (field_name, field_type) in fields {
+            //                 if field_name == instance_name {
+            //                     return Ok(field_type.clone());
+            //                 }
+            //             }
+            //             Err(format!(
+            //                 "Unknown field '{instance_name}' in class '{class_name}'"
+            //             ))
+            //         }
+            //         _ => Err(format!("'{class_name}' is not a class instance")),
+            //     }
+            // } // Expr::ClassLiteral(name) => Ok(Type::Class {
+            //     name: name.to_string(),
+            //     instances: Vec::new(),
+            // }),
             Expr::InstanceVar(class_name, instance_name) => {
                 let ty = self
                     .lookup_var(class_name)
                     .ok_or_else(|| format!("Unknown variable: '{class_name}'"))?;
 
                 match ty {
-                    Type::Pointer(ty) => match *ty.clone() {
-                        Type::Class { name, .. } => {
-                            let fields = self
-                                .class_fields
-                                .get(&name)
-                                .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
-
-                            // Find the field in the class instances
-                            for (field_name, field_type) in fields {
-                                if field_name == instance_name {
-                                    return Ok(field_type.clone());
-                                }
+                    Type::Pointer(ty) => {
+                        match *ty.clone() {
+                            Type::Class { name, .. } => {
+                                let fields = self
+                                    .class_fields
+                                    .get(&name)
+                                    .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
+                                fields.iter()
+                    .find(|(field_name, _)| field_name == instance_name)
+                    .map(|(_, ty)| ty.clone())
+                    .ok_or_else(|| format!(
+                        "Unknown field '{instance_name}' in class '{class_name}'"
+                    ))
                             }
-                            Err(format!(
-                                "Unknown field '{instance_name}' in class '{class_name}'"
-                            ))
+                            _ => Err(format!("'{class_name}' is not a class instance")),
                         }
-                        _ => Err(format!("'{class_name}' is not a class instance")),
-                    },
+                    }
                     Type::Class { name, .. } => {
+                        // Add direct class instance access
                         let fields = self
                             .class_fields
-                            .get(name)
+                            .get(&name.clone())
                             .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
-
-                        // Find the field in the class instances
-                        for (field_name, field_type) in fields {
-                            if field_name == instance_name {
-                                return Ok(field_type.clone());
-                            }
-                        }
-                        Err(format!(
-                            "Unknown field '{instance_name}' in class '{class_name}'"
-                        ))
+                        fields
+                            .iter()
+                            .find(|(field_name, _)| field_name == instance_name)
+                            .map(|(_, ty)| ty.clone())
+                            .ok_or_else(|| {
+                                format!("Unknown field '{instance_name}' in class '{class_name}'")
+                            })
                     }
                     _ => Err(format!("'{class_name}' is not a class instance")),
                 }
-            } // Expr::ClassLiteral(name) => Ok(Type::Class {
-              //     name: name.to_string(),
-              //     instances: Vec::new(),
-              // }),
+            }
         }
     }
 

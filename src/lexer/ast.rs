@@ -99,6 +99,12 @@ pub enum Expr {
         index: Box<Expr>,
         //element_type: Type,
     },
+
+    FieldAssign {
+        class_name: String,
+        field: String,
+        value: Box<Expr>,
+    },
 }
 
 impl Expr {
