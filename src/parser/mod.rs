@@ -126,10 +126,10 @@ impl Parser {
         if self.match_token(&[TokenType::Return]) {
             return self.return_statement();
         }
-        if self.match_token(&[TokenType::Var]) {
+        if self.match_token(&[TokenType::Let]) {
             return self.var_dec();
         }
-        if self.match_token(&[TokenType::Fn]) {
+        if self.match_token(&[TokenType::Def]) {
             return self.fn_dec();
         }
         if self.match_token(&[TokenType::LeftBrace]) {
@@ -182,7 +182,7 @@ impl Parser {
         let mut fields = Vec::new();
 
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
-            if self.match_token(&[TokenType::Fn]) {
+            if self.match_token(&[TokenType::Def]) {
                 functions.push(self.fn_dec()?);
             } else {
                 let field_name_tok =
@@ -331,7 +331,7 @@ impl Parser {
                         value: Box::new(value),
                     });
                 }
-                
+
                 _ => return Err(ParseError::InvalidAssignmentTarget),
             }
         }

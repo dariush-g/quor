@@ -1,28 +1,13 @@
 @import("io");
+@import("test_class.qu");
 
-class Example {
-    x: int;
-}
+def main() :: int {
 
+    let pnt: Point* = &Point {x: 5, y: 6};
 
-fn main() :: int {
-
-    var n: int = 0;
-
-    while (n < 5) {
-        print_int(n);
-        n = n + 1;
-    }
+    
     
 
     return 0;
 }
 
-
-
-// nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test 
-
-// nasm -f macho64 test.asm -o test.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o && ./test
-
-
-// nasm -f elf64 test.asm -o test.o && clang -arch x86_64 -c runtime.c -o runtime.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o runtime.o && ./test

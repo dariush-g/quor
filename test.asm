@@ -6,24 +6,26 @@ mov rbx, rax
 mov rdi, rax
 mov rax, 60
 syscall
-; ----- Layout: Example -----
-%define Example_size 4
-%define Example_x 0
+; ----- Layout: Point -----
+%define Point_size 8
+%define Point_x 0
+%define Point_y 4
 
-global Example.new
-Example.new:
+global Point.new
+Point.new:
 push rbp
 mov rbp, rsp
-sub rsp, 8
 mov dword [rbp - 8], edi
-mov rdi, Example_size
+mov dword [rbp - 16], esi
+mov rdi, Point_size
 call malloc
-add rsp, 8
 mov rcx, rax
 mov eax, dword [rbp - 8]
 mov dword [rcx + 0], eax
+mov eax, dword [rbp - 16]
+mov dword [rcx + 4], eax
 mov rax, rcx
-add rsp, 8
+add rsp, 16
 mov rsp, rbp
 pop rbp
 ret
@@ -33,29 +35,10 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 8
-mov rcx, 0
+lea rcx, [rbp - 8]
 mov qword [rbp - 8], rcx
-.while_start_0:
-mov rdx, qword [rbp - 8]
-mov rax, 5
-cmp rdx, rax
-setl al
-movzx rax, al
-cmp rax, 1
-jne .while_end_0
-mov r8, qword [rbp - 8]
-mov rdi , r8
-sub rsp, 8
-call print_int
-add rsp, 8
-mov r9, qword [rbp - 8]
-mov r10, 1
-add r9, r10
-mov qword [rbp - 8], r9
-jmp .while_start_0
-.while_end_0:
-mov r11, 0
-mov rax, r11
+mov rdx, 0
+mov rax, rdx
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
