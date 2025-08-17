@@ -25,7 +25,7 @@ fn align_up(x: usize, a: usize) -> usize {
     (x + a - 1) & !(a - 1)
 }
 
-fn gpr_name(i: usize, ty: &Type) -> &'static str {
+fn _gpr_name(i: usize, ty: &Type) -> &'static str {
     match ty {
         Type::int => match i {
             0 => "edi",
@@ -102,7 +102,7 @@ struct FieldLayout {
 
 struct ClassLayout {
     size: usize,
-    align: usize,
+    _align: usize,
     fields: Vec<FieldLayout>,
 }
 
@@ -127,7 +127,7 @@ fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
 
     ClassLayout {
         size,
-        align: max_a,
+        _align: max_a,
         fields: out,
     }
 }
@@ -1317,7 +1317,6 @@ impl CodeGen {
                         self.regs.push_back(rhs);
                         Some("rax".to_string())
                     }
-                    _ => None,
                 }
             }
             _ => None,

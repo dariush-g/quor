@@ -40,8 +40,8 @@ pub enum TokenType {
 
     Boolean,
 
-    Var,
-    Fn,
+    Let,
+    Def,
     If,
     Else,
     While,

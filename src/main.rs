@@ -9,6 +9,12 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+// nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test
+
+// nasm -f macho64 test.asm -o test.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o && ./test
+
+// nasm -f elf64 test.asm -o test.o && clang -arch x86_64 -c runtime.c -o runtime.o && clang -arch x86_64 -nostartfiles -Wl,-e,_start -o test test.o runtime.o && ./test
+
 #[cfg(target_os = "macos")]
 fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
     // Ensure consistent deployment target and predictable working dir.
