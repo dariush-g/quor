@@ -1,13 +1,11 @@
 @import::<test_class.qu>;
-@import::<io>;
 
 def main() :: int {
     
-    let point: Point = Point {x: 0, y: 0};
+    let point: Point* = &Point {x: 0, y: 0};
 
     let n: int = point.x;
 
-    print_int(n);
 
     return 0;
 }
