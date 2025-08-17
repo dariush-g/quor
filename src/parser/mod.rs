@@ -104,7 +104,7 @@ impl Parser {
                 self.advance();
                 if let TokenType::Less = self.peek().token_type {
                     self.advance(); // consume '('
-                    let param = if let TokenType::Identifier(s) = &self.peek().token_type {
+                    let mut param = if let TokenType::Identifier(s) = &self.peek().token_type {
                         let val = s.clone();
                         self.advance(); // consume string
                         val
@@ -116,7 +116,16 @@ impl Parser {
                         });
                     };
 
-                    self.consume(TokenType::Greater, "Expected ')'")?;
+                    if let TokenType::Period = self.peek().token_type {
+                        param.push('.');
+                        self.advance();
+                        if let TokenType::Identifier(qu) = &self.peek().token_type {
+                            param.push_str(&qu);
+                            self.advance();
+                        }
+                    }
+
+                    self.consume(TokenType::Greater, "Expected '>'")?;
                     self.consume(TokenType::Semicolon, "Expected ';'")?;
                     return Ok(Stmt::AtDecl(decl.to_string(), Some(param)));
                 }
@@ -331,6 +340,7 @@ impl Parser {
                         value: Box::new(value),
                     });
                 }
+
                 Expr::Unary {
                     op: UnaryOp::Dereference,
                     expr,
@@ -342,10 +352,18 @@ impl Parser {
                     });
                 }
                 Expr::InstanceVar(class_name, instance_name) => {
-                    return Ok(Expr::DerefAssign {
-                        target: Box::new(Expr::InstanceVar(class_name, instance_name)),
+                    // return Ok(Expr::InstanceVar(class_name, instance_name));
+
+                    return Ok(Expr::FieldAssign {
+                        class_name,
+                        field: instance_name,
                         value: Box::new(value),
                     });
+
+                    // return Ok(Expr::DerefAssign {
+                    //     target: Box::new(Expr::InstanceVar(class_name, instance_name)),
+                    //     value: Box::new(value),
+                    // });
                 }
                 Expr::ArrayAccess { array, index } => {
                     return Ok(Expr::DerefAssign {
