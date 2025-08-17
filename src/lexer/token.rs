@@ -70,6 +70,7 @@ pub enum TokenType {
     Less,
     LessEqual,
     Arrow,
+    DoubleColon,
     Ampersand,
 
     // Punctuation

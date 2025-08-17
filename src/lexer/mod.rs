@@ -89,7 +89,6 @@ impl Lexer {
             ']' => tokens.push(self.make_token(TokenType::RightBracket)),
             ',' => tokens.push(self.make_token(TokenType::Comma)),
             ';' => tokens.push(self.make_token(TokenType::Semicolon)),
-            ':' => tokens.push(self.make_token(TokenType::Colon)),
             '+' => tokens.push(self.make_token(TokenType::Plus)),
             '*' => tokens.push(self.make_token(TokenType::Star)),
             '%' => tokens.push(self.make_token(TokenType::Percent)),
@@ -101,6 +100,16 @@ impl Lexer {
                 };
                 tokens.push(self.make_token(token));
             }
+            ':' => {
+                let token = if self.match_char(':') {
+                    TokenType::DoubleColon
+                } else {
+                    TokenType::Colon
+                };
+
+                tokens.push(self.make_token(token))
+            }
+
             '=' => {
                 let token = if self.match_char('=') {
                     TokenType::EqualEqual
