@@ -1,4 +1,7 @@
-use crate::lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp};
+use crate::{
+    analyzer::base_type,
+    lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
@@ -430,20 +433,31 @@ impl CodeGen {
                         .push_str(&format!("mov qword [rbp - {off}], rax\n"));
                 }
                 Expr::AddressOf(inside) => {
-                    let offset = if self.local_offset(name).is_none() {
-                        self.alloc_local(name, None, var_type)
-                    } else {
-                        self.local_offset(name).unwrap()
-                    };
-
-                    if let Expr::ClassInit { .. } = *inside.clone() {
+                    if let Type::Class { name: name1, .. } = base_type(var_type) {
                         self.handle_expr(inside, None);
-                    }
 
-                    self.output.push_str(&format!(
-                        "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
-                    ));
+                        let offset = if self.local_offset(name).is_none() {
+                            self.alloc_local(name, Some(name1), var_type)
+                        } else {
+                            self.local_offset(name).unwrap()
+                        };
+
+                        self.output.push_str(&format!(
+                            "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
+                        ));
+                    } else {
+                        let offset = if self.local_offset(name).is_none() {
+                            self.alloc_local(name, None, var_type)
+                        } else {
+                            self.local_offset(name).unwrap()
+                        };
+
+                        self.output.push_str(&format!(
+                            "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
+                        ));
+                    }
                 }
+
                 Expr::Unary {
                     op: UnaryOp::Dereference,
                     expr,
@@ -640,7 +654,7 @@ impl CodeGen {
 
         self.output.push_str(&format!("sub rsp, {}\n", stack_adj));
 
-        stack_adj += 16 - (stack_adj % 16);
+        // stack_adj += 16 - (stack_adj % 16);
 
         // #[allow(clippy::needless_range_loop)]
         // for i in 0..n_fields {
@@ -1312,7 +1326,7 @@ impl CodeGen {
                     ..
                 } => self.handle_expr(inner, None),
                 Expr::Variable(var_name) => {
-                    println!("ref to {var_name}");
+                    // println!("ref to {var_name}");
                     let off = self
                         .local_offset(var_name)
                         .unwrap_or_else(|| panic!("Unknown var '{var_name}'"));
