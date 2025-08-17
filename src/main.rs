@@ -1,7 +1,7 @@
-use quco::analyzer::TypeChecker;
-use quco::codegen::CodeGen;
-use quco::lexer::Lexer;
-use quco::parser::Parser;
+use quor::analyzer::TypeChecker;
+use quor::codegen::CodeGen;
+use quor::lexer::Lexer;
+use quor::parser::Parser;
 
 use std::env;
 use std::fs;

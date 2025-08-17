@@ -240,7 +240,7 @@ impl Parser {
         }
 
         self.consume(TokenType::RightParen, "Expected ')' after parameters")?;
-        self.consume(TokenType::Arrow, "Expected '->' after parameters")?;
+        self.consume(TokenType::DoubleColon, "Expected '::' after parameters")?;
         let return_type = self.parse_type()?;
         self.consume(TokenType::LeftBrace, "Expected '{' before function body")?;
         let body = self.block()?;
@@ -304,8 +304,6 @@ impl Parser {
 
             match expr {
                 Expr::Variable(name) => {
-                    self.advance();
-
                     return Ok(Expr::Assign {
                         name,
                         value: Box::new(value),
@@ -321,6 +319,19 @@ impl Parser {
                         value: Box::new(value),
                     });
                 }
+                Expr::InstanceVar(class_name, instance_name) => {
+                    return Ok(Expr::DerefAssign {
+                        target: Box::new(Expr::InstanceVar(class_name, instance_name)),
+                        value: Box::new(value),
+                    });
+                }
+                Expr::ArrayAccess { array, index } => {
+                    return Ok(Expr::DerefAssign {
+                        target: Box::new(Expr::ArrayAccess { array, index }),
+                        value: Box::new(value),
+                    });
+                }
+                
                 _ => return Err(ParseError::InvalidAssignmentTarget),
             }
         }
@@ -757,7 +768,7 @@ impl Parser {
                 self.advance();
                 Type::Class {
                     name: class_name,
-                    instances: Vec::new(), // Will be filled in during analysis
+                    instances: Vec::new(),
                 }
             }
             _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
