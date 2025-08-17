@@ -186,8 +186,9 @@ impl Lexer {
         let text: String = self.chars[start_pos..self.current].iter().collect();
 
         let token_type = match text.as_str() {
-            "let" => TokenType::Let,
             "def" => TokenType::Def,
+
+            "let" => TokenType::Let,
             "if" => TokenType::If,
 
             "class" => TokenType::Class,

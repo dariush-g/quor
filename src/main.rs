@@ -206,6 +206,8 @@ fn main() {
         }
     };
 
+    // println!("{tokens:?}");
+
     // Parse
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {

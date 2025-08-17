@@ -429,6 +429,21 @@ impl CodeGen {
                     self.output
                         .push_str(&format!("mov qword [rbp - {off}], rax\n"));
                 }
+                Expr::AddressOf(inside) => {
+                    let offset = if self.local_offset(name).is_none() {
+                        self.alloc_local(name, None, var_type)
+                    } else {
+                        self.local_offset(name).unwrap()
+                    };
+
+                    if let Expr::ClassInit { .. } = *inside.clone() {
+                        self.handle_expr(inside, None);
+                    }
+
+                    self.output.push_str(&format!(
+                        "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
+                    ));
+                }
                 _ => {
                     let offset = if self.local_offset(name).is_none() {
                         self.alloc_local(name, None, var_type)
@@ -549,11 +564,26 @@ impl CodeGen {
         let n_fields = instances.len().min(save_regs.len());
 
         // Ensure 16-byte stack alignment for malloc call
-        let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
-        if stack_adjust > 0 {
-            self.output
-                .push_str(&format!("sub rsp, {}\n", stack_adjust));
+        // let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
+        // if stack_adjust > 0 {
+        //     self.output
+        //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
+        // }
+
+        let mut stack_adj = 0;
+        for instance in instances.clone() {
+            match instance.1 {
+                Type::int => stack_adj += 4,
+                Type::float => stack_adj += 4,
+                Type::Char => stack_adj += 1,
+                Type::Bool => stack_adj += 1,
+                _ => stack_adj += 8,
+            }
         }
+
+        self.output.push_str(&format!("sub rsp, {}\n", stack_adj));
+
+        stack_adj += 16 - (stack_adj % 16);
 
         // #[allow(clippy::needless_range_loop)]
         // for i in 0..n_fields {
@@ -598,9 +628,8 @@ impl CodeGen {
         #[cfg(target_arch = "x86_64")]
         self.output.push_str("call malloc\n");
 
-        if stack_adjust > 0 {
-            self.output
-                .push_str(&format!("add rsp, {}\n", stack_adjust));
+        if stack_adj > 0 {
+            self.output.push_str(&format!("add rsp, {}\n", stack_adj));
         }
 
         self.output.push_str("mov rcx, rax\n");
@@ -962,7 +991,6 @@ impl CodeGen {
                     instance_name, class_type
                 ));
 
-                // Load the field value with the correct size
                 match field_type {
                     Type::int => {
                         self.output.push_str(&format!(
@@ -991,6 +1019,7 @@ impl CodeGen {
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
                 let av_reg = self.regs.pop_front().expect("No registers");
+
                 self.output
                     .push_str(&format!("mov {av_reg}, qword [rbp - {off}]\n"));
                 Some(av_reg)
@@ -1046,6 +1075,86 @@ impl CodeGen {
                         let val = if b { 1 } else { 0 };
                         self.output
                             .push_str(&format!("mov byte [rbp - {offset}], {val}\n"));
+                    }
+                    Expr::InstanceVar(class_name, instance_name) => {
+                        let class_type = self
+                            .locals
+                            .get(&class_name)
+                            .unwrap_or_else(|| panic!("Class '{}' not found", class_name))
+                            .0
+                            .clone()
+                            .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
+
+                        let class_layout = &self
+                            .classes
+                            .get(class_type.trim())
+                            .unwrap_or_else(|| panic!("Class layout not found for '{class_type}'"))
+                            .0;
+
+                        let mut field_offset = None;
+                        let mut field_type = None;
+                        for field in &class_layout.fields {
+                            if &field.name == &instance_name {
+                                field_offset = Some(field.offset as i32);
+                                // Get the field type from the class definition
+                                if let Some((_, class_stmt)) = self.classes.get(class_type.trim()) {
+                                    if let Stmt::ClassDecl { instances, .. } = class_stmt {
+                                        for (fname, ftype) in instances {
+                                            if fname == &instance_name {
+                                                field_type = Some(ftype);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        let field_offset = field_offset.expect(&format!(
+                            "Field '{}' not found in class '{}'",
+                            instance_name, class_type
+                        ));
+
+                        let field_type = field_type.expect(&format!(
+                            "Field type for '{}' not found in class '{}'",
+                            instance_name, class_type
+                        ));
+
+                        match field_type {
+                            Type::int => {
+                                if let Some(val_reg) = self.handle_expr(value, None) {
+                                    self.output.push_str(&format!(
+                                        "mov dword [rbp - {offset}], {val_reg}\n"
+                                    ));
+                                    self.regs.push_back(val_reg);
+                                }
+                            }
+                            Type::Char => {
+                                if let Some(val_reg) = self.handle_expr(value, None) {
+                                    self.output.push_str(&format!(
+                                        "mov byte [rbp - {offset}], {val_reg}\n"
+                                    ));
+                                    self.regs.push_back(val_reg);
+                                }
+                            }
+                            Type::Bool => {
+                                if let Some(val_reg) = self.handle_expr(value, None) {
+                                    self.output.push_str(&format!(
+                                        "mov byte [rbp - {offset}], {val_reg}\n"
+                                    ));
+                                    self.regs.push_back(val_reg);
+                                }
+                            }
+                            _ => {
+                                if let Some(val_reg) = self.handle_expr(value, None) {
+                                    self.output.push_str(&format!(
+                                        "mov qword [rbp - {offset}], {val_reg}\n"
+                                    ));
+                                    self.regs.push_back(val_reg);
+                                }
+                            }
+                        }
                     }
                     _ => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
@@ -1109,12 +1218,10 @@ impl CodeGen {
                     Some(reg)
                 }
                 Expr::InstanceVar(class_name, field_name) => {
-                    // Get the object pointer
                     let obj_ptr_reg = self
                         .handle_expr(&Expr::Variable(class_name.clone()), None)
                         .expect("Could not load class pointer");
 
-                    // Get class layout information
                     let class_type = self
                         .locals
                         .get(class_name)
@@ -1129,7 +1236,6 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
                         .0;
 
-                    // Find the field offset
                     let field_offset = class_layout
                         .fields
                         .iter()

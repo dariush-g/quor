@@ -15,16 +15,15 @@
 **Code:**
 
 ```quor
-fn main() -> int {
-    var x: int = 5;
-    var p: int* = &x;
-    var y: int = *p + 3;
 
-    if (y > 5) {
-        return y;
-    } else {
-        return 0;
-    }
+@import::<io>
+
+def main() :: int {
+    let x: int = 5;
+    let p: int* = &x;
+    let y: int = *p + 3;
+
+    print_int(y);
 }
 ```
 
