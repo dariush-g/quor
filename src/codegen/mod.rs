@@ -242,11 +242,32 @@ impl CodeGen {
         format!("{header}{}", code.output)
     }
 
-    fn alloc_local(&mut self, name: &str, class_name: Option<String>, _ty: &Type) -> i32 {
+    // fn alloc_local(&mut self, name: &str, class_name: Option<String>, _ty: &Type) -> i32 {
+    //     self.stack_size += 8;
+    //     self.output.push_str("sub rsp, 8\n");
+    //     let offset = self.stack_size;
+    //     self.locals.insert(name.to_string(), (class_name, offset));
+    //     offset
+    // }
+
+    fn alloc_local(&mut self, name: &str, ty: &Type) -> i32 {
         self.stack_size += 8;
         self.output.push_str("sub rsp, 8\n");
         let offset = self.stack_size;
-        self.locals.insert(name.to_string(), (class_name, offset));
+
+        let class_info = match ty {
+            Type::Pointer(inner) => {
+                if let Type::Class { name: cls_name, .. } = &**inner {
+                    Some(cls_name.clone())
+                } else {
+                    None
+                }
+            }
+            Type::Class { name: cls_name, .. } => Some(cls_name.clone()),
+            _ => None,
+        };
+
+        self.locals.insert(name.to_string(), (class_info, offset));
         offset
     }
 
@@ -310,11 +331,14 @@ impl CodeGen {
                         .clone()
                         .unwrap_or_else(|| panic!("Unable to locate import"));
 
-                    if param.as_str() == "io" {
-                        let print = fs::read_to_string("./src/bltin/print.asm")
-                            .unwrap_or_else(|_| panic!("Error importing io"));
+                    match param.as_str() {
+                        "io" => {
+                            let print = fs::read_to_string("./src/bltin/print.asm")
+                                .unwrap_or_else(|_| panic!("Error importing io"));
 
-                        let _ = &self.output.push_str(&print);
+                            let _ = &self.output.push_str(&print);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -414,156 +438,44 @@ impl CodeGen {
                     let ctor = format!("{cls}.new");
                     self.call_with_alignment(&ctor);
 
-                    let off = self.alloc_local(
-                        name,
-                        Some(cls.to_string()),
-                        &Type::Pointer(Box::new(Type::Class {
-                            name: cls.to_string(),
-                            instances: params
-                                .iter()
-                                .map(|(name, expr)| (name.clone(), expr.get_type()))
-                                .collect(),
-                        })),
-                    );
+                    let class = &Type::Pointer(Box::new(Type::Class {
+                        name: cls.to_string(),
+                        instances: params
+                            .iter()
+                            .map(|(name, expr)| (name.clone(), expr.get_type()))
+                            .collect(),
+                    }));
+
+                    let off = self.alloc_local(name, class);
+
+                    println!("allocated {class:?}");
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {off}], rax\n"));
                 }
-                // Expr::AddressOf(inside) => {
-                //     if let Type::Class { name: name1, .. } = base_type(var_type) {
-                //         self.handle_expr(inside, None);
-
-                //         let offset = if self.local_offset(name).is_none() {
-                //             self.alloc_local(name, Some(name1), var_type)
-                //         } else {
-                //             self.local_offset(name).unwrap()
-                //         };
-
-                //         self.output.push_str(&format!(
-                //             "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
-                //         ));
-                //     } else {
-                //         let offset = if self.local_offset(name).is_none() {
-                //             self.alloc_local(name, None, var_type)
-                //         } else {
-                //             self.local_offset(name).unwrap()
-                //         };
-
-                //         self.output.push_str(&format!(
-                //             "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
-                //         ));
-                //     }
-                // }
                 Expr::AddressOf(inside) => {
-                    if let Expr::ClassInit { name: cls, params } = &**inside {
-                        let field_count;
-                        let field_positions: HashMap<String, usize>;
-                        {
-                            let (class_layout, _) = self
-                                .classes
-                                .get(cls)
-                                .unwrap_or_else(|| panic!("Class {cls} not found"));
+                    if let Type::Class { .. } = base_type(var_type) {
+                        self.handle_expr(inside, None);
 
-                            field_positions = class_layout
-                                .fields
-                                .iter()
-                                .enumerate()
-                                .map(|(i, f)| (f.name.clone(), i))
-                                .collect();
-
-                            field_count = class_layout.fields.len();
-                        }
-
-                        let mut param_values = Vec::new();
-                        for (pname, pexpr) in params {
-                            let r = self.handle_expr(pexpr, None).expect("ctor arg");
-                            param_values.push((pname, r));
-                        }
-
-                        let mut ordered = vec![String::new(); field_count];
-                        for (pname, r) in param_values {
-                            ordered[*field_positions
-                                .get(pname)
-                                .unwrap_or_else(|| panic!("Field {pname} not in {cls}"))] = r;
-                        }
-                        let arg_vals: Vec<String> =
-                            ordered.into_iter().filter(|s| !s.is_empty()).collect();
-
-                        let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-                        if arg_vals.len() > abi_regs.len() {
-                            panic!("More than 5 constructor args not supported yet");
-                        }
-                        for (i, r) in arg_vals.iter().enumerate() {
-                            if r != abi_regs[i] {
-                                self.output
-                                    .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
-                            }
-                        }
-                        for r in arg_vals {
-                            self.regs.push_back(r);
-                        }
-
-                        let ctor = format!("{cls}.new");
-                        self.call_with_alignment(&ctor);
-
-                        let off = if self.local_offset(name).is_none() {
-                            self.alloc_local(
-                                name,
-                                Some(cls.clone()),
-                                &Type::Pointer(Box::new(Type::Class {
-                                    name: cls.clone(),
-                                    instances: params
-                                        .iter()
-                                        .map(|(n, e)| (n.clone(), e.get_type()))
-                                        .collect(),
-                                })),
-                            )
+                        let offset = if self.local_offset(name).is_none() {
+                            self.alloc_local(name, var_type)
                         } else {
                             self.local_offset(name).unwrap()
                         };
 
-                        self.output
-                            .push_str(&format!("mov qword [rbp - {off}], rax\n"));
-                        return;
-                    }
-
-                    // Case B: &<lvalue> (non-class-init). Make sure we tag class pointers.
-                    let (class_tag, _) = match base_type(var_type) {
-                        // If the declared var type is Pointer<Class>, remember the class name
-                        Type::Pointer(inner) => {
-                            if let Type::Class {
-                                name: ref cname, ..
-                            } = *inner.clone()
-                            {
-                                (Some(cname.to_string()), true)
-                            } else {
-                                (None, false)
-                            }
-                        }
-                        _ => (None, false),
-                    };
-
-                    let offset = if self.local_offset(name).is_none() {
-                        self.alloc_local(name, class_tag.clone(), var_type)
+                        self.output.push_str(&format!(
+                            "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
+                        ));
                     } else {
-                        self.local_offset(name).unwrap()
-                    };
+                        let offset = if self.local_offset(name).is_none() {
+                            self.alloc_local(name, var_type)
+                        } else {
+                            self.local_offset(name).unwrap()
+                        };
 
-                    // Evaluate the RHS to get the address into the scratch slot you already use.
-                    // Your old two-move trick was odd; just compute &rhs into a reg and store it.
-                    if let Some(addr_reg) = self.handle_expr(
-                        &Expr::Unary {
-                            op: UnaryOp::AddressOf,
-                            expr: inside.clone().into(),
-                            result_type: var_type.clone(),
-                        },
-                        None,
-                    ) {
-                        self.output
-                            .push_str(&format!("mov qword [rbp - {offset}], {addr_reg}\n"));
-                        self.regs.push_back(addr_reg);
-                    } else {
-                        panic!("address-of did not yield a register");
+                        self.output.push_str(&format!(
+                            "mov qword [rbp - {offset}], [rbp - {offset} + 8]\n"
+                        ));
                     }
                 }
 
@@ -573,7 +485,7 @@ impl CodeGen {
                     ..
                 } => {
                     let ptr_reg = self.handle_expr(expr, None).expect("ptr reg");
-                    let offset = self.alloc_local(name, None, var_type);
+                    let offset = self.alloc_local(name, var_type);
 
                     if let Type::Pointer(inner) = var_type {
                         if let Type::Class {
@@ -589,44 +501,150 @@ impl CodeGen {
                         .push_str(&format!("mov qword [rbp - {offset}], {ptr_reg}\n"));
                     self.regs.push_back(ptr_reg);
                 }
-                Expr::InstanceVar(class_name, _) => {
+                // Expr::InstanceVar(class_name, field_name) => {
+                //     let class = self
+                //         .locals
+                //         .get(class_name)
+                //         .expect(&format!("error getting class: {class_name}"))
+                //         .0
+                //         .clone()
+                //         .expect(&format!("error getting class: {class_name}"));
+
+                //     let offset = if self.local_offset(class_name).is_none() {
+                //         self.alloc_local(name, None, var_type)
+                //     } else {
+                //         self.local_offset(name).unwrap()
+                //     };
+
+                //     println!("{:?}", self.locals);
+
+                //     let field_offset: usize = self
+                //         .classes
+                //         .get(&class)
+                //         .expect("error getting class layout")
+                //         .0
+                //         .fields
+                //         .iter()
+                //         .find_map(|field| {
+                //             if field.name == *field_name {
+                //                 Some(field.offset)
+                //             } else {
+                //                 None
+                //             }
+                //         })
+                //         .unwrap();
+
+                //     if let Some(val_reg) = self.handle_expr(value, None) {
+                //         match var_type {
+                //             Type::int => {
+                //                 self.output.push_str(&format!(
+                //                     "mov dword [rbp - {offset} - {field_offset}], {}\n",
+                //                     Self::reg32(&val_reg)
+                //                 ));
+                //             }
+                //             Type::Bool => {
+                //                 self.output.push_str(&format!(
+                //                     "mov byte [rbp - {offset} - {field_offset}], {}\n",
+                //                     Self::reg8(&val_reg)
+                //                 ));
+                //             }
+                //             Type::Char => {
+                //                 self.output.push_str(&format!(
+                //                     "mov dword [rbp - {offset} - {field_offset}], {}\n",
+                //                     Self::reg8(&val_reg)
+                //                 ));
+                //             }
+                //             _ => {
+                //                 self.output
+                //                     .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n",));
+                //             }
+                //         }
+
+                //         self.regs.push_back(val_reg);
+                //     }
+                // }
+                Expr::InstanceVar(class_name, field_name) => {
+                    // Get the class pointer from the local variable
+                    let class_info = self
+                        .locals
+                        .get(class_name)
+                        .unwrap_or_else(|| panic!("Class '{}' not found in locals", class_name));
+
+                    let class_type = class_info
+                        .0
+                        .clone()
+                        .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
+
+                    let class_offset = class_info.1;
+
+                    // Get class layout
+                    let class_layout = &self
+                        .classes
+                        .get(&class_type)
+                        .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
+                        .0;
+
+                    // Find field offset
+                    let field_offset = class_layout
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *field_name)
+                        .unwrap_or_else(|| {
+                            panic!("Field '{}' not found in class '{}'", field_name, class_type)
+                        })
+                        .offset;
+
+                    // Allocate space for the variable if not already allocated
                     let offset = if self.local_offset(name).is_none() {
-                        self.alloc_local(name, Some(class_name.to_string()), var_type)
+                        self.alloc_local(name, var_type)
                     } else {
                         self.local_offset(name).unwrap()
                     };
-                    if let Some(val_reg) = self.handle_expr(value, None) {
-                        match var_type {
-                            Type::int => {
-                                self.output.push_str(&format!(
-                                    "mov dword [rbp - {offset}], {}\n",
-                                    Self::reg32(&val_reg)
-                                ));
-                            }
-                            Type::Bool => {
-                                self.output.push_str(&format!(
-                                    "mov byte [rbp - {offset}], {}\n",
-                                    Self::reg8(&val_reg)
-                                ));
-                            }
-                            Type::Char => {
-                                self.output.push_str(&format!(
-                                    "mov dword [rbp - {offset}], {}\n",
-                                    Self::reg8(&val_reg)
-                                ));
-                            }
-                            _ => {
-                                self.output
-                                    .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n",));
-                            }
-                        }
 
-                        self.regs.push_back(val_reg);
+                    // Get the field value from the class instance
+                    let ptr_reg = self.regs.pop_front().expect("No registers available");
+                    self.output
+                        .push_str(&format!("mov {ptr_reg}, qword [rbp - {class_offset}]\n"));
+
+                    match var_type {
+                        Type::int => {
+                            self.output.push_str(&format!(
+                                "mov eax, dword [{ptr_reg} + {field_offset}]\n"
+                            ));
+                            self.output
+                                .push_str(&format!("mov dword [rbp - {offset}], eax\n"));
+                        }
+                        Type::Char | Type::Bool => {
+                            self.output
+                                .push_str(&format!("mov al, byte [{ptr_reg} + {field_offset}]\n"));
+                            self.output
+                                .push_str(&format!("mov byte [rbp - {offset}], al\n"));
+                        }
+                        _ => {
+                            self.output.push_str(&format!(
+                                "mov rax, qword [{ptr_reg} + {field_offset}]\n"
+                            ));
+                            self.output
+                                .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
+                        }
                     }
+
+                    self.regs.push_back(ptr_reg);
                 }
                 _ => {
+                    // let mut class = None;
+
+                    // if let Expr::Call { return_type, .. } = value {
+                    //     match return_type {
+                    //         Type::Class { name, .. } => {
+                    //             class = Some(name);
+                    //         }
+                    //         _ => {}
+                    //     }
+                    // }
+
                     let offset = if self.local_offset(name).is_none() {
-                        self.alloc_local(name, None, var_type)
+                        self.alloc_local(name, var_type)
                     } else {
                         self.local_offset(name).unwrap()
                     };
@@ -638,6 +656,11 @@ impl CodeGen {
                 }
             },
 
+            // Stmt::ClassDecl {
+            //     name,
+            //     instances,
+            //     funcs,
+            // } => {}
             Stmt::Expression(expr) => {
                 if let Some(reg) = self.handle_expr(expr, None) {
                     self.regs.push_back(reg);
@@ -695,10 +718,8 @@ impl CodeGen {
         #[allow(clippy::needless_range_loop)]
         for (i, param) in params.iter().enumerate() {
             let off = match &param.1 {
-                Type::Class { name, .. } => {
-                    self.alloc_local(&param.0, Some(name.to_string()), &param.1)
-                }
-                _ => self.alloc_local(&param.0, None, &param.1),
+                Type::Class { .. } => self.alloc_local(&param.0, &param.1),
+                _ => self.alloc_local(&param.0, &param.1),
             };
 
             self.output
@@ -738,11 +759,36 @@ impl CodeGen {
         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
         let n_fields = instances.len().min(save_regs.len());
 
-        // Reserve 8 bytes per saved arg (matches slot layout).
-        let save_area = n_fields * 8;
-        if save_area > 0 {
-            self.output.push_str(&format!("sub rsp, {save_area}\n"));
+        // Ensure 16-byte stack alignment for malloc call
+        // let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
+        // if stack_adjust > 0 {
+        //     self.output
+        //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
+        // }
+
+        let mut stack_adj = 0;
+        for instance in instances.clone() {
+            match instance.1 {
+                Type::int => stack_adj += 4,
+                Type::float => stack_adj += 4,
+                Type::Char => stack_adj += 1,
+                Type::Bool => stack_adj += 1,
+                _ => stack_adj += 8,
+            }
         }
+
+        self.output.push_str(&format!("sub rsp, {}\n", stack_adj));
+
+        // stack_adj += 16 - (stack_adj % 16);
+
+        // #[allow(clippy::needless_range_loop)]
+        // for i in 0..n_fields {
+        //     self.output.push_str(&format!(
+        //         "mov qword [rbp - {}], {}\n",
+        //         8 * (1 + i),
+        //         save_regs[i]
+        //     ));
+        // }
 
         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
             let slot_off = (i + 1) * 8;
@@ -777,6 +823,10 @@ impl CodeGen {
 
         #[cfg(target_arch = "x86_64")]
         self.output.push_str("call malloc\n");
+
+        // if stack_adj > 0 {
+        //     self.output.push_str(&format!("add rsp, {}\n", stack_adj));
+        // }
 
         self.output.push_str("mov rcx, rax\n");
 
@@ -817,8 +867,9 @@ impl CodeGen {
 
         self.output.push_str("mov rax, rcx\n");
 
-        if save_area > 0 {
-            self.output.push_str(&format!("add rsp, {save_area}\n"));
+        if n_fields > 0 {
+            self.output
+                .push_str(&format!("add rsp, {}\n", n_fields * 8));
         }
 
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
@@ -903,88 +954,73 @@ impl CodeGen {
                 field,
                 value,
             } => {
-                // Look up the local where the object pointer is stored
-                let (class_type, class_offset) = {
-                    let info = self
-                        .locals
-                        .get(class_name)
-                        .unwrap_or_else(|| panic!("Class '{}' not found", class_name));
-                    (
-                        info.0
-                            .clone()
-                            .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name)),
-                        info.1,
-                    )
-                };
+                // Get class information from locals
+                let class_info = self
+                    .locals
+                    .get(class_name)
+                    .unwrap_or_else(|| panic!("Class '{}' not found", class_name));
 
-                // Get class layout
+                // Get class name and stack offset
+                let class_type = class_info
+                    .0
+                    .clone()
+                    .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
+                let class_offset = class_info.1;
+
+                // Get class layout from classes registry
                 let class_layout = &self
                     .classes
                     .get(&class_type)
                     .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
                     .0;
 
-                // Find field offset and type
-                let (field_offset, field_type) = {
+                // Find field in class layout
+                let field_offset = class_layout
+                    .fields
+                    .iter()
+                    .find(|f| f.name == *field)
+                    .map(|f| f.offset)
+                    .unwrap_or_else(|| {
+                        panic!("Field '{}' not found in class '{}'", field, class_type)
+                    });
+
+                // Get field type from class declaration
+                let field_type = {
                     let class_decl_stmt = &self.classes.get(&class_type).unwrap().1;
-                    let mut f_ty = None;
-                    let mut f_off = None;
                     if let Stmt::ClassDecl { instances, .. } = class_decl_stmt {
-                        for (i, (fname, ftype)) in instances.iter().enumerate() {
-                            if fname == field {
-                                f_ty = Some(ftype.clone());
-                                f_off = Some(class_layout.fields[i].offset);
-                                break;
-                            }
-                        }
+                        instances
+                            .iter()
+                            .find(|(fname, _)| fname == field)
+                            .map(|(_, ftype)| ftype.clone())
+                            .unwrap_or_else(|| panic!("Field type not found for '{}'", field))
+                    } else {
+                        panic!("Class declaration not found for '{}'", class_type)
                     }
-                    (
-                        f_off.unwrap_or_else(|| {
-                            panic!("Field '{}' not found in class '{}'", field, class_type)
-                        }),
-                        f_ty.unwrap_or_else(|| panic!("Field type not found for '{}'", field)),
-                    )
                 };
 
-                // Evaluate value
+                // Handle the value expression
                 let val_reg = self
                     .handle_expr(value, None)
                     .expect("Could not find register for field value");
 
-                // Get a temp register to hold the object pointer/field address
+                // Calculate field address based on class location
+
                 let reg = self.regs.pop_front().expect("No reg");
 
-                // Load object pointer from the local slot
-                self.output
-                    .push_str(&format!("mov {reg}, qword [rbp - {class_offset}]\n"));
+                self.output.push_str(&format!(
+                    "mov {reg}, qword [rbp - {class_offset} - {field_offset}]\n"
+                ));
 
-                // Add field offset to point at the field
-                if field_offset != 0 {
-                    self.output
-                        .push_str(&format!("add {reg}, {field_offset}\n"));
-                }
-
-                // Store with correct width
+                // Generate appropriate store instruction based on field type
                 match field_type {
                     Type::int => {
                         self.output
                             .push_str(&format!("mov dword [{reg}], {}\n", Self::reg32(&val_reg)));
                     }
-                    Type::Char | Type::Bool => {
-                        self.output
-                            .push_str(&format!("mov byte [{reg}], {}\n", Self::reg8(&val_reg)));
-                    }
-                    Type::Pointer(_) | Type::Array(_, _) => {
-                        self.output
-                            .push_str(&format!("mov qword [{reg}], {val_reg}\n"));
-                    }
-                    _ => {
-                        self.output
-                            .push_str("; TODO: unsupported field type in assignment\n");
-                    }
+                    _ => {}
                 }
 
-                // Return regs to pool
+                // Return value register to pool
                 self.regs.push_back(val_reg.to_string());
                 self.regs.push_back(reg);
 
@@ -1005,12 +1041,19 @@ impl CodeGen {
                 #[cfg(target_arch = "x86_64")]
                 self.output.push_str("call malloc\n");
 
+                // let _ = self.regs.clone().iter().enumerate().map(|(i, _)| {
+                //     if self.regs[i] == "rax" {
+                //         self.regs.remove(i);
+                //     }
+                // });
+
                 let reg = self
                     .regs
                     .pop_front()
                     .unwrap_or_else(|| panic!("No register"));
 
                 self.output.push_str(&format!("mov {reg}, rax\n"));
+                //self.output.push_str("mov r15, rax\n");
 
                 Some(reg)
             }
@@ -1033,6 +1076,7 @@ impl CodeGen {
                 for t in temps {
                     self.regs.push_back(t);
                 }
+                // self.externs.insert(name.clone());
                 let is_defined = self.functions.iter().any(|(n, _, _)| n == name);
                 let target = if is_defined {
                     name.clone()
@@ -1040,6 +1084,11 @@ impl CodeGen {
                     format!("{name}")
                 };
                 self.call_with_alignment(&target);
+                for (i, reg) in self.regs.clone().iter().enumerate() {
+                    if reg == "rax" {
+                        self.regs.remove(i);
+                    }
+                }
                 Some("rax".to_string())
             }
             Expr::FloatLiteral(_f) => None,
@@ -1060,6 +1109,114 @@ impl CodeGen {
                 Some(av_reg.to_string())
             }
             Expr::InstanceVar(class_name, instance_name) => {
+                // let av_reg = self.regs.pop_front().expect("No registers");
+
+                // // Get the class pointer from the local variable
+                // let class_ptr_off = self
+                //     .local_offset(class_name)
+                //     .expect("Error reading class name");
+
+                // // Load the pointer to the class instance
+                // self.output
+                //     .push_str(&format!("mov {av_reg}, qword [rbp - {class_ptr_off}]\n"));
+
+                // // Get class type information
+                // let class_type = self
+                //     .locals
+                //     .get(class_name)
+                //     .unwrap_or_else(|| {
+                //         panic!("Error parsing class type for variable: {class_name}")
+                //     })
+                //     .0
+                //     .clone()
+                //     .unwrap_or_else(|| {
+                //         panic!("Error parsing class type for variable: {class_name}")
+                //     });
+
+                // let class_layout = &self
+                //     .classes
+                //     .get(class_type.trim())
+                //     .unwrap_or_else(|| {
+                //         panic!("Error parsing class type for variable: {class_name}")
+                //     })
+                //     .0;
+
+                // // Find the field offset
+                // let mut field_offset = None;
+                // for field in &class_layout.fields {
+                //     if &field.name == instance_name {
+                //         field_offset = Some(field.offset);
+                //         break;
+                //     }
+                // }
+
+                // let av_reg = self.regs.pop_front().expect("No registers");
+                // let mut off = self
+                //     .local_offset(class_name)
+                //     .expect("Error reading class name");
+
+                // let class_ptr_reg = self
+                //     .handle_expr(&Expr::Variable(class_name.to_string()), None)
+                //     .unwrap_or_else(|| panic!("Could not locate: '{class_name}'"));
+
+                // let class_type = self
+                //     .locals
+                //     .get(class_name)
+                //     .unwrap_or_else(|| {
+                //         panic!("Error parsing class type for variable: {class_name}")
+                //     })
+                //     .0
+                //     .clone()
+                //     .unwrap_or_else(|| {
+                //         panic!("Error parsing class type for variable: {class_name}")
+                //     });
+
+                // let class_layout = &self
+                //     .classes
+                //     .get(class_type.trim())
+                //     .unwrap_or_else(|| {
+                //         panic!("Error parsing class type for variable: {class_name}")
+                //     })
+                //     .0;
+
+                // for field in &class_layout.fields {
+                //     if &field.name == instance_name {
+                //         off += field.offset as i32;
+                //     }
+                // }
+
+                // self.output
+                //     .push_str(&format!("mov {av_reg}, qword [{av_reg} - {off}]\n"));
+
+                // self.regs.push_front(class_ptr_reg);
+
+                // Some(av_reg)
+
+                // let obj_ptr_off = self
+                //     .local_offset(class_name)
+                //     .expect("Error reading class name");
+                // let obj_ptr_reg = self.regs.pop_front().expect("No registers");
+
+                // // load the object pointer from local variable
+                // self.output
+                //     .push_str(&format!("mov {obj_ptr_reg}, qword [rbp - {obj_ptr_off}]\n"));
+
+                // // compute field offset
+                // let mut field_offset = 0;
+                // for field in &class_layout.fields {
+                //     if &field.name == instance_name {
+                //         field_offset = field.offset;
+                //         break;
+                //     }
+                // }
+
+                // // load field value
+                // self.output.push_str(&format!(
+                //     "mov {obj_ptr_reg}, qword [{obj_ptr_reg} + {field_offset}]\n"
+                // ));
+
+                // Some(obj_ptr_reg)
+
                 let val_reg = self.regs.pop_front().expect("No registers available");
 
                 let ptr_reg = self
@@ -1176,6 +1333,80 @@ impl CodeGen {
                 }
             }
 
+            Expr::ClassInit { name, params } => {
+                let class_info = self.classes.get(name);
+
+                if class_info.is_none() {
+                    panic!("Class {} not found", name);
+                }
+
+                let (class_layout, _) = class_info.unwrap();
+
+                // Clone the field names and positions to avoid borrowing issues
+                let field_positions: HashMap<String, usize> = class_layout
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, field)| (field.name.clone(), i))
+                    .collect();
+                let field_count = class_layout.fields.len();
+
+                // First, evaluate all expressions to get their register values
+                let mut param_values = Vec::new();
+                for (param_name, param_expr) in params {
+                    let r = self.handle_expr(param_expr, None).expect("ctor arg");
+                    param_values.push((param_name, r));
+                }
+
+                // Map named parameters to their correct positions
+                let mut ordered_args = vec![String::new(); field_count];
+                for (param_name, reg) in param_values {
+                    if let Some(&pos) = field_positions.get(param_name) {
+                        ordered_args[pos] = reg;
+                    } else {
+                        panic!("Field {} not found in class {}", param_name, name);
+                    }
+                }
+
+                // Filter out empty strings and get the actual argument values
+                let arg_vals: Vec<String> =
+                    ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
+
+                let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+                if arg_vals.len() > abi_regs.len() {
+                    panic!("More than 5 constructor args not supported yet");
+                }
+
+                for (i, r) in arg_vals.iter().enumerate() {
+                    if r != abi_regs[i] {
+                        self.output
+                            .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
+                    }
+                }
+                for r in arg_vals {
+                    self.regs.push_back(r);
+                }
+
+                let ctor = format!("{name}.new");
+                self.call_with_alignment(&ctor);
+
+                let class = &Type::Pointer(Box::new(Type::Class {
+                    name: name.to_string(),
+                    instances: params
+                        .iter()
+                        .map(|(name, expr)| (name.clone(), expr.get_type()))
+                        .collect(),
+                }));
+
+                println!("allocated {class:?}");
+
+                let reg = self.regs.pop_front().expect("No regs");
+
+                self.output.push_str(&format!("mov {reg}, rax\n"));
+
+                Some(reg)
+            }
+
             Expr::Assign { name, value } => {
                 let offset = self
                     .local_offset(name)
@@ -1186,7 +1417,7 @@ impl CodeGen {
                             .local_offset(&x)
                             .expect(&format!("Error with variable: {x}"));
                         self.output
-                            .push_str(&format!("mov qword [rbp - {offset}], [rbp - {var_off}]\n"));
+                            .push_str(&format!("mov qword [rbp - {offset}], [rbp - {var_off}]"));
                     }
                     Expr::IntLiteral(n) => {
                         self.output
@@ -1204,7 +1435,7 @@ impl CodeGen {
                             .unwrap_or_else(|| panic!("Class '{}' not found", class_name))
                             .0
                             .clone()
-                            .unwrap_or_else(|| panic!("Class type not found for '{class_name}'"));
+                            .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
 
                         let class_layout = &self
                             .classes
@@ -1215,16 +1446,16 @@ impl CodeGen {
                         let mut field_offset = None;
                         let mut field_type = None;
                         for field in &class_layout.fields {
-                            if field.name == instance_name {
+                            if &field.name == &instance_name {
                                 field_offset = Some(field.offset as i32);
                                 // Get the field type from the class definition
-                                if let Some((_, Stmt::ClassDecl { instances, .. })) =
-                                    self.classes.get(class_type.trim())
-                                {
-                                    for (fname, ftype) in instances {
-                                        if fname == &instance_name {
-                                            field_type = Some(ftype);
-                                            break;
+                                if let Some((_, class_stmt)) = self.classes.get(class_type.trim()) {
+                                    if let Stmt::ClassDecl { instances, .. } = class_stmt {
+                                        for (fname, ftype) in instances {
+                                            if fname == &instance_name {
+                                                field_type = Some(ftype);
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1246,17 +1477,23 @@ impl CodeGen {
                             Type::int => {
                                 if let Some(val_reg) = self.handle_expr(value, None) {
                                     self.output.push_str(&format!(
-                                        "mov dword [rbp - {offset}], {}\n",
-                                        Self::reg32(&val_reg)
+                                        "mov dword [rbp - {offset}], {val_reg}\n"
                                     ));
                                     self.regs.push_back(val_reg);
                                 }
                             }
-                            Type::Char | Type::Bool => {
+                            Type::Char => {
                                 if let Some(val_reg) = self.handle_expr(value, None) {
                                     self.output.push_str(&format!(
-                                        "mov byte [rbp - {offset}], {}\n",
-                                        Self::reg8(&val_reg)
+                                        "mov byte [rbp - {offset}], {val_reg}\n"
+                                    ));
+                                    self.regs.push_back(val_reg);
+                                }
+                            }
+                            Type::Bool => {
+                                if let Some(val_reg) = self.handle_expr(value, None) {
+                                    self.output.push_str(&format!(
+                                        "mov byte [rbp - {offset}], {val_reg}\n"
                                     ));
                                     self.regs.push_back(val_reg);
                                 }
@@ -1293,6 +1530,7 @@ impl CodeGen {
                     ..
                 } => self.handle_expr(inner, None),
                 Expr::Variable(var_name) => {
+                    // println!("ref to {var_name}");
                     let off = self
                         .local_offset(var_name)
                         .unwrap_or_else(|| panic!("Unknown var '{var_name}'"));
@@ -1323,11 +1561,77 @@ impl CodeGen {
                     self.regs.push_back(idx_reg);
                     Some(addr)
                 }
-                Expr::ClassInit { .. } => {
-                    let reg = self.regs.pop_front().expect("No regs");
-                    let off = self.locals.len() * 8;
+                Expr::ClassInit { name, params } => {
+                    // Get the class layout to map named parameters to field positions
+                    let class_info = self.classes.get(name);
 
-                    self.output.push_str(&format!("lea {reg}, [rbp - {off}]\n"));
+                    if class_info.is_none() {
+                        panic!("Class {} not found", name);
+                    }
+
+                    let (class_layout, _) = class_info.unwrap();
+
+                    // Clone the field names and positions to avoid borrowing issues
+                    let field_positions: HashMap<String, usize> = class_layout
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, field)| (field.name.clone(), i))
+                        .collect();
+                    let field_count = class_layout.fields.len();
+
+                    // First, evaluate all expressions to get their register values
+                    let mut param_values = Vec::new();
+                    for (param_name, param_expr) in params {
+                        let r = self.handle_expr(param_expr, None).expect("ctor arg");
+                        param_values.push((param_name, r));
+                    }
+
+                    // Map named parameters to their correct positions
+                    let mut ordered_args = vec![String::new(); field_count];
+                    for (param_name, reg) in param_values {
+                        if let Some(&pos) = field_positions.get(param_name) {
+                            ordered_args[pos] = reg;
+                        } else {
+                            panic!("Field {} not found in class {}", param_name, name);
+                        }
+                    }
+
+                    // Filter out empty strings and get the actual argument values
+                    let arg_vals: Vec<String> =
+                        ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
+
+                    let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+                    if arg_vals.len() > abi_regs.len() {
+                        panic!("More than 5 constructor args not supported yet");
+                    }
+
+                    for (i, r) in arg_vals.iter().enumerate() {
+                        if r != abi_regs[i] {
+                            self.output
+                                .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
+                        }
+                    }
+                    for r in arg_vals {
+                        self.regs.push_back(r);
+                    }
+
+                    let ctor = format!("{name}.new");
+                    self.call_with_alignment(&ctor);
+
+                    let class = &Type::Pointer(Box::new(Type::Class {
+                        name: name.to_string(),
+                        instances: params
+                            .iter()
+                            .map(|(name, expr)| (name.clone(), expr.get_type()))
+                            .collect(),
+                    }));
+
+                    println!("allocated {class:?}");
+
+                    let reg = self.regs.pop_front().expect("No regs");
+
+                    self.output.push_str(&format!("mov {reg}, rax\n"));
 
                     Some(reg)
                 }
@@ -1339,15 +1643,15 @@ impl CodeGen {
                     let class_type = self
                         .locals
                         .get(class_name)
-                        .unwrap_or_else(|| panic!("Class '{class_name}' not found"))
+                        .unwrap_or_else(|| panic!("Class '{}' not found", class_name))
                         .0
                         .clone()
-                        .unwrap_or_else(|| panic!("Class type not found for '{class_name}'"));
+                        .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
 
                     let class_layout = &self
                         .classes
                         .get(&class_type)
-                        .unwrap_or_else(|| panic!("Class layout not found for '{class_type}'"))
+                        .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
                         .0;
 
                     let field_offset = class_layout
@@ -1355,16 +1659,19 @@ impl CodeGen {
                         .iter()
                         .find(|f| &f.name == field_name)
                         .unwrap_or_else(|| {
-                            panic!("Field '{field_name}' not found in class '{class_type}'")
+                            panic!("Field '{}' not found in class '{}'", field_name, class_type)
                         })
                         .offset;
 
+                    // Get a register for the address
                     let addr_reg = self.regs.pop_front().expect("No registers available");
 
+                    // Calculate address: obj_ptr + field_offset
                     self.output.push_str(&format!(
                         "lea {addr_reg}, [{obj_ptr_reg} + {field_offset}]\n"
                     ));
 
+                    // Return the object pointer register to the pool
                     self.regs.push_back(obj_ptr_reg);
 
                     Some(addr_reg)
@@ -1400,7 +1707,6 @@ impl CodeGen {
             Expr::DerefAssign { target, value } => {
                 let ptr_reg = self.handle_expr(target, None).expect("ptr reg");
                 if let Some(val_reg) = self.handle_expr(value, None) {
-                    // NOTE: always qword; consider sizing by pointee type if you carry it.
                     self.output
                         .push_str(&format!("mov qword [{ptr_reg}], {val_reg}\n"));
                     self.regs.push_back(ptr_reg);
