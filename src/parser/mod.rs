@@ -76,27 +76,49 @@ impl Parser {
         if let TokenType::Identifier(decl) = &self.peek().token_type.clone() {
             self.advance();
 
-            if let TokenType::LeftParen = self.peek().token_type {
-                let str = self.expression()?;
+            // if let TokenType::LeftParen = self.peek().token_type {
+            //     let str = self.expression()?;
 
-                self.current -= 1;
+            //     self.current -= 1;
 
-                match str {
-                    Expr::StringLiteral(param) => {
-                        let stmt = Stmt::AtDecl(decl.to_string(), Some(param));
+            //     match str {
+            //         Expr::StringLiteral(param) => {
+            //             let stmt = Stmt::AtDecl(decl.to_string(), Some(param));
 
-                        self.consume(TokenType::RightParen, "Expected ')'")?;
+            //             self.consume(TokenType::RightParen, "Expected ')'")?;
 
-                        self.consume(TokenType::Semicolon, "Expected ';'")?;
-                        return Ok(stmt);
-                    }
-                    _ => {
+            //             self.consume(TokenType::Semicolon, "Expected ';'")?;
+            //             return Ok(stmt);
+            //         }
+            //         _ => {
+            //             return Err(ParseError::Expected {
+            //                 expected: TokenType::Identifier("declaration".to_string()),
+            //                 found: self.peek().clone(),
+            //                 message: "Expected declaration after '@'".to_owned(),
+            //             });
+            //         }
+            //     }
+            // }
+
+            if let TokenType::DoubleColon = self.peek().token_type {
+                self.advance();
+                if let TokenType::Less = self.peek().token_type {
+                    self.advance(); // consume '('
+                    let param = if let TokenType::Identifier(s) = &self.peek().token_type {
+                        let val = s.clone();
+                        self.advance(); // consume string
+                        val
+                    } else {
                         return Err(ParseError::Expected {
-                            expected: TokenType::Identifier("declaration".to_string()),
+                            expected: TokenType::Identifier("".to_string()),
                             found: self.peek().clone(),
-                            message: "Expected declaration after '@'".to_owned(),
+                            message: "Expected identifier in @import".to_owned(),
                         });
-                    }
+                    };
+
+                    self.consume(TokenType::Greater, "Expected ')'")?;
+                    self.consume(TokenType::Semicolon, "Expected ';'")?;
+                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param)));
                 }
             }
 
