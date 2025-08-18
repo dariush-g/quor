@@ -11,22 +11,35 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 8
-mov rcx, 4
+mov rcx, 2
 mov rdi , rcx
 sub rsp, 8
 call malloc
 add rsp, 8
 mov qword [rbp - 8], rax
 mov rdx, qword [rbp - 8]
-mov rdx, qword [rdx]
-mov r8, qword [rbp - 8]
+mov r8, 'h'
+mov qword [rdx], r8
+mov r9, qword [rbp - 8]
+mov r10, 1
+add r9, r10
+mov qword [rbp - 8], r9
+mov r11, qword [rbp - 8]
+mov r12, 'i'
+mov qword [r11], r12
+mov r13, qword [rbp - 8]
+mov r14, 1
+sub r13, r14
+mov qword [rbp - 8], r13
+mov rcx, qword [rbp - 8]
+mov rax, 1
+add rcx, rax
+mov rdi , rcx
 sub rsp, 8
-mov qword [rbp - 16], r8
-mov rax , 0
-mov rdi , rax
-call print_int
-mov r9, 0
-mov rax, r9
+call print_char
+add rsp, 8
+mov rdx, 0
+mov rax, rdx
 jmp .Lret_main
 xor rax, rax
 .Lret_main:

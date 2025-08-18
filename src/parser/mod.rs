@@ -344,14 +344,12 @@ impl Parser {
                 Expr::Unary {
                     op: UnaryOp::Dereference,
                     ref expr,
-                    ref result_type,
+                    ..
                 } => {
-                    if result_type == &Type::Void {
-                        return Ok(Expr::DerefAssign {
-                            target: expr.clone(),
-                            value: Box::new(value),
-                        });
-                    }
+                    return Ok(Expr::DerefAssign {
+                        target: expr.clone(),
+                        value: Box::new(value),
+                    });
                 }
                 Expr::InstanceVar(class_name, instance_name) => {
                     // return Ok(Expr::InstanceVar(class_name, instance_name));

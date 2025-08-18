@@ -454,7 +454,7 @@ impl CodeGen {
 
                     let off = self.alloc_local(name, class);
 
-                    println!("allocated {class:?}");
+                    // println!("allocated {class:?}");
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {off}], rax\n"));
@@ -1071,7 +1071,7 @@ impl CodeGen {
                         panic!("sizeof takes 1 arg");
                     }
 
-                    println!("{args:?}");
+                    // println!("{args:?}");
 
                     let size = args[0].get_type().size();
 
@@ -1246,10 +1246,6 @@ impl CodeGen {
 
                 let val_reg = self.regs.pop_front().expect("No registers available");
 
-                let ptr_reg = self
-                    .handle_expr(&Expr::Variable(class_name.to_string(), Type::Unknown), None)
-                    .expect("Could not load class pointer");
-
                 let class_type = self
                     .locals
                     .get(class_name)
@@ -1259,6 +1255,10 @@ impl CodeGen {
                     .0
                     .clone()
                     .unwrap_or_else(|| panic!("Class type not found for variable '{class_name}'"));
+
+                let ptr_reg = self
+                    .handle_expr(&Expr::Variable(class_name.to_string(), Type::Unknown), None)
+                    .expect("Could not load class pointer");
 
                 let class_layout = &self
                     .classes
@@ -1654,7 +1654,7 @@ impl CodeGen {
                             .collect(),
                     }));
 
-                    println!("allocated {class:?}");
+                    // println!("allocated {class:?}");
 
                     let reg = self.regs.pop_front().expect("No regs");
 
@@ -1749,6 +1749,15 @@ impl CodeGen {
             } => {
                 let lhs = self.handle_expr(left, None).unwrap();
                 let rhs = self.handle_expr(right, None).unwrap();
+
+
+
+                // TODO: get left / right type and match to pointer -> multiply the added value to pointer by the size of the inner type
+
+
+
+
+
                 match op {
                     BinaryOp::Add => {
                         self.output.push_str(&format!("add {lhs}, {rhs}\n"));

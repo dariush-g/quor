@@ -218,8 +218,6 @@ fn main() {
         }
     };
 
-    println!("{program:?}");
-
     // Type check
     let typed = match TypeChecker::analyze_program(program) {
         Ok(tp) => tp,
@@ -228,6 +226,8 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    println!("{typed:?}");
 
     // Codegen → ASM
     let codegen = CodeGen::generate(&typed);
