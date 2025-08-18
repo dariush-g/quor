@@ -333,10 +333,16 @@ impl CodeGen {
 
                     match param.as_str() {
                         "io" => {
-                            let print = fs::read_to_string("./src/bltin/print.asm")
+                            let print = fs::read_to_string("./src/stdlib/print.asm")
                                 .unwrap_or_else(|_| panic!("Error importing io"));
 
                             let _ = &self.output.push_str(&print);
+                        }
+                        "mem" => {
+                            let mem = fs::read_to_string("./src/stdlib/mem.asm")
+                                .unwrap_or_else(|_| panic!("Error importing io"));
+
+                            let _ = &self.output.push_str(&mem);
                         }
                         _ => {}
                     }
@@ -1059,6 +1065,27 @@ impl CodeGen {
             }
             Expr::Call { name, args, .. } => {
                 let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+
+                if name == "sizeof" {
+                    if args.len() > 1 {
+                        panic!("sizeof takes 1 arg");
+                    }
+
+                    println!("{args:?}");
+
+                    let size = args[0].get_type().size();
+
+                    for (i, reg) in self.regs.clone().iter().enumerate() {
+                        if reg == "rax" {
+                            self.regs.remove(i);
+                        }
+                    }
+
+                    self.output.push_str(&format!("mov rax , {size}\n"));
+
+                    return Some("rax".to_string());
+                }
+
                 let mut temps: Vec<String> = Vec::new();
                 for (idx, a) in args.iter().enumerate() {
                     let r = self.handle_expr(a, None).expect("arg reg");
@@ -1220,7 +1247,7 @@ impl CodeGen {
                 let val_reg = self.regs.pop_front().expect("No registers available");
 
                 let ptr_reg = self
-                    .handle_expr(&Expr::Variable(class_name.to_string()), None)
+                    .handle_expr(&Expr::Variable(class_name.to_string(), Type::Unknown), None)
                     .expect("Could not load class pointer");
 
                 let class_type = self
@@ -1292,7 +1319,7 @@ impl CodeGen {
                 self.regs.push_back(ptr_reg);
                 Some(val_reg)
             }
-            Expr::Variable(name) => {
+            Expr::Variable(name, _) => {
                 let off = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
@@ -1304,7 +1331,7 @@ impl CodeGen {
             }
             Expr::ArrayAccess { array, index, .. } => {
                 let (_name, base_off) = match &**array {
-                    Expr::Variable(n) => {
+                    Expr::Variable(n, _) => {
                         let off = self
                             .locals
                             .get(n)
@@ -1390,7 +1417,7 @@ impl CodeGen {
                 let ctor = format!("{name}.new");
                 self.call_with_alignment(&ctor);
 
-                let class = &Type::Pointer(Box::new(Type::Class {
+                let _class = &Type::Pointer(Box::new(Type::Class {
                     name: name.to_string(),
                     instances: params
                         .iter()
@@ -1398,7 +1425,7 @@ impl CodeGen {
                         .collect(),
                 }));
 
-                println!("allocated {class:?}");
+                // println!("allocated {class:?}");
 
                 let reg = self.regs.pop_front().expect("No regs");
 
@@ -1412,7 +1439,7 @@ impl CodeGen {
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
                 match *value.clone() {
-                    Expr::Variable(x) => {
+                    Expr::Variable(x, _) => {
                         let var_off = self
                             .local_offset(&x)
                             .expect(&format!("Error with variable: {x}"));
@@ -1529,7 +1556,7 @@ impl CodeGen {
                     expr: inner,
                     ..
                 } => self.handle_expr(inner, None),
-                Expr::Variable(var_name) => {
+                Expr::Variable(var_name, _) => {
                     // println!("ref to {var_name}");
                     let off = self
                         .local_offset(var_name)
@@ -1542,7 +1569,7 @@ impl CodeGen {
                     let base_off = self
                         .locals
                         .get(match &**array {
-                            Expr::Variable(n) => n,
+                            Expr::Variable(n, _) => n,
                             _ => panic!("Array base must be var"),
                         })
                         .expect("Error accessing array")
@@ -1637,7 +1664,7 @@ impl CodeGen {
                 }
                 Expr::InstanceVar(class_name, field_name) => {
                     let obj_ptr_reg = self
-                        .handle_expr(&Expr::Variable(class_name.clone()), None)
+                        .handle_expr(&Expr::Variable(class_name.clone(), Type::Unknown), None)
                         .expect("Could not load class pointer");
 
                     let class_type = self
@@ -1694,7 +1721,7 @@ impl CodeGen {
                     expr: inner,
                     ..
                 } => self.handle_expr(inner, None),
-                Expr::Variable(_) => {
+                Expr::Variable(_, _) => {
                     let ptr = self.handle_expr(expr, None).expect("ptr reg");
 
                     self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));

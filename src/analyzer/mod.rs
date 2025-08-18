@@ -54,6 +54,29 @@ impl TypeChecker {
                                 .declare_fn("print_char", vec![Type::Char], Type::Void)
                                 .map_err(|e| format!("Global scope error: {e}"))?;
                         }
+                        "mem" => {
+                            type_checker
+                                .declare_fn(
+                                    "free",
+                                    vec![Type::Pointer(Box::new(Type::Void))],
+                                    Type::Void,
+                                )
+                                .map_err(|e| format!("Global scope error: {e}"))?;
+                            type_checker
+                                .declare_fn(
+                                    "malloc",
+                                    vec![Type::int],
+                                    Type::Pointer(Box::new(Type::Void)),
+                                )
+                                .map_err(|e| format!("Global scope error: {e}"))?;
+                            type_checker
+                                .declare_fn(
+                                    "sizeof",
+                                    vec![Type::Pointer(Box::new(Type::Void))],
+                                    Type::int,
+                                )
+                                .map_err(|e| format!("Global scope error: {e}"))?;
+                        }
                         _ => {
                             let source = match fs::read_to_string(&path) {
                                 Ok(s) => s,
@@ -100,20 +123,21 @@ impl TypeChecker {
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
 
-        for stmt in &program {
+        for mut stmt in program.iter_mut() {
+            type_checker.fill_stmt_types(&mut stmt);
             if let Stmt::FunDecl {
                 name,
                 params,
                 return_type,
                 ..
-            } = stmt
+            } = stmt.clone()
             {
                 let param_types = params.iter().map(|(_, ty)| ty.clone()).collect();
-                if !function_names.insert(name) {
-                    return Err(format!("Function '{name}' already declared"));
+                if !function_names.insert(name.clone()) {
+                    return Err(format!("Function already declared"));
                 }
                 type_checker
-                    .declare_fn(name, param_types, return_type.clone())
+                    .declare_fn(name.as_str(), param_types, return_type.clone())
                     .map_err(|e| format!("Global scope error: {e}"))?;
             }
             if let Stmt::ClassDecl {
@@ -133,6 +157,99 @@ impl TypeChecker {
         }
 
         Ok(checked_program)
+    }
+
+    fn fill_stmt_types(&self, stmt: &mut Stmt) {
+        match stmt {
+            Stmt::Expression(expr) => self.fill_expr_types(expr),
+            Stmt::VarDecl { value, .. } => self.fill_expr_types(value),
+            Stmt::Return(Some(expr)) => self.fill_expr_types(expr),
+            Stmt::Return(None) => {}
+            Stmt::Block(stmts) => {
+                for s in stmts {
+                    self.fill_stmt_types(s);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_stmt,
+                else_stmt,
+            } => {
+                self.fill_expr_types(condition);
+                self.fill_stmt_types(then_stmt);
+                if let Some(else_stmt) = else_stmt {
+                    self.fill_stmt_types(else_stmt);
+                }
+            }
+            Stmt::While { condition, body } => {
+                self.fill_expr_types(condition);
+                self.fill_stmt_types(body);
+            }
+            Stmt::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
+                if let Some(init) = init {
+                    self.fill_stmt_types(init);
+                }
+                if let Some(cond) = condition {
+                    self.fill_expr_types(cond);
+                }
+                if let Some(update) = update {
+                    self.fill_expr_types(update);
+                }
+                self.fill_stmt_types(body);
+            }
+            Stmt::FunDecl { body, .. } => {
+                for s in body {
+                    self.fill_stmt_types(s);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn fill_expr_types(&self, expr: &mut Expr) {
+        match expr {
+            Expr::Variable(name, ty) => {
+                if matches!(ty, Type::Unknown) {
+                    if let Some(var_type) = self.get_var_type(name) {
+                        *ty = var_type;
+                    }
+                }
+            }
+            Expr::Unary { expr: inner, .. } => self.fill_expr_types(inner),
+            Expr::Binary { left, right, .. } => {
+                self.fill_expr_types(left);
+                self.fill_expr_types(right);
+            }
+            Expr::Assign { value, .. } => self.fill_expr_types(value),
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.fill_expr_types(arg);
+                }
+            }
+            Expr::ArrayAccess { array, index } => {
+                self.fill_expr_types(array);
+                self.fill_expr_types(index);
+            }
+            Expr::DerefAssign { target, value } => {
+                self.fill_expr_types(target);
+                self.fill_expr_types(value);
+            }
+            Expr::ClassInit { params, .. } => {
+                for (_, expr) in params {
+                    self.fill_expr_types(expr);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn get_var_type(&self, name: &str) -> Option<Type> {
+        self.lookup_var(name).cloned()
     }
 
     fn enter_scope(&mut self) {
@@ -196,7 +313,7 @@ impl TypeChecker {
             Expr::IntLiteral(_) => Ok(Type::int),
             Expr::FloatLiteral(_) => Ok(Type::float),
             Expr::CharLiteral(_) => Ok(Type::Char),
-            Expr::Variable(name) => self
+            Expr::Variable(name, _) => self
                 .lookup_var(name)
                 .cloned()
                 .ok_or_else(|| format!("Undeclared variable '{name}'")),
@@ -286,6 +403,7 @@ impl TypeChecker {
                     UnaryOp::AddressOf => Ok(Type::Pointer(Box::new(expr_type))),
                     UnaryOp::Dereference => match expr_type {
                         Type::Pointer(inner) => Ok(*inner.clone()),
+                        Type::Void => Ok(Type::Void),
                         _ => Err("Cannot dereference a non-pointer type".to_string()),
                     },
                 }
@@ -319,6 +437,16 @@ impl TypeChecker {
 
                     let arg_type = base_type(&arg_type);
 
+                    if matches!(expected_type, Type::Pointer(inner) if **inner == Type::Void) {
+                        if matches!(arg_type, Type::Pointer(_)) {
+                            continue; // allow any pointer as void*
+                        }
+                    }
+
+                    if name == "sizeof" {
+                        return Ok(Type::int);
+                    }
+
                     if arg_type != *expected_type {
                         return Err(format!(
                             "Argument type mismatch in call to '{name}': expected {expected_type:?}, got {arg_type:?}"
@@ -333,6 +461,11 @@ impl TypeChecker {
                 match (&expr_type, target_type) {
                     (Type::int, Type::float) | (Type::float, Type::int) => {}
                     (Type::Char, Type::int) | (Type::int, Type::Char) => {}
+                    (Type::Void, Type::int)
+                    | (Type::Void, Type::Bool)
+                    | (Type::Void, Type::Char)
+                    | (Type::Void, Type::float) => {}
+                    (Type::Void, Type::Class { .. }) => {}
                     (from, to) if from == to => {}
                     _ => {
                         return Err(format!(
@@ -369,11 +502,11 @@ impl TypeChecker {
                 let arr = *array.clone();
 
                 let name = match arr {
-                    Expr::Variable(name) => name,
+                    Expr::Variable(name, _) => name,
                     _ => return Err("Array type error".to_string()),
                 };
 
-                let array_full = self.type_check_expr(&Expr::Variable(name))?;
+                let array_full = self.type_check_expr(&Expr::Variable(name, Type::Unknown))?;
 
                 match array_full {
                     Type::Array(ty, len) => {
@@ -399,11 +532,26 @@ impl TypeChecker {
                 match target_type {
                     Type::Pointer(inner) => {
                         let val_ty = self.type_check_expr(value)?;
-                        if val_ty != *inner {
+                        if val_ty != *inner && *inner != Type::Void {
                             return Err(format!(
                                 "Type mismatch in deref assignment: expected {inner:?}, found {val_ty:?}"
                             ));
                         }
+
+                        if *inner == Type::Void {
+                            let val_ty = self.type_check_expr(value)?;
+
+                            // Update the variable type in-place
+                            if let Expr::Variable(n, _) = *target.clone() {
+                                if let Some(var_ty) = self.variables.last_mut().unwrap().get_mut(&n)
+                                {
+                                    *var_ty = Type::Pointer(Box::new(val_ty.clone()));
+                                }
+                            }
+
+                            return Ok(val_ty);
+                        }
+
                         Ok(*inner)
                     }
                     _ => Err("Cannot assign through a non-pointer value".to_string()),

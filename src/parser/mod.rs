@@ -334,7 +334,7 @@ impl Parser {
             let value = self.assignment()?;
 
             match expr {
-                Expr::Variable(name) => {
+                Expr::Variable(name, _) => {
                     return Ok(Expr::Assign {
                         name,
                         value: Box::new(value),
@@ -343,13 +343,15 @@ impl Parser {
 
                 Expr::Unary {
                     op: UnaryOp::Dereference,
-                    expr,
-                    ..
+                    ref expr,
+                    ref result_type,
                 } => {
-                    return Ok(Expr::DerefAssign {
-                        target: expr,
-                        value: Box::new(value),
-                    });
+                    if result_type == &Type::Void {
+                        return Ok(Expr::DerefAssign {
+                            target: expr.clone(),
+                            value: Box::new(value),
+                        });
+                    }
                 }
                 Expr::InstanceVar(class_name, instance_name) => {
                     // return Ok(Expr::InstanceVar(class_name, instance_name));
@@ -506,6 +508,32 @@ impl Parser {
         Ok(expr)
     }
 
+    // fn unary(&mut self) -> Result<Expr, ParseError> {
+    //     if self.match_token(&[
+    //         TokenType::Bang,
+    //         TokenType::Minus,
+    //         TokenType::Star,
+    //         TokenType::Ampersand,
+    //     ]) {
+    //         let op = match self.previous().token_type {
+    //             TokenType::Bang => UnaryOp::Not,
+    //             TokenType::Minus => UnaryOp::Negate,
+    //             TokenType::Star => UnaryOp::Dereference,
+    //             TokenType::Ampersand => UnaryOp::AddressOf,
+    //             _ => unreachable!(),
+    //         };
+
+    //         let right = self.unary()?;
+    //         return Ok(Expr::Unary {
+    //             op,
+    //             expr: Box::new(right.clone()),
+    //             result_type: Type::Unknown,
+    //         });
+    //     }
+
+    //     self.cast()
+    // }
+
     fn unary(&mut self) -> Result<Expr, ParseError> {
         if self.match_token(&[
             TokenType::Bang,
@@ -522,10 +550,31 @@ impl Parser {
             };
 
             let right = self.unary()?;
+            let right_type = right.get_type();
+
+            let result_type = match op {
+                UnaryOp::Dereference => match right_type {
+                    Type::Pointer(pointee_type) => *pointee_type,
+                    Type::Void => Type::Void,
+                    _ => {
+                        // return Err(ParseError::InvalidAssignmentTarget);
+
+                        return Ok(Expr::Unary {
+                            op,
+                            expr: Box::new(right),
+                            result_type: Type::Unknown,
+                        });
+                    }
+                },
+                UnaryOp::AddressOf => Type::Pointer(Box::new(right_type)),
+                UnaryOp::Not => Type::Bool,
+                UnaryOp::Negate => right_type,
+            };
+
             return Ok(Expr::Unary {
                 op,
                 expr: Box::new(right),
-                result_type: Type::Unknown,
+                result_type,
             });
         }
 
@@ -570,11 +619,11 @@ impl Parser {
 
         self.consume(TokenType::RightParen, "Expected ')' after arguments")?;
 
-        if let Expr::Variable(name) = callee {
+        if let Expr::Variable(name, ty) = callee {
             Ok(Expr::Call {
                 name,
                 args: arguments,
-                return_type: Type::Unknown,
+                return_type: ty,
             })
         } else {
             Err(ParseError::InvalidCallTarget)
@@ -681,7 +730,7 @@ impl Parser {
                 }
 
                 if self.peek().token_type == TokenType::LeftBracket {
-                    let array = Box::new(Expr::Variable(name.clone()));
+                    let array = Box::new(Expr::Variable(name.clone(), Type::Unknown));
                     self.advance();
                     let peeked = self.peek().clone().token_type;
                     match peeked {
@@ -708,7 +757,7 @@ impl Parser {
 
                             return Ok(Expr::ArrayAccess {
                                 array,
-                                index: Box::new(Expr::Variable(name.to_string())),
+                                index: Box::new(Expr::Variable(name.to_string(), Type::Unknown)),
                             });
                         }
                         _ => {
@@ -728,7 +777,7 @@ impl Parser {
                     }
                 }
 
-                Ok(Expr::Variable(name.clone()))
+                Ok(Expr::Variable(name.clone(), Type::Unknown))
             }
             TokenType::LeftParen => {
                 self.advance();

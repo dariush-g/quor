@@ -15,15 +15,17 @@
 **Code:**
 
 ```quor
+@import::<io>;
 
-@import::<io>
+def add(a: int, b: int) :: int {
+    return a + b;
+}
 
 def main() :: int {
-    let x: int = 5;
-    let p: int* = &x;
-    let y: int = *p + 3;
+    
+    print_int(add(1, 2));
 
-    print_int(y);
+    return 0;
 }
 ```
 
