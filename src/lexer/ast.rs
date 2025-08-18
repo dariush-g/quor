@@ -38,6 +38,18 @@ impl Type {
             _ => None,
         }
     }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Type::int => 4,
+            Type::Char => 1,
+            Type::Bool => 1,
+            Type::Pointer(_) => 8,
+            Type::Array(elem, len) => elem.size() * len.unwrap(),
+            Type::Class { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -64,7 +76,7 @@ pub enum Expr {
     //          class, iname
     InstanceVar(String, String),
 
-    Variable(String),
+    Variable(String, Type),
 
     Assign {
         name: String,
@@ -121,7 +133,7 @@ impl Expr {
             Expr::FloatLiteral(_) => Type::float,
             Expr::BoolLiteral(_) => Type::Bool,
             Expr::CharLiteral(_) => Type::Char,
-            Expr::Variable(_) => Type::Unknown,
+            Expr::Variable(_, ty) => ty.clone(),
             Expr::Binary { result_type, .. } => result_type.clone(),
             Expr::Unary { result_type, .. } => result_type.clone(),
             Expr::Call { return_type, .. } => return_type.clone(),
@@ -131,6 +143,11 @@ impl Expr {
             Expr::Array(elements, element_type) => {
                 Type::Array(Box::new(element_type.clone()), Some(elements.len()))
             }
+            // Expr::StringLiteral(_) => Type::Class { name: (), instances: () },
+            // Expr::InstanceVar(_, _) => todo!(),
+            Expr::Assign { value, .. } => value.get_type(),
+            // Expr::ArrayAccess { array, index } => todo!(),
+            // Expr::FieldAssign { class_name, field, value } => todo!(),
             _ => Type::Unknown,
         }
     }

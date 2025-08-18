@@ -1,0 +1,2 @@
+extern malloc
+extern free
