@@ -123,8 +123,7 @@ impl TypeChecker {
         let mut checked_program = Vec::new();
         let mut function_names = HashSet::new();
 
-        for mut stmt in program.iter_mut() {
-            type_checker.fill_stmt_types(&mut stmt);
+        for stmt in program.iter_mut() {
             if let Stmt::FunDecl {
                 name,
                 params,
@@ -155,6 +154,12 @@ impl TypeChecker {
             let checked_stmt = type_checker.type_check_stmt(&stmt)?;
             checked_program.push(checked_stmt);
         }
+
+        for mut stmt in &mut checked_program {
+            type_checker.fill_stmt_types(&mut stmt);
+        }
+
+        // println!("{:?}", type_checker.variables);
 
         Ok(checked_program)
     }
@@ -215,8 +220,8 @@ impl TypeChecker {
         match expr {
             Expr::Variable(name, ty) => {
                 if matches!(ty, Type::Unknown) {
-                    if let Some(var_type) = self.get_var_type(name) {
-                        *ty = var_type;
+                    if let Some(var_type) = self.lookup_var(name) {
+                        *ty = var_type.clone();
                     }
                 }
             }
@@ -229,6 +234,7 @@ impl TypeChecker {
             Expr::Call { args, .. } => {
                 for arg in args {
                     self.fill_expr_types(arg);
+                    // println!("{name} {:?}", arg);
                 }
             }
             Expr::ArrayAccess { array, index } => {
@@ -248,17 +254,13 @@ impl TypeChecker {
         }
     }
 
-    pub fn get_var_type(&self, name: &str) -> Option<Type> {
-        self.lookup_var(name).cloned()
-    }
-
     fn enter_scope(&mut self) {
         self.variables.push(HashMap::new());
     }
 
-    fn exit_scope(&mut self) {
-        self.variables.pop().expect("Cannot exit global scope");
-    }
+    // fn exit_scope(&mut self) {
+    //     self.variables.pop().expect("Cannot exit global scope");
+    // }
 
     fn declare_var(&mut self, name: &str, ty: Type) -> Result<(), String> {
         if self.variables.last().unwrap().contains_key(name) {
@@ -336,9 +338,38 @@ impl TypeChecker {
                 let left_type = self.type_check_expr(left)?;
                 let right_type = self.type_check_expr(right)?;
 
-                if left_type != right_type {
+                if let Type::Pointer(_) = left_type {
+                    match op {
+                        BinaryOp::Add | BinaryOp::Sub => {
+                            if !matches!(right_type, Type::int) {
+                                return Err(format!(
+                                    "Arithmetic operations only for pointer types, found {right_type:?}"
+                                ));
+                            }
+                            
+                            return Ok(left_type);
+                        }
+                        BinaryOp::Equal | BinaryOp::NotEqual => {
+                            return Ok(Type::Bool);
+                        }
+                        _ => {}
+                    }
+                } else if let Type::Pointer(_) = right_type {
+                    match op {
+                        BinaryOp::Add | BinaryOp::Sub => {
+                            if !matches!(left_type, Type::int) {
+                                return Err(format!(
+                                    "Arithmetic operations only for pointer types, found {left_type:?}"
+                                ));
+                            }
+                            return Ok(right_type);
+                        }
+                        BinaryOp::Equal | BinaryOp::NotEqual => return Ok(Type::Bool),
+                        _ => {}
+                    }
+                } else if left_type != right_type {
                     return Err(format!(
-                        "Type mismatch in binary operation: left is {left_type:?}, right is {right_type:?}"
+                        "Type mismatch in binary op: left is {left_type:?}, right is {right_type:?}"
                     ));
                 }
 
@@ -840,7 +871,7 @@ impl TypeChecker {
                         ));
                     }
                 }
-                self.exit_scope();
+                // self.exit_scope();
                 self.current_return_type = None;
                 Ok(Stmt::FunDecl {
                     name: name.clone(),
@@ -916,7 +947,7 @@ impl TypeChecker {
 
                 let checked_body = self.type_check_stmt(body)?;
 
-                self.exit_scope();
+                // self.exit_scope();
                 self.in_loop = prev_in_loop;
 
                 Ok(Stmt::For {
@@ -934,7 +965,7 @@ impl TypeChecker {
                     checked_stmts.push(self.type_check_stmt(stmt)?);
                 }
 
-                self.exit_scope();
+                // self.exit_scope();
                 Ok(Stmt::Block(checked_stmts))
             }
             Stmt::Expression(expr) => {
