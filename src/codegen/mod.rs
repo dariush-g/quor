@@ -1646,7 +1646,7 @@ impl CodeGen {
                     let ctor = format!("{name}.new");
                     self.call_with_alignment(&ctor);
 
-                    let class = &Type::Pointer(Box::new(Type::Class {
+                    let _class = &Type::Pointer(Box::new(Type::Class {
                         name: name.to_string(),
                         instances: params
                             .iter()
@@ -1750,13 +1750,40 @@ impl CodeGen {
                 let lhs = self.handle_expr(left, None).unwrap();
                 let rhs = self.handle_expr(right, None).unwrap();
 
-
-
                 // TODO: get left / right type and match to pointer -> multiply the added value to pointer by the size of the inner type
 
+                match left.get_type() {
+                    Type::Pointer(inside_ty) => match right.get_type() {
+                        Type::int => {
+                            let size = inside_ty.size();
+                            self.output.push_str(&format!("imul {rhs}, {size}\n"));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
 
+                match left.get_type() {
+                    Type::Pointer(inside_ty) => match right.get_type() {
+                        Type::int => {
+                            let size = inside_ty.size();
+                            self.output.push_str(&format!("imul {rhs}, {size}\n"));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
 
-
+                match right.get_type() {
+                    Type::Pointer(inside_ty) => match left.get_type() {
+                        Type::int => {
+                            let size = inside_ty.size();
+                            self.output.push_str(&format!("imul {lhs}, {size}\n"));
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
 
                 match op {
                     BinaryOp::Add => {
