@@ -33,46 +33,201 @@ impl Default for TypeChecker {
     }
 }
 
+use std::path::{Path, PathBuf};
+
+fn canonicalize_path(path: &str) -> PathBuf {
+    fs::canonicalize(Path::new(path))
+        .unwrap_or_else(|_| panic!("Unable to canonicalize path {path}"))
+}
+
+pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
+    let mut imported_files: HashSet<PathBuf> = HashSet::new();
+
+    for stmt in program.clone() {
+        if let Stmt::AtDecl(decl, param) = stmt {
+            if decl.as_str() == "import" {
+                let mut param = param
+                    .clone()
+                    .unwrap_or_else(|| panic!("Unable to locate import"));
+
+                // === Resolve final path string ===
+                let path = if param.ends_with('!') {
+                    // stdlib import
+                    param.pop(); // remove '!'
+                    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+                    format!("{manifest_dir}/src/stdlib/{param}")
+                } else {
+                    // local import
+                    param.clone()
+                };
+
+                // === Canonicalize path ===
+                let abs_path = canonicalize_path(&path);
+
+                // === Deduplication check ===
+                if imported_files.contains(&abs_path) {
+                    // already imported → skip
+                    continue;
+                }
+                imported_files.insert(abs_path.clone());
+
+                // === Read + process source ===
+                let source = match fs::read_to_string(&abs_path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Failed to read {abs_path:?}: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let mut lexer = Lexer::new(source);
+                let tokens = match lexer.tokenize() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("Lexer error: {e:?}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let mut parser = Parser::new(tokens);
+                let mut program_new = match parser.parse() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Parser error: {e:?}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // === Prepend imported program ===
+                program_new.append(&mut program.clone());
+                *program = program_new;
+            }
+        }
+    }
+
+    program.to_vec()
+}
+
 impl TypeChecker {
     pub fn analyze_program(mut program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
 
-        for stmt in program.clone() {
-            if let Stmt::AtDecl(decl, param) = stmt {
-                if decl.as_str() == "import" {
-                    let path = param.unwrap_or_else(|| panic!("error reading import"));
+        // for stmt in program.clone() {
+        //     if let Stmt::AtDecl(decl, param) = stmt {
+        //         // if decl.as_str() == "import" {
+        //         //     let path = param.unwrap_or_else(|| panic!("error reading import"));
 
-                    let source = match fs::read_to_string(&path) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("Failed to read {path}: {e}");
-                            std::process::exit(1);
-                        }
-                    };
+        //         //     let source = match fs::read_to_string(&path) {
+        //         //         Ok(s) => s,
+        //         //         Err(e) => {
+        //         //             eprintln!("Failed to read {path}: {e}");
+        //         //             std::process::exit(1);
+        //         //         }
+        //         //     };
 
-                    let mut lexer = Lexer::new(source);
-                    let tokens = match lexer.tokenize() {
-                        Ok(t) => t,
-                        Err(e) => {
-                            eprintln!("Lexer error: {e:?}");
-                            std::process::exit(1);
-                        }
-                    };
+        //         //     let mut lexer = Lexer::new(source);
+        //         //     let tokens = match lexer.tokenize() {
+        //         //         Ok(t) => t,
+        //         //         Err(e) => {
+        //         //             eprintln!("Lexer error: {e:?}");
+        //         //             std::process::exit(1);
+        //         //         }
+        //         //     };
 
-                    let mut parser = Parser::new(tokens);
-                    let mut program_new = match parser.parse() {
-                        Ok(p) => p,
-                        Err(e) => {
-                            eprintln!("Parser error: {e:?}");
-                            std::process::exit(1);
-                        }
-                    };
+        //         //     let mut parser = Parser::new(tokens);
+        //         //     let mut program_new = match parser.parse() {
+        //         //         Ok(p) => p,
+        //         //         Err(e) => {
+        //         //             eprintln!("Parser error: {e:?}");
+        //         //             std::process::exit(1);
+        //         //         }
+        //         //     };
 
-                    program_new.append(&mut program);
-                    program = program_new
-                }
-            }
-        }
+        //         //     program_new.append(&mut program);
+        //         //     program = program_new
+        //         // }
+
+        //         if decl.as_str() == "import" {
+        //             let mut param = param
+        //                 .clone()
+        //                 .unwrap_or_else(|| panic!("Unable to locate import"));
+
+        //             if param.ends_with('!') {
+        //                 param.remove(param.len() - 1);
+
+        //                 let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+        //                 let dir = format!("{manifest_dir}/src/stdlib/{param}");
+
+        //                 // let path = fs::read_to_string(dir)
+        //                 //     .unwrap_or_else(|_| panic!("Unable to find file {param}"));
+
+        //                 let source = match fs::read_to_string(&dir) {
+        //                     Ok(s) => s,
+        //                     Err(e) => {
+        //                         eprintln!("Failed to read {dir}: {e}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut lexer = Lexer::new(source);
+        //                 let tokens = match lexer.tokenize() {
+        //                     Ok(t) => t,
+        //                     Err(e) => {
+        //                         eprintln!("Lexer error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut parser = Parser::new(tokens);
+        //                 let mut program_new = match parser.parse() {
+        //                     Ok(p) => p,
+        //                     Err(e) => {
+        //                         eprintln!("Parser error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 program_new.append(&mut program);
+        //                 program = program_new
+        //             } else {
+        //                 // let path = fs::read_to_string(param.clone())
+        //                 //     .unwrap_or_else(|_| panic!("Unable to find file {param}"));
+
+        //                 let source = match fs::read_to_string(&param) {
+        //                     Ok(s) => s,
+        //                     Err(e) => {
+        //                         eprintln!("Failed to read {param}: {e}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut lexer = Lexer::new(source);
+        //                 let tokens = match lexer.tokenize() {
+        //                     Ok(t) => t,
+        //                     Err(e) => {
+        //                         eprintln!("Lexer error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut parser = Parser::new(tokens);
+        //                 let mut program_new = match parser.parse() {
+        //                     Ok(p) => p,
+        //                     Err(e) => {
+        //                         eprintln!("Parser error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 program_new.append(&mut program);
+        //                 program = program_new
+        //             }
+        //         }
+        //     }
+        // }
+
+        let mut program = process_program(&mut program);
 
         type_checker
             .declare_fn("print_int", vec![Type::int], Type::Void)
@@ -743,9 +898,8 @@ impl TypeChecker {
         match stmt {
             Stmt::AtDecl(decl, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
-                "public" => Ok(stmt.clone()),
-                "private" => Ok(stmt.clone()),
-
+                // "public" => Ok(stmt.clone()),
+                // "private" => Ok(stmt.clone()),
                 _ => Err(format!("unknown declaration '{decl}'")),
             },
 

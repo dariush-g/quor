@@ -6,6 +6,31 @@ mov rbx, rax
 mov rdi, rax
 mov rax, 60
 syscall
+; ----- Layout: Point -----
+%define Point_size 8
+%define Point_x 0
+%define Point_y 4
+
+global Point.new
+Point.new:
+push rbp
+mov rbp, rsp
+sub rsp, 8
+mov dword [rbp - 8], edi
+mov dword [rbp - 8], esi
+mov rdi, Point_size
+call malloc
+mov rcx, rax
+mov eax, dword [rbp - 8]
+mov dword [rcx + 0], eax
+mov eax, dword [rbp - 8]
+mov dword [rcx + 4], eax
+mov rax, rcx
+add rsp, 16
+mov rsp, rbp
+pop rbp
+ret
+
 ; ----- Layout: X -----
 %define X_size 4
 %define X_x 0
@@ -47,6 +72,17 @@ mov rax, r8
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
+mov rsp, rbp
+pop rbp
+ret
+global x
+x:
+push rbp
+mov rbp, rsp
+mov r9, 0
+mov rax, r9
+jmp .Lret_x
+.Lret_x:
 mov rsp, rbp
 pop rbp
 ret
