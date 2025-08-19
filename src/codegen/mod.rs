@@ -337,36 +337,32 @@ impl CodeGen {
                 // exit
                 self.output.push_str(&format!("{loop_end}:\n"));
             }
-            Stmt::AtDecl(decl, param) => {
-                // v v v v v v v v v v v v v v v v v v v
-                //>//TODO: IMPROVE IMPORT HANDLING!!!! <
-                // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+            // Stmt::AtDecl(decl, param) => {
+            //     // v v v v v v v v v v v v v v v v v v v
+            //     //>//TODO: IMPROVE IMPORT HANDLING!!!! <
+            //     // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
 
-                if decl.as_str() == "import" {
-                    let param = param
-                        .clone()
-                        .unwrap_or_else(|| panic!("Unable to locate import"));
+            //     if decl.as_str() == "import" {
+            //         let mut param = param
+            //             .clone()
+            //             .unwrap_or_else(|| panic!("Unable to locate import"));
 
-                    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+            //         if param.ends_with('!') {
+            //             param.remove(param.len() - 1);
 
-                    match param.as_str() {
-                        "io" => {
-                            let print =
-                                fs::read_to_string(format!("{manifest_dir}/src/stdlib/print.asm"))
-                                    .unwrap_or_else(|_| panic!("Error importing io"));
+            //             let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-                            let _ = &self.output.push_str(&print);
-                        }
-                        "mem" => {
-                            let mem =
-                                fs::read_to_string(format!("{manifest_dir}/src/stdlib/mem.asm"))
-                                    .unwrap_or_else(|_| panic!("Error importing mem"));
-                            let _ = &self.output.push_str(&mem);
-                        }
-                        _ => {}
-                    }
-                }
-            }
+            //             match param.as_str() {
+            //                 _ => {}
+            //             }
+            //         } else {
+            //             let file = fs::read_to_string(param.clone())
+            //                 .unwrap_or_else(|_| panic!("Unable to find file {param}"));
+
+            //             self.output.push_str(&file);
+            //         }
+            //     }
+            // }
             Stmt::VarDecl {
                 name,
                 var_type,

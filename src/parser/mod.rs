@@ -125,8 +125,38 @@ impl Parser {
                         }
                     }
 
+                    param.push('!');
+
                     self.consume(TokenType::Greater, "Expected '>'")?;
                     self.consume(TokenType::Semicolon, "Expected ';'")?;
+                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param)));
+                }
+                if let TokenType::LeftParen = self.peek().token_type {
+                    self.advance(); // consume '('
+                    let mut param = if let TokenType::Identifier(s) = &self.peek().token_type {
+                        let val = s.clone();
+                        self.advance(); // consume string
+                        val
+                    } else {
+                        return Err(ParseError::Expected {
+                            expected: TokenType::Identifier("".to_string()),
+                            found: self.peek().clone(),
+                            message: "Expected identifier in @import".to_owned(),
+                        });
+                    };
+
+                    if let TokenType::Period = self.peek().token_type {
+                        param.push('.');
+                        self.advance();
+                        if let TokenType::Identifier(qu) = &self.peek().token_type {
+                            param.push_str(&qu);
+                            self.advance();
+                        }
+                    }
+
+                    self.consume(TokenType::RightParen, "Expected ')'")?;
+                    self.consume(TokenType::Semicolon, "Expected ';'")?;
+
                     return Ok(Stmt::AtDecl(decl.to_string(), Some(param)));
                 }
             }
