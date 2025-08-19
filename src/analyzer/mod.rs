@@ -42,75 +42,69 @@ impl TypeChecker {
                 if decl.as_str() == "import" {
                     let path = param.unwrap_or_else(|| panic!("error reading import"));
 
-                    match path.as_str() {
-                        "io" => {
-                            type_checker
-                                .declare_fn("print_int", vec![Type::int], Type::Void)
-                                .map_err(|e| format!("Global scope error: {e}"))?;
-                            type_checker
-                                .declare_fn("print_bool", vec![Type::Bool], Type::Void)
-                                .map_err(|e| format!("Global scope error: {e}"))?;
-                            type_checker
-                                .declare_fn("print_char", vec![Type::Char], Type::Void)
-                                .map_err(|e| format!("Global scope error: {e}"))?;
+                    let source = match fs::read_to_string(&path) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Failed to read {path}: {e}");
+                            std::process::exit(1);
                         }
-                        "mem" => {
-                            type_checker
-                                .declare_fn(
-                                    "free",
-                                    vec![Type::Pointer(Box::new(Type::Void))],
-                                    Type::Void,
-                                )
-                                .map_err(|e| format!("Global scope error: {e}"))?;
-                            type_checker
-                                .declare_fn(
-                                    "malloc",
-                                    vec![Type::int],
-                                    Type::Pointer(Box::new(Type::Void)),
-                                )
-                                .map_err(|e| format!("Global scope error: {e}"))?;
-                            type_checker
-                                .declare_fn(
-                                    "sizeof",
-                                    vec![Type::Pointer(Box::new(Type::Void))],
-                                    Type::int,
-                                )
-                                .map_err(|e| format!("Global scope error: {e}"))?;
+                    };
+
+                    let mut lexer = Lexer::new(source);
+                    let tokens = match lexer.tokenize() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("Lexer error: {e:?}");
+                            std::process::exit(1);
                         }
-                        _ => {
-                            let source = match fs::read_to_string(&path) {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    eprintln!("Failed to read {path}: {e}");
-                                    std::process::exit(1);
-                                }
-                            };
+                    };
 
-                            let mut lexer = Lexer::new(source);
-                            let tokens = match lexer.tokenize() {
-                                Ok(t) => t,
-                                Err(e) => {
-                                    eprintln!("Lexer error: {e:?}");
-                                    std::process::exit(1);
-                                }
-                            };
-
-                            let mut parser = Parser::new(tokens);
-                            let mut program_new = match parser.parse() {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    eprintln!("Parser error: {e:?}");
-                                    std::process::exit(1);
-                                }
-                            };
-
-                            program_new.append(&mut program);
-                            program = program_new
+                    let mut parser = Parser::new(tokens);
+                    let mut program_new = match parser.parse() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Parser error: {e:?}");
+                            std::process::exit(1);
                         }
-                    }
+                    };
+
+                    program_new.append(&mut program);
+                    program = program_new
                 }
             }
         }
+
+        type_checker
+            .declare_fn("print_int", vec![Type::int], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn("print_char", vec![Type::Char], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "free",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::Void,
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn(
+                "malloc",
+                vec![Type::int],
+                Type::Pointer(Box::new(Type::Void)),
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn(
+                "sizeof",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::int,
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
 
         // println!("{program:?}");
 
@@ -346,7 +340,7 @@ impl TypeChecker {
                                     "Arithmetic operations only for pointer types, found {right_type:?}"
                                 ));
                             }
-                            
+
                             return Ok(left_type);
                         }
                         BinaryOp::Equal | BinaryOp::NotEqual => {

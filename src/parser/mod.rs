@@ -692,11 +692,13 @@ impl Parser {
                 let name = name.clone();
                 self.advance();
 
-                if self.peek().token_type == TokenType::LeftBrace {
+                if self.peek().token_type == TokenType::DoubleColon {
                     let mut inits: Vec<(String, Expr)> = Vec::new();
                     self.advance();
 
-                    if !self.check(&TokenType::RightBrace) {
+                    self.consume(TokenType::LeftParen, "Expected '(' to introduce class init")?;
+
+                    if !self.check(&TokenType::RightParen) {
                         loop {
                             let fname_tok = self
                                 .consume(TokenType::Identifier("".into()), "Expected field name")?;
@@ -717,8 +719,8 @@ impl Parser {
                     }
 
                     self.consume(
-                        TokenType::RightBrace,
-                        "Expected '}' after class initializer",
+                        TokenType::RightParen,
+                        "Expected ')' after class initializer",
                     )?;
 
                     return Ok(Expr::ClassInit {

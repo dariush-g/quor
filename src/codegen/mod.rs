@@ -239,6 +239,18 @@ impl CodeGen {
             header.push_str(&format!("extern {ext}\n"));
         }
 
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+        let print = fs::read_to_string(format!("{manifest_dir}/src/stdlib/print.asm"))
+            .unwrap_or_else(|_| panic!("Error importing io"));
+
+        code.output.push_str(&print);
+
+        let mem = fs::read_to_string(format!("{manifest_dir}/src/stdlib/mem.asm"))
+            .unwrap_or_else(|_| panic!("Error importing mem"));
+
+        code.output.push_str(&mem);
+
         format!("{header}{}", code.output)
     }
 
@@ -326,22 +338,29 @@ impl CodeGen {
                 self.output.push_str(&format!("{loop_end}:\n"));
             }
             Stmt::AtDecl(decl, param) => {
+                // v v v v v v v v v v v v v v v v v v v
+                //>//TODO: IMPROVE IMPORT HANDLING!!!! <
+                // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+
                 if decl.as_str() == "import" {
                     let param = param
                         .clone()
                         .unwrap_or_else(|| panic!("Unable to locate import"));
 
+                    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
                     match param.as_str() {
                         "io" => {
-                            let print = fs::read_to_string("./src/stdlib/print.asm")
-                                .unwrap_or_else(|_| panic!("Error importing io"));
+                            let print =
+                                fs::read_to_string(format!("{manifest_dir}/src/stdlib/print.asm"))
+                                    .unwrap_or_else(|_| panic!("Error importing io"));
 
                             let _ = &self.output.push_str(&print);
                         }
                         "mem" => {
-                            let mem = fs::read_to_string("./src/stdlib/mem.asm")
-                                .unwrap_or_else(|_| panic!("Error importing io"));
-
+                            let mem =
+                                fs::read_to_string(format!("{manifest_dir}/src/stdlib/mem.asm"))
+                                    .unwrap_or_else(|_| panic!("Error importing mem"));
                             let _ = &self.output.push_str(&mem);
                         }
                         _ => {}
@@ -772,18 +791,19 @@ impl CodeGen {
         //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
         // }
 
-        let mut stack_adj = 0;
+        let mut stack_adj = vec![];
         for instance in instances.clone() {
             match instance.1 {
-                Type::int => stack_adj += 4,
-                Type::float => stack_adj += 4,
-                Type::Char => stack_adj += 1,
-                Type::Bool => stack_adj += 1,
-                _ => stack_adj += 8,
+                Type::int => stack_adj.push(4),
+                Type::float => stack_adj.push(4),
+                Type::Char => stack_adj.push(1),
+                Type::Bool => stack_adj.push(1),
+                _ => stack_adj.push(8),
             }
         }
 
-        self.output.push_str(&format!("sub rsp, {}\n", stack_adj));
+        self.output
+            .push_str(&format!("sub rsp, {}\n", stack_adj.iter().sum::<i32>()));
 
         // stack_adj += 16 - (stack_adj % 16);
 
@@ -797,7 +817,10 @@ impl CodeGen {
         // }
 
         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
-            let slot_off = (i + 1) * 8;
+            let mut slot_off = 0;
+            for n in 0..stack_adj.len() {
+                slot_off += stack_adj[n];
+            }
             match ty {
                 Type::int => {
                     self.output.push_str(&format!(
@@ -838,7 +861,10 @@ impl CodeGen {
 
         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
             let off_in_obj = class_layout.fields[i].offset;
-            let slot_off = (i + 1) * 8;
+            let mut slot_off = 0;
+            for n in 0..stack_adj.len() {
+                slot_off += stack_adj[n];
+            }
             match ty {
                 Type::Array(_, _) => {
                     self.output
