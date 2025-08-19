@@ -6,63 +6,50 @@ mov rbx, rax
 mov rdi, rax
 mov rax, 60
 syscall
+; ----- Layout: X -----
+%define X_size 4
+%define X_x 0
+
+global X.new
+X.new:
+push rbp
+mov rbp, rsp
+sub rsp, 4
+mov dword [rbp - 4], edi
+mov rdi, X_size
+call malloc
+mov rcx, rax
+mov eax, dword [rbp - 4]
+mov dword [rcx + 0], eax
+mov rax, rcx
+add rsp, 8
+mov rsp, rbp
+pop rbp
+ret
+
 global main
 main:
 push rbp
 mov rbp, rsp
+mov rcx, 5
+mov rdi, rcx
+call X.new
 sub rsp, 8
-mov rcx, 8
-mov rdi , rcx
-sub rsp, 8
-call malloc
-add rsp, 8
 mov qword [rbp - 8], rax
-mov rdx, qword [rbp - 8]
-mov r8, 6
-mov qword [rdx], r8
-mov r9, qword [rbp - 8]
-mov r10, 1
-imul r10, 4
-imul r10, 4
-add r9, r10
-mov qword [rbp - 8], r9
-mov r11, qword [rbp - 8]
-mov r12, 7
-mov qword [r11], r12
-mov r13, qword [rbp - 8]
-mov r14, 1
-imul r14, 4
-imul r14, 4
-sub r13, r14
-mov qword [rbp - 8], r13
-mov rcx, qword [rbp - 8]
-mov rcx, qword [rcx]
-mov rdi , rcx
+mov rax, qword [rbp - 8]
+mov edx, dword [rax + 0]
+mov rdi , rdx
 sub rsp, 8
 call print_int
 add rsp, 8
-mov rdx, qword [rbp - 8]
-mov r8, 1
-imul r8, 4
-imul r8, 4
-add rdx, r8
-mov qword [rbp - 8], rdx
-mov r10, qword [rbp - 8]
-mov r10, qword [r10]
-mov rdi , r10
-sub rsp, 8
-call print_int
-add rsp, 8
-mov r9, 0
-mov rax, r9
+mov r8, 0
+mov rax, r8
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
 mov rsp, rbp
 pop rbp
 ret
-extern malloc
-extern free
 extern printf
 
 ; print_int: rdi = int
@@ -73,28 +60,6 @@ print_int:
     xor rax, rax           
     call printf
     ret
-
-; print_int:
-;     mov     rcx, 10          ; divisor
-;     lea     rsi, [rsp-32]    ; temporary buffer on stack
-;     mov     rbx, rsi
-
-; .convert_loop:
-;     xor     rdx, rdx
-;     div     rcx              ; rax / 10 → quotient in rax, remainder in rdx
-;     add     dl, '0'          ; convert remainder to ASCII
-;     dec     rsi
-;     mov     [rsi], dl
-;     test    rax, rax
-;     jnz     .convert_loop
-
-;     mov     rax, 1           ; sys_write
-;     mov     rdi, 1
-;     mov     rdx, rbx
-;     sub     rdx, rsi         ; length = buffer_end - current_ptr
-;     mov     rsi, rsi
-;     syscall
-;     ret
 
 ; print_bool: rdi = 0 or 1
 global print_bool
@@ -121,3 +86,5 @@ fmt_int:  db "%d",10,0
 fmt_char: db "%c",10,0
 str_true: db "true",10,0
 str_false: db "false",10,0
+extern malloc
+extern free
