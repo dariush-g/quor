@@ -6,48 +6,27 @@ mov rbx, rax
 mov rdi, rax
 mov rax, 60
 syscall
-; ----- Layout: Point -----
-%define Point_size 8
-%define Point.x 0
-%define Point.y 4
+; ----- Layout: string -----
+%define string_size 16
+%define string.size 0
+%define string.data 8
 
-global Point.new
-Point.new:
+global string.new
+string.new:
 push rbp
 mov rbp, rsp
-sub rsp, 8
+sub rsp, 16
 mov dword [rbp - 4], edi
-mov dword [rbp - 8], esi
-mov rdi, Point_size
+mov qword [rbp - 12], rsi
+mov rdi, string_size
 call malloc
 mov rcx, rax
 mov eax, dword [rbp - 4]
 mov dword [rcx + 0], eax
-mov eax, dword [rbp - 8]
-mov dword [rcx + 4], eax
+mov rax, qword [rbp - 12]
+mov qword [rcx + 8], rax
 mov rax, rcx
-add rsp, 8
-mov rsp, rbp
-pop rbp
-ret
-
-; ----- Layout: X -----
-%define X_size 4
-%define X.x 0
-
-global X.new
-X.new:
-push rbp
-mov rbp, rsp
-sub rsp, 8
-mov dword [rbp - 4], edi
-mov rdi, X_size
-call malloc
-mov rcx, rax
-mov eax, dword [rbp - 4]
-mov dword [rcx + 0], eax
-mov rax, rcx
-add rsp, 8
+add rsp, 16
 mov rsp, rbp
 pop rbp
 ret
@@ -57,34 +36,69 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-mov ecx, 5
-mov rdi, rcx
-call X.new
 sub rsp, 8
-mov qword [rbp - 8], rax
-mov rax, qword [rbp - 8]
-mov edx, dword [rax + 0]
-mov rdi , rdx
+mov rcx, 2
+mov rdi , rcx
 sub rsp, 8
-call print_int
+call malloc
 add rsp, 8
-mov r8d, 0
-mov rax, r8
+mov qword [rbp - 8], rax
+mov rdx, qword [rbp - 8]
+mov r8, 'h'
+mov byte [rdx], r8b
+mov r9, qword [rbp - 8]
+mov r10, 1
+add r9, r10
+mov qword [rbp - 8], r9
+mov r11, qword [rbp - 8]
+mov r12, 'i'
+mov byte [r11], al
+mov r13, qword [rbp - 8]
+mov r14, 1
+sub r13, r14
+mov qword [rbp - 8], r13
+mov rcx, 2
+mov rax, qword [rbp - 8]
+mov rdi, rcx
+mov rsi, rax
+sub rsp, 8
+call string.new
+add rsp, 8
+sub rsp, 8
+mov qword [rbp - 16], rax
+mov rdx, 0
+mov rax, rdx
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
 mov rsp, rbp
 pop rbp
 ret
-global x
-x:
+global get_index
+get_index:
 push rbp
 mov rbp, rsp
-sub rsp, 0
-mov eax, 0
-mov rax, r9
-jmp .Lret_x
-.Lret_x:
+sub rsp, 16
+mov qword [rbp - 8], rdi
+mov dword [rbp - 12], esi
+mov r10, qword [rbp - 8]
+mov r8, qword [r10 + 8]
+mov r9, qword [rbp - 12]
+add r8, r9
+mov r11, qword [rbp - 8 - 8]
+mov r14, qword [rbp - 8]
+mov r12, qword [r14 + 8]
+sub rsp, 8
+mov qword [rbp - 24], r12
+mov rcx, qword [rbp - 8]
+mov r13, qword [rcx + 8]
+mov rax, qword [rbp - 12]
+sub r13, rax
+mov rdx, qword [rbp - 8 - 8]
+mov r10, qword [rbp - 24]
+mov rax, r10
+jmp .Lret_get_index
+.Lret_get_index:
 mov rsp, rbp
 pop rbp
 ret

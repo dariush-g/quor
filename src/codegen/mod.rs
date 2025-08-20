@@ -241,13 +241,17 @@ impl CodeGen {
 
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let print = fs::read_to_string(format!("{manifest_dir}/src/stdlib/print.asm"))
+        let mut print = fs::read_to_string(format!("{manifest_dir}/src/stdlib/print.asm"))
             .unwrap_or_else(|_| panic!("Error importing io"));
+
+        print.push('\n');
 
         code.output.push_str(&print);
 
-        let mem = fs::read_to_string(format!("{manifest_dir}/src/stdlib/mem.asm"))
+        let mut mem = fs::read_to_string(format!("{manifest_dir}/src/stdlib/mem.asm"))
             .unwrap_or_else(|_| panic!("Error importing mem"));
+
+        mem.push('\n');
 
         code.output.push_str(&mem);
 
@@ -724,29 +728,65 @@ impl CodeGen {
             _ => {}
         }
     }
-
     fn generate_function(&mut self, name: &str, params: Vec<(String, Type)>, body: &Vec<Stmt>) {
         self.locals.clear();
         self.stack_size = 0;
 
         let epilogue = format!(".Lret_{name}");
-
         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
 
         self.output.push_str(&format!("global {name}\n{name}:\n"));
         self.output.push_str("push rbp\nmov rbp, rsp\n");
 
-        #[allow(clippy::needless_range_loop)]
-        for (i, param) in params.iter().enumerate() {
-            let off = match &param.1 {
-                Type::Class { .. } => self.alloc_local(&param.0, &param.1),
-                _ => self.alloc_local(&param.0, &param.1),
+        // Calculate total stack needed for locals + parameters
+        let total_param_size: usize = params.iter().map(|(_, ty)| ty.size()).sum();
+        let aligned_size = (total_param_size + 15) & !15; // align to 16 bytes
+        self.stack_size = aligned_size as i32;
+
+        self.output
+            .push_str(&format!("sub rsp, {}\n", aligned_size));
+
+        let mut offset = 0;
+        for (i, (param_name, ty)) in params.iter().enumerate() {
+            let size = ty.size();
+            offset += size;
+
+            // Save parameter to local stack slot
+            match ty {
+                Type::Char | Type::Bool => {
+                    self.output.push_str(&format!(
+                        "mov byte [rbp - {}], {}\n",
+                        offset,
+                        Self::reg8(save_regs[i])
+                    ));
+                }
+                Type::int => {
+                    self.output.push_str(&format!(
+                        "mov dword [rbp - {}], {}\n",
+                        offset,
+                        Self::reg32(save_regs[i])
+                    ));
+                }
+                _ => {
+                    self.output
+                        .push_str(&format!("mov qword [rbp - {}], {}\n", offset, save_regs[i]));
+                }
+            }
+
+            // Record local info
+            let class_info = match ty {
+                Type::Pointer(inner) => match &**inner {
+                    Type::Class { name, .. } => Some(name.clone()),
+                    _ => None,
+                },
+                Type::Class { name, .. } => Some(name.clone()),
+                _ => None,
             };
 
-            self.output
-                .push_str(&format!("mov qword [rbp - {off}], {}\n", save_regs[i]));
+            self.locals.insert(param_name.clone(), (class_info, offset.try_into().unwrap()));
         }
 
+        // Generate body
         for stmt in body {
             self.handle_stmt_with_epilogue(stmt, &epilogue);
         }
@@ -767,7 +807,7 @@ impl CodeGen {
             .push_str(&format!("%define {}_size {}\n", name, class_layout.size));
         for fld in &class_layout.fields {
             self.output
-                .push_str(&format!("%define {}_{} {}\n", name, fld.name, fld.offset));
+                .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
         }
         self.output.push('\n');
 
@@ -798,8 +838,11 @@ impl CodeGen {
             }
         }
 
-        self.output
-            .push_str(&format!("sub rsp, {}\n", stack_adj.iter().sum::<i32>()));
+        let sum = stack_adj.iter().sum::<i32>();
+
+        let sum = sum + (sum % 8);
+
+        self.output.push_str(&format!("sub rsp, {sum}\n"));
 
         // stack_adj += 16 - (stack_adj % 16);
 
@@ -814,7 +857,7 @@ impl CodeGen {
 
         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
             let mut slot_off = 0;
-            for n in 0..stack_adj.len() {
+            for n in 0..i + 1 {
                 slot_off += stack_adj[n];
             }
             match ty {
@@ -858,7 +901,7 @@ impl CodeGen {
         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
             let off_in_obj = class_layout.fields[i].offset;
             let mut slot_off = 0;
-            for n in 0..stack_adj.len() {
+            for n in 0..i + 1 {
                 slot_off += stack_adj[n];
             }
             match ty {
@@ -896,8 +939,7 @@ impl CodeGen {
         self.output.push_str("mov rax, rcx\n");
 
         if n_fields > 0 {
-            self.output
-                .push_str(&format!("add rsp, {}\n", n_fields * 8));
+            self.output.push_str(&format!("add rsp, {sum}\n"));
         }
 
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
@@ -1141,21 +1183,26 @@ impl CodeGen {
                 Some("rax".to_string())
             }
             Expr::FloatLiteral(_f) => None,
-            Expr::BoolLiteral(n) => {
-                let val = if *n { 1 } else { 0 };
-                let av_reg = self.regs.pop_front().expect("No registers");
-                self.output.push_str(&format!("mov {av_reg}, {val}\n"));
-                Some(av_reg.to_string())
-            }
-            Expr::IntLiteral(n) => {
-                let av_reg = self.regs.pop_front().expect("No registers");
-                self.output.push_str(&format!("mov {av_reg}, {n}\n"));
-                Some(av_reg.to_string())
-            }
             Expr::CharLiteral(n) => {
                 let av_reg = self.regs.pop_front().expect("No registers");
-                self.output.push_str(&format!("mov {av_reg}, '{n}'\n"));
-                Some(av_reg.to_string())
+                self.output
+                    .push_str(&format!("mov {}, '{n}'\n", Self::reg8(&av_reg)));
+                Some(av_reg)
+            }
+
+            Expr::BoolLiteral(b) => {
+                let val = if *b { 1 } else { 0 };
+                let av_reg = self.regs.pop_front().expect("No registers");
+                self.output
+                    .push_str(&format!("mov {}, {val}\n", Self::reg8(&av_reg)));
+                Some(av_reg)
+            }
+
+            Expr::IntLiteral(n) => {
+                let av_reg = self.regs.pop_front().expect("No registers");
+                self.output
+                    .push_str(&format!("mov {}, {n}\n", Self::reg32(&av_reg)));
+                Some(av_reg)
             }
             Expr::InstanceVar(class_name, instance_name) => {
                 // let av_reg = self.regs.pop_front().expect("No registers");
@@ -1477,6 +1524,10 @@ impl CodeGen {
                         self.output
                             .push_str(&format!("mov byte [rbp - {offset}], {val}\n"));
                     }
+                    Expr::CharLiteral(c) => {
+                        self.output
+                            .push_str(&format!("mov byte [rbp - {offset}], {c}\n"));
+                    }
                     Expr::InstanceVar(class_name, instance_name) => {
                         let class_type = self
                             .locals
@@ -1755,14 +1806,44 @@ impl CodeGen {
 
             Expr::DerefAssign { target, value } => {
                 let ptr_reg = self.handle_expr(target, None).expect("ptr reg");
-                if let Some(val_reg) = self.handle_expr(value, None) {
-                    self.output
-                        .push_str(&format!("mov qword [{ptr_reg}], {val_reg}\n"));
-                    self.regs.push_back(ptr_reg);
-                    self.regs.push_back(val_reg);
-                } else {
-                    self.regs.push_back(ptr_reg);
+
+                match value.get_type() {
+                    Type::int | Type::float => {
+                        if let Some(val_reg) = self.handle_expr(value, None) {
+                            self.output.push_str(&format!(
+                                "mov dword [{ptr_reg}], {}\n",
+                                Self::reg32(&val_reg)
+                            ));
+                            self.regs.push_back(ptr_reg);
+                            self.regs.push_back(val_reg);
+                        } else {
+                            self.regs.push_back(ptr_reg);
+                        }
+                    }
+                    Type::Bool | Type::Char => {
+                        if let Some(val_reg) = self.handle_expr(value, None) {
+                            self.output.push_str(&format!(
+                                "mov byte [{ptr_reg}], {}\n",
+                                Self::reg8(&val_reg)
+                            ));
+                            self.regs.push_back(ptr_reg);
+                            self.regs.push_back(val_reg);
+                        } else {
+                            self.regs.push_back(ptr_reg);
+                        }
+                    }
+                    _ => {
+                        if let Some(val_reg) = self.handle_expr(value, None) {
+                            self.output
+                                .push_str(&format!("mov qword [{ptr_reg}], {val_reg}\n"));
+                            self.regs.push_back(ptr_reg);
+                            self.regs.push_back(val_reg);
+                        } else {
+                            self.regs.push_back(ptr_reg);
+                        }
+                    }
                 }
+
                 None
             }
 
@@ -1772,24 +1853,41 @@ impl CodeGen {
                 let lhs = self.handle_expr(left, None).unwrap();
                 let rhs = self.handle_expr(right, None).unwrap();
 
-                // TODO: get left / right type and match to pointer -> multiply the added value to pointer by the size of the inner type
+                // println!("{lhs}, {rhs}");
 
                 match left.get_type() {
                     Type::Pointer(inside_ty) => match right.get_type() {
                         Type::int => {
                             let size = inside_ty.size();
-                            self.output.push_str(&format!("imul {rhs}, {size}\n"));
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
 
-                match left.get_type() {
-                    Type::Pointer(inside_ty) => match right.get_type() {
-                        Type::int => {
-                            let size = inside_ty.size();
-                            self.output.push_str(&format!("imul {rhs}, {size}\n"));
+                            // Make sure the RHS literal is in a register
+                            let rhs_reg = if let Expr::IntLiteral(n) = &**right {
+                                let r = self.regs.pop_front().expect("No registers");
+                                self.output.push_str(&format!("mov {}, {}\n", r, n));
+                                r
+                            } else {
+                                self.handle_expr(right, None).expect("index reg")
+                            };
+
+                            // Multiply by type size only if > 1
+                            if size > 1 {
+                                self.output
+                                    .push_str(&format!("imul {}, {}\n", rhs_reg, size));
+                            }
+
+                            match op {
+                                BinaryOp::Add => {
+                                    self.output.push_str(&format!("add {}, {}\n", lhs, rhs_reg));
+                                    self.regs.push_back(rhs_reg);
+                                    return Some(lhs);
+                                }
+                                BinaryOp::Sub => {
+                                    self.output.push_str(&format!("sub {}, {}\n", lhs, rhs_reg));
+                                    self.regs.push_back(rhs_reg);
+                                    return Some(lhs);
+                                }
+                                _ => return None,
+                            }
                         }
                         _ => {}
                     },
@@ -1800,7 +1898,33 @@ impl CodeGen {
                     Type::Pointer(inside_ty) => match left.get_type() {
                         Type::int => {
                             let size = inside_ty.size();
-                            self.output.push_str(&format!("imul {lhs}, {size}\n"));
+
+                            let lhs_reg = if let Expr::IntLiteral(n) = &**left {
+                                let r = self.regs.pop_front().expect("No registers");
+                                self.output.push_str(&format!("mov {}, {}\n", r, n));
+                                r
+                            } else {
+                                self.handle_expr(left, None).expect("lhs reg")
+                            };
+
+                            if size > 1 {
+                                self.output
+                                    .push_str(&format!("imul {}, {}\n", lhs_reg, size));
+                            }
+
+                            match op {
+                                BinaryOp::Add => {
+                                    self.output.push_str(&format!("add {}, {}\n", rhs, lhs_reg));
+                                    self.regs.push_back(lhs_reg);
+                                    return Some(rhs);
+                                }
+                                BinaryOp::Sub => {
+                                    self.output.push_str(&format!("sub {}, {}\n", rhs, lhs_reg));
+                                    self.regs.push_back(lhs_reg);
+                                    return Some(rhs);
+                                }
+                                _ => return None,
+                            }
                         }
                         _ => {}
                     },

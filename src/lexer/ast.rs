@@ -46,7 +46,7 @@ impl Type {
             Type::Bool => 1,
             Type::Pointer(_) => 8,
             Type::Array(elem, len) => elem.size() * len.unwrap(),
-            Type::Class { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
+            Type::Class { .. } => 8, // instances.iter().map(|f| f.1.size()).sum(),
             _ => 0,
         }
     }

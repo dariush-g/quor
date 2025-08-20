@@ -1,0 +1,34 @@
+
+
+class string {
+    size: int;
+    data: char*;
+}
+
+def get_index(str: string, index: int) :: char {
+    str.data = str.data + index;
+    let ret: char = *str.data;
+    str.data = str.data - index;
+    return ret;
+}
+
+def main() :: int {
+
+    let ptr: void* = malloc(2);
+
+    *ptr = 'h';
+
+    ptr = ptr + 1;
+
+    *ptr = 'i';
+
+    ptr = ptr - 1;
+
+    let str: string = string::(size: 2, data: ptr);
+
+    // let c: char = get_index(str, 0);
+
+    // print_char(c);
+
+    return 0;
+}
