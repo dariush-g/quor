@@ -52,7 +52,7 @@ add r9, r10
 mov qword [rbp - 8], r9
 mov r11, qword [rbp - 8]
 mov r12, 'i'
-mov byte [r11], al
+mov byte [r11], r12b
 mov r13, qword [rbp - 8]
 mov r14, 1
 sub r13, r14
@@ -66,8 +66,22 @@ call string.new
 add rsp, 8
 sub rsp, 8
 mov qword [rbp - 16], rax
-mov rdx, 0
-mov rax, rdx
+sub rsp, 8
+lea rdx, [rbp - 16]
+mov r8, 1
+mov rdi , rdx
+mov rsi , r8
+sub rsp, 8
+call get_index
+add rsp, 8
+mov qword [rbp - 24], rax
+mov r10, qword [rbp - 24]
+mov rdi , r10
+sub rsp, 8
+call print_char
+add rsp, 8
+mov r9, 0
+mov rax, r9
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
@@ -81,22 +95,15 @@ mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
 mov dword [rbp - 12], esi
-mov r10, qword [rbp - 8]
-mov r8, qword [r10 + 8]
-mov r9, qword [rbp - 12]
-add r8, r9
-mov r11, qword [rbp - 8 - 8]
-mov r14, qword [rbp - 8]
-mov r12, qword [r14 + 8]
-sub rsp, 8
-mov qword [rbp - 24], r12
-mov rcx, qword [rbp - 8]
-mov r13, qword [rcx + 8]
-mov rax, qword [rbp - 12]
-sub r13, rax
-mov rdx, qword [rbp - 8 - 8]
-mov r10, qword [rbp - 24]
-mov rax, r10
+mov r12, qword [rbp - 8]
+mov r11, qword [r12 + 8]
+mov r14, qword [rbp - 12]
+add r11, r14
+mov r13, qword [rbp - 8 - 8]
+mov rdx, qword [rbp - 8]
+mov rcx, qword [rdx + 8]
+mov rdx, qword [rcx]
+mov rax, rdx
 jmp .Lret_get_index
 .Lret_get_index:
 mov rsp, rbp
