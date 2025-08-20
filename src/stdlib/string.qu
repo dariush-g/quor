@@ -5,11 +5,12 @@ class string {
     data: char*;
 }
 
-def get_index(str: string, index: int) :: char {
+def get_index(str: string*, index: int) :: char {
     str.data = str.data + index;
-    let ret: char = *str.data;
-    str.data = str.data - index;
-    return ret;
+
+    // str.data = str.data - index;
+
+    return *str.data;
 }
 
 def main() :: int {
@@ -26,9 +27,9 @@ def main() :: int {
 
     let str: string = string::(size: 2, data: ptr);
 
-    // let c: char = get_index(str, 0);
+    let c: char = get_index(&str, 1);
 
-    // print_char(c);
+    print_char(c);
 
     return 0;
 }
