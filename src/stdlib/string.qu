@@ -6,30 +6,35 @@ class string {
 }
 
 def get_index(str: string*, index: int) :: char {
-    str.data = str.data + index;
+    let ret: char* = str.data + index;
+    return *ret;
+}
 
-    // str.data = str.data - index;
+def to_arr(str: string*) :: [char] {
 
-    return *str.data;
+    let i: int = 0;
+    while (i < str.size) {
+        
+    }
+
+    return ['h'];
 }
 
 def main() :: int {
 
+
     let ptr: void* = malloc(2);
-
     *ptr = 'h';
-
     ptr = ptr + 1;
-
     *ptr = 'i';
-
     ptr = ptr - 1;
 
     let str: string = string::(size: 2, data: ptr);
 
-    let c: char = get_index(&str, 1);
 
-    print_char(c);
+
+    
+
 
     return 0;
 }
