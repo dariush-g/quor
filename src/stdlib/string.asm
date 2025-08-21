@@ -36,56 +36,43 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-.while_start_0:
-mov rcx, 1
-cmp rcx, 1
-jne .while_end_0
 sub rsp, 8
-mov rdx, 2
-mov rdi, rdx
+mov rcx, 2
+mov rdi, rcx
 sub rsp, 8
 call malloc
 add rsp, 8
 mov qword [rbp - 8], rax
-mov r8, qword [rbp - 8]
-mov r9, 'h'
-mov byte [r8], r9b
-mov r10, qword [rbp - 8]
-mov r11d, 1
-add r10, r11
-mov qword [rbp - 8], r10
-mov r12, qword [rbp - 8]
-mov r13, 'i'
-mov byte [r12], r13b
-mov r14, qword [rbp - 8]
-mov ecx, 1
-sub r14, rcx
-mov qword [rbp - 8], r14
-mov rdx, 2
+mov rdx, qword [rbp - 8]
+mov r8, 'h'
+mov byte [rdx], r8b
+mov r9, qword [rbp - 8]
+mov r10d, 1
+add r9, r10
+mov qword [rbp - 8], r9
+mov r11, qword [rbp - 8]
+mov r12, 'i'
+mov byte [r11], r12b
+mov r13, qword [rbp - 8]
+mov r14d, 1
+sub r13, r14
+mov qword [rbp - 8], r13
+mov rcx, 2
 mov rax, qword [rbp - 8]
-mov rdi, rdx
+mov rdi, rcx
 mov rsi, rax
 sub rsp, 8
 call string.new
 add rsp, 8
 sub rsp, 8
 mov qword [rbp - 16], rax
-sub rsp, 8
-lea r8, [rbp - 16]
-mov r9, 1
-mov rdi, r8
-mov rsi, r9
-sub rsp, 8
+mov rdx, qword [rbp - 16]
+mov r8, 1
+mov rdi, rdx
+mov rsi, r8
 call get_index
-add rsp, 8
-mov qword [rbp - 24], rax
-mov r11b, byte [rbp - 24]
-mov rdi, r11
-sub rsp, 8
+mov rdi, rax
 call print_char
-add rsp, 8
-jmp .while_start_0
-.while_end_0:
 mov r10, 0
 mov rax, r10
 jmp .Lret_main
@@ -102,34 +89,16 @@ sub rsp, 16
 mov qword [rbp - 8], rdi
 mov dword [rbp - 12], esi
 sub rsp, 8
-mov r13, qword [rbp - 8]
-mov r12, qword [r13 + 8]
-mov ecx, dword [rbp - 12]
-add r12, rcx
-mov qword [rbp - 24], r12
+mov r11, qword [rbp - 8]
+mov r9, qword [r11 + 8]
+mov r12d, dword [rbp - 12]
+add r9, r12
+mov qword [rbp - 24], r9
 mov r14, qword [rbp - 24]
 mov r14, qword [r14]
 mov rax, r14
 jmp .Lret_get_index
 .Lret_get_index:
-mov rsp, rbp
-pop rbp
-ret
-global to_arr
-to_arr:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-sub rsp, 8
-push rdi
-mov rdi, 1
-add rsp, 8
-call malloc
-mov rdx, rax
-mov rax, rdx
-jmp .Lret_to_arr
-.Lret_to_arr:
 mov rsp, rbp
 pop rbp
 ret

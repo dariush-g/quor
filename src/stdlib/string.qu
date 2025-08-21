@@ -1,6 +1,6 @@
 
 
-class string {
+struct string {
     size: int;
     data: char*;
 }
@@ -10,31 +10,16 @@ def get_index(str: string*, index: int) :: char {
     return *ret;
 }
 
-def to_arr(str: string*) :: [char] {
-
-    let i: int = 0;
-    while (i < str.size) {
-        
-    }
-
-    return ['h'];
-}
-
 def main() :: int {
-
-
     let ptr: void* = malloc(2);
     *ptr = 'h';
     ptr = ptr + 1;
     *ptr = 'i';
     ptr = ptr - 1;
 
-    let str: string = string::(size: 2, data: ptr);
+    let str: string* = string::(size: 2, data: ptr);
 
-
-
-    
-
+    print_char(get_index(str, 1));
 
     return 0;
 }
