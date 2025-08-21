@@ -288,7 +288,7 @@ impl TypeChecker {
                     .declare_fn(name.as_str(), param_types, return_type.clone())
                     .map_err(|e| format!("Global scope error: {e}"))?;
             }
-            if let Stmt::ClassDecl {
+            if let Stmt::StructDecl {
                 name, instances, ..
             } = stmt
             {
@@ -306,9 +306,7 @@ impl TypeChecker {
 
         for mut stmt in &mut checked_program {
             type_checker.fill_stmt_types(&mut stmt);
-        }
-
-        // println!("{:?}", type_checker.variables);
+        } // println!("{:?}", type_checker.variables);
 
         Ok(checked_program)
     }
@@ -394,7 +392,7 @@ impl TypeChecker {
                 self.fill_expr_types(target);
                 self.fill_expr_types(value);
             }
-            Expr::ClassInit { params, .. } => {
+            Expr::StructInit { params, .. } => {
                 for (_, expr) in params {
                     self.fill_expr_types(expr);
                 }
@@ -415,6 +413,7 @@ impl TypeChecker {
         if self.variables.last().unwrap().contains_key(name) {
             return Err(format!("Variable '{name}' already declared in this scope"));
         }
+
         self.variables
             .last_mut()
             .unwrap()
@@ -456,9 +455,12 @@ impl TypeChecker {
 
                 Ok(ty)
             }
-            Expr::StringLiteral(_) => Ok(Type::Class {
+            Expr::StringLiteral(_) => Ok(Type::Struct {
                 name: "string".to_owned(),
-                instances: vec![("chars".to_string(), Type::Array(Box::new(Type::Char), None))],
+                instances: vec![
+                    ("size".to_string(), Type::int),
+                    ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
+                ],
             }),
             Expr::BoolLiteral(_) => Ok(Type::Bool),
             Expr::IntLiteral(_) => Ok(Type::int),
@@ -645,7 +647,7 @@ impl TypeChecker {
                     | (Type::Void, Type::Bool)
                     | (Type::Void, Type::Char)
                     | (Type::Void, Type::float) => {}
-                    (Type::Void, Type::Class { .. }) => {}
+                    (Type::Void, Type::Struct { .. }) => {}
                     (from, to) if from == to => {}
                     _ => {
                         return Err(format!(
@@ -737,7 +739,7 @@ impl TypeChecker {
                     _ => Err("Cannot assign through a non-pointer value".to_string()),
                 }
             }
-            Expr::ClassInit { name, params } => {
+            Expr::StructInit { name, params } => {
                 let class_fields = self
                     .class_fields
                     .get(name)
@@ -759,7 +761,7 @@ impl TypeChecker {
                     }
                     let expected = decl_map
                         .get(fname.as_str())
-                        .ok_or_else(|| format!("Class '{name}' has no field '{fname}'"))?;
+                        .ok_or_else(|| format!("Struct '{name}' has no field '{fname}'"))?;
                     let got = self.type_check_expr(fexpr)?;
 
                     let got = if let Type::Array(ty, len) = got {
@@ -770,7 +772,7 @@ impl TypeChecker {
                     };
 
                     let got = match got {
-                        Type::Class { name, .. } => Type::Class {
+                        Type::Struct { name, .. } => Type::Struct {
                             name,
                             instances: Vec::new(),
                         },
@@ -796,13 +798,13 @@ impl TypeChecker {
                     }
                 }
 
-                Ok(Type::Class {
+                Ok(Type::Pointer(Box::new(Type::Struct {
                     name: name.clone(),
                     instances: decl_order
                         .iter()
                         .map(|(name, ty)| (name.to_string(), ty.clone()))
                         .collect(),
-                })
+                })))
             }
             // Expr::InstanceVar(class_name, instance_name) => {
             //     let ty = self
@@ -811,7 +813,7 @@ impl TypeChecker {
 
             //     match ty {
             //         Type::Pointer(ty) => match *ty.clone() {
-            //             Type::Class { name, .. } => {
+            //             Type::Struct { name, .. } => {
             //                 let fields = self
             //                     .class_fields
             //                     .get(&name)
@@ -829,7 +831,7 @@ impl TypeChecker {
             //             }
             //             _ => Err(format!("'{class_name}' is not a class instance")),
             //         },
-            //         Type::Class { name, .. } => {
+            //         Type::Struct { name, .. } => {
             //             let fields = self
             //                 .class_fields
             //                 .get(name)
@@ -847,7 +849,7 @@ impl TypeChecker {
             //         }
             //         _ => Err(format!("'{class_name}' is not a class instance")),
             //     }
-            // } // Expr::ClassLiteral(name) => Ok(Type::Class {
+            // } // Expr::StructLiteral(name) => Ok(Type::Struct {
             //     name: name.to_string(),
             //     instances: Vec::new(),
             // }),
@@ -856,10 +858,16 @@ impl TypeChecker {
                     .lookup_var(class_name)
                     .ok_or_else(|| format!("Unknown variable: '{class_name}'"))?;
 
-                match ty {
+                let mut base = base_type(ty);
+
+                while let Type::Pointer(ref inside) = base {
+                    base = base_type(inside);
+                }
+
+                match base {
                     Type::Pointer(ty) => {
                         match *ty.clone() {
-                            Type::Class { name, .. } => {
+                            Type::Struct { name, .. } => {
                                 let fields = self
                                     .class_fields
                                     .get(&name)
@@ -874,7 +882,7 @@ impl TypeChecker {
                             _ => Err(format!("'{class_name}' is not a class instance")),
                         }
                     }
-                    Type::Class { name, .. } => {
+                    Type::Struct { name, .. } => {
                         // Add direct class instance access
                         let fields = self
                             .class_fields
@@ -909,7 +917,7 @@ impl TypeChecker {
                 value,
             } => {
                 // Resolve class types to include field information
-                let resolved_type = if let Type::Class {
+                let resolved_type = if let Type::Struct {
                     name: class_name,
                     instances,
                 } = &var_type
@@ -920,7 +928,7 @@ impl TypeChecker {
                             .class_fields
                             .get(class_name)
                             .ok_or_else(|| format!("Undefined class: '{class_name}'"))?;
-                        Type::Class {
+                        Type::Struct {
                             name: class_name.clone(),
                             instances: class_fields.clone(),
                         }
@@ -934,28 +942,10 @@ impl TypeChecker {
                 let value_type = self.type_check_expr(value)?;
 
                 // For class types, we need to check that the value is a valid class instance
-                if let Type::Class {
-                    name: class_name, ..
-                } = &resolved_type
-                {
-                    match value_type {
-                        Type::Class {
-                            name: value_class_name,
-                            ..
-                        } => {
-                            if class_name != &value_class_name {
-                                return Err(format!(
-                                    "Type mismatch in declaration of '{name}': expected class '{class_name}', found class '{value_class_name}'"
-                                ));
-                            }
-                        }
-                        _ => {
-                            return Err(format!(
-                                "Type mismatch in declaration of '{name}': expected class '{class_name}', found {value_type:?}"
-                            ));
-                        }
-                    }
-                } else if value_type != resolved_type {
+
+                // println!("{value_type:?}, {resolved_type:?}");
+
+                if value_type != resolved_type {
                     if let Type::Array(ty1, _) = value_type.clone() {
                         match resolved_type.clone() {
                             Type::Array(ty, _) => {
@@ -971,6 +961,53 @@ impl TypeChecker {
                                 ));
                             }
                         }
+                    } else if let Type::Pointer(boxed_expected) = base_type(&resolved_type) {
+                        // If the declared type is a pointer to a struct, check if the value is a pointer to the same struct
+                        if let Type::Pointer(boxed_value) = base_type(&value_type) {
+                            match (&*boxed_expected, &*boxed_value) {
+                                (
+                                    Type::Struct {
+                                        name: expected_name,
+                                        ..
+                                    },
+                                    Type::Struct {
+                                        name: value_name, ..
+                                    },
+                                ) => {
+                                    if expected_name != value_name {
+                                        return Err(format!(
+                                            "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                                        ));
+                                    }
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                                    ));
+                                }
+                            }
+                        } else {
+                            return Err(format!(
+                                "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                            ));
+                        }
+                    } else if let Type::Struct { name: name2, .. } = base_type(&resolved_type) {
+                        // If the declared type is a pointer to a struct, check if the value is a pointer to the same struct
+                        if let Type::Struct { name: name1, .. } = base_type(&value_type) {
+                            if name1 != name2 {
+                                return Err(format!(
+                                    "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                                ));
+                            }
+                        } else {
+                            return Err(format!(
+                                "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                            ));
+                        }
+                    } else {
+                        return Err(format!(
+                            "Type mismatch in declaration of '{name}': expected {resolved_type:?}, found {value_type:?}"
+                        ));
                     }
                 }
 
@@ -985,6 +1022,7 @@ impl TypeChecker {
                         ));
                     }
                 }
+
                 self.declare_var(name, resolved_type.clone())?;
                 Ok(Stmt::VarDecl {
                     name: name.clone(),
@@ -1152,11 +1190,7 @@ impl TypeChecker {
                 }
                 Ok(Stmt::Continue)
             }
-            Stmt::ClassDecl {
-                name,
-                instances,
-                funcs,
-            } => {
+            Stmt::StructDecl { name, instances } => {
                 for (i, instance) in instances.clone().iter().enumerate() {
                     for (j, instance1) in instances.iter().enumerate() {
                         let n = instance.0.clone();
@@ -1166,35 +1200,34 @@ impl TypeChecker {
                     }
                 }
 
-                for (i, stmt) in funcs.clone().iter().enumerate() {
-                    match stmt {
-                        Stmt::FunDecl { name, .. } => {
-                            let name1 = name;
-                            for (j, stmt1) in funcs.iter().enumerate() {
-                                match stmt1 {
-                                    Stmt::FunDecl { name, .. } => {
-                                        if name1 == name && i != j {
-                                            return Err(
-                                                "Functions may not share a name".to_string()
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        return Err("Class functions must be functions".to_string());
-                                    }
-                                }
-                            }
-                        }
-                        _ => {
-                            return Err("Class functions must be functions".to_string());
-                        }
-                    }
-                }
+                // for (i, stmt) in funcs.clone().iter().enumerate() {
+                //     match stmt {
+                //         Stmt::FunDecl { name, .. } => {
+                //             let name1 = name;
+                //             for (j, stmt1) in funcs.iter().enumerate() {
+                //                 match stmt1 {
+                //                     Stmt::FunDecl { name, .. } => {
+                //                         if name1 == name && i != j {
+                //                             return Err(
+                //                                 "Functions may not share a name".to_string()
+                //                             );
+                //                         }
+                //                     }
+                //                     _ => {
+                //                         return Err("Struct functions must be functions".to_string());
+                //                     }
+                //                 }
+                //             }
+                //         }
+                //         _ => {
+                //             return Err("Struct functions must be functions".to_string());
+                //         }
+                //     }
+                // }
 
-                Ok(Stmt::ClassDecl {
+                Ok(Stmt::StructDecl {
                     name: name.to_string(),
                     instances: instances.to_vec(),
-                    funcs: funcs.to_vec(),
                 })
             }
         }
@@ -1204,7 +1237,7 @@ impl TypeChecker {
 pub fn base_type(ty: &Type) -> Type {
     match ty {
         Type::Array(ty, ..) => Type::Array(ty.clone(), None),
-        Type::Class { name, .. } => Type::Class {
+        Type::Struct { name, .. } => Type::Struct {
             name: name.clone(),
             instances: Vec::new(),
         },

@@ -36,7 +36,7 @@ pub enum TokenType {
     CharLiteral(char),
     StringLiteral(String),
 
-    Class,
+    Struct,
 
     Boolean,
 
@@ -108,7 +108,7 @@ impl TokenType {
             TokenType::IntLiteral(_) => Type::int,
             TokenType::FloatLiteral(_) => Type::float,
             TokenType::CharLiteral(_) => Type::Char,
-            TokenType::Class => Type::Class {
+            TokenType::Struct => Type::Struct {
                 name: String::new(),
                 instances: Vec::new(),
             },

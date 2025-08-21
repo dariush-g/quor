@@ -11,6 +11,7 @@ def get_index(str: string*, index: int) :: char {
 }
 
 def main() :: int {
+
     let ptr: void* = malloc(2);
     *ptr = 'h';
     ptr = ptr + 1;
