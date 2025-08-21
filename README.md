@@ -15,8 +15,6 @@
 **Code:**
 
 ```quor
-@import::<io>;
-
 def add(a: int, b: int) :: int {
     return a + b;
 }
@@ -30,11 +28,13 @@ def main() :: int {
 ```
 
 ```quor
-class Circle {
-    radius: int;
-
-    fn area(self: Circle) -> int {
-        return 3 * self.radius;
-    }
+struct Guy {
+    name: string;
+    age: int;
 }
+
+def get_name(self: Guy*) :: string {
+    return self.name;
+}
+
 ```

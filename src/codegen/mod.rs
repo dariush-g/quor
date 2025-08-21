@@ -16,10 +16,10 @@ pub struct CodeGen {
     _fp_regs: VecDeque<String>,
     _jmp_count: u32,
     functions: Functions,
-    locals: HashMap<String, (Option<String>, i32)>,
+    locals: HashMap<String, (Option<String>, i32, Type)>,
     stack_size: i32,
     externs: HashSet<String>,
-    classes: HashMap<String, (ClassLayout, Stmt)>,
+    structes: HashMap<String, (StructLayout, Stmt)>,
 }
 
 #[inline]
@@ -70,7 +70,7 @@ fn size_align_of(ty: &Type) -> (usize, usize) {
         //     (8, 8)
         // }
         Type::Array(_, _) => (8, 8),
-        Type::Class { instances, .. } => layout_of_class(
+        Type::Struct { instances, .. } => layout_of_struct(
             &instances
                 .iter()
                 .map(|(_, ty)| ty.clone())
@@ -81,7 +81,7 @@ fn size_align_of(ty: &Type) -> (usize, usize) {
     }
 }
 
-fn layout_of_class(instances: &[Type]) -> (usize, usize) {
+fn layout_of_struct(instances: &[Type]) -> (usize, usize) {
     if instances.is_empty() {
         return (0, 1);
     }
@@ -103,13 +103,13 @@ struct FieldLayout {
     offset: usize,
 }
 
-struct ClassLayout {
+struct StructLayout {
     size: usize,
     _align: usize,
     fields: Vec<FieldLayout>,
 }
 
-fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
+fn layout_fields(fields: &[(String, Type)]) -> StructLayout {
     let mut off = 0usize;
     let mut max_a = 1usize;
     let mut out = Vec::with_capacity(fields.len());
@@ -128,7 +128,7 @@ fn layout_fields(fields: &[(String, Type)]) -> ClassLayout {
 
     let size = align_up(off, max_a);
 
-    ClassLayout {
+    StructLayout {
         size,
         _align: max_a,
         fields: out,
@@ -167,7 +167,7 @@ impl CodeGen {
             locals: HashMap::new(),
             stack_size: 0,
             externs: HashSet::new(),
-            classes: HashMap::new(),
+            structes: HashMap::new(),
         };
 
         #[cfg(target_arch = "aarch64")]
@@ -201,13 +201,8 @@ impl CodeGen {
                         .push((name.clone(), params.clone(), body.clone()));
                 }
             }
-            if let Stmt::ClassDecl {
-                name,
-                instances,
-                funcs,
-            } = stmt
-            {
-                code.generate_class(name, instances.clone(), funcs.to_vec());
+            if let Stmt::StructDecl { name, instances } = stmt {
+                code.generate_struct(name, instances.clone());
             }
         }
 
@@ -258,11 +253,11 @@ impl CodeGen {
         format!("{header}{}", code.output)
     }
 
-    // fn alloc_local(&mut self, name: &str, class_name: Option<String>, _ty: &Type) -> i32 {
+    // fn alloc_local(&mut self, name: &str, struct_name: Option<String>, _ty: &Type) -> i32 {
     //     self.stack_size += 8;
     //     self.output.push_str("sub rsp, 8\n");
     //     let offset = self.stack_size;
-    //     self.locals.insert(name.to_string(), (class_name, offset));
+    //     self.locals.insert(name.to_string(), (struct_name, offset));
     //     offset
     // }
 
@@ -271,19 +266,20 @@ impl CodeGen {
         self.output.push_str("sub rsp, 8\n");
         let offset = self.stack_size;
 
-        let class_info = match ty {
+        let struct_info = match ty {
             Type::Pointer(inner) => {
-                if let Type::Class { name: cls_name, .. } = &**inner {
+                if let Type::Struct { name: cls_name, .. } = &**inner {
                     Some(cls_name.clone())
                 } else {
                     None
                 }
             }
-            Type::Class { name: cls_name, .. } => Some(cls_name.clone()),
+            Type::Struct { name: cls_name, .. } => Some(cls_name.clone()),
             _ => None,
         };
 
-        self.locals.insert(name.to_string(), (class_info, offset));
+        self.locals
+            .insert(name.to_string(), (struct_info, offset, ty.clone()));
         offset
     }
 
@@ -372,13 +368,20 @@ impl CodeGen {
                 var_type,
                 value,
             } => match value {
-                Expr::Array(elements, _ty) => {
+                Expr::Array(elements, ty) => {
                     let count = elements.len();
                     let total_size = (count as i32) * 8;
                     self.stack_size += total_size;
                     self.output.push_str(&format!("sub rsp, {total_size}\n"));
                     let base_offset = self.stack_size;
-                    self.locals.insert(name.clone(), (None, base_offset));
+                    self.locals.insert(
+                        name.clone(),
+                        (
+                            None,
+                            base_offset,
+                            Type::Array(Box::new(ty.clone()), Some(elements.len())),
+                        ),
+                    );
 
                     for (i, element) in elements.iter().enumerate() {
                         let offset = base_offset - (i as i32) * 8;
@@ -407,22 +410,23 @@ impl CodeGen {
                         }
                     }
                 }
-                Expr::ClassInit { name: cls, params } => {
-                    // Get the class layout to map named parameters to field positions
-                    let class_info = self.classes.get(cls);
-                    if class_info.is_none() {
-                        panic!("Class {} not found", cls);
+
+                Expr::StructInit { name: cls, params } => {
+                    // Get the struct layout to map named parameters to field positions
+                    let struct_info = self.structes.get(cls);
+                    if struct_info.is_none() {
+                        panic!("Struct {} not found", cls);
                     }
-                    let (class_layout, _) = class_info.unwrap();
+                    let (struct_layout, _) = struct_info.unwrap();
 
                     // Clone the field names and positions to avoid borrowing issues
-                    let field_positions: HashMap<String, usize> = class_layout
+                    let field_positions: HashMap<String, usize> = struct_layout
                         .fields
                         .iter()
                         .enumerate()
                         .map(|(i, field)| (field.name.clone(), i))
                         .collect();
-                    let field_count = class_layout.fields.len();
+                    let field_count = struct_layout.fields.len();
 
                     // First, evaluate all expressions to get their register values
                     let mut param_values = Vec::new();
@@ -437,7 +441,7 @@ impl CodeGen {
                         if let Some(&pos) = field_positions.get(param_name) {
                             ordered_args[pos] = reg;
                         } else {
-                            panic!("Field {} not found in class {}", param_name, cls);
+                            panic!("Field {} not found in struct {}", param_name, cls);
                         }
                     }
 
@@ -463,7 +467,7 @@ impl CodeGen {
                     let ctor = format!("{cls}.new");
                     self.call_with_alignment(&ctor);
 
-                    let class = &Type::Pointer(Box::new(Type::Class {
+                    let struc = &Type::Pointer(Box::new(Type::Struct {
                         name: cls.to_string(),
                         instances: params
                             .iter()
@@ -471,15 +475,15 @@ impl CodeGen {
                             .collect(),
                     }));
 
-                    let off = self.alloc_local(name, class);
+                    let off = self.alloc_local(name, struc);
 
-                    // println!("allocated {class:?}");
+                    // println!("allocated {struct:?}");
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {off}], rax\n"));
                 }
                 Expr::AddressOf(inside) => {
-                    if let Type::Class { .. } = base_type(var_type) {
+                    if let Type::Struct { .. } = base_type(var_type) {
                         self.handle_expr(inside, None);
 
                         let offset = if self.local_offset(name).is_none() {
@@ -513,12 +517,14 @@ impl CodeGen {
                     let offset = self.alloc_local(name, var_type);
 
                     if let Type::Pointer(inner) = var_type {
-                        if let Type::Class {
-                            name: class_name, ..
+                        if let Type::Struct {
+                            name: struct_name, ..
                         } = &**inner
                         {
-                            self.locals
-                                .insert(name.clone(), (Some(class_name.clone()), offset));
+                            self.locals.insert(
+                                name.clone(),
+                                (Some(struct_name.clone()), offset, var_type.clone()),
+                            );
                         }
                     }
 
@@ -526,16 +532,16 @@ impl CodeGen {
                         .push_str(&format!("mov qword [rbp - {offset}], {ptr_reg}\n"));
                     self.regs.push_back(ptr_reg);
                 }
-                // Expr::InstanceVar(class_name, field_name) => {
-                //     let class = self
+                // Expr::InstanceVar(struct_name, field_name) => {
+                //     let struct = self
                 //         .locals
-                //         .get(class_name)
-                //         .expect(&format!("error getting class: {class_name}"))
+                //         .get(struct_name)
+                //         .expect(&format!("error getting struct: {struct_name}"))
                 //         .0
                 //         .clone()
-                //         .expect(&format!("error getting class: {class_name}"));
+                //         .expect(&format!("error getting struct: {struct_name}"));
 
-                //     let offset = if self.local_offset(class_name).is_none() {
+                //     let offset = if self.local_offset(struct_name).is_none() {
                 //         self.alloc_local(name, None, var_type)
                 //     } else {
                 //         self.local_offset(name).unwrap()
@@ -544,9 +550,9 @@ impl CodeGen {
                 //     println!("{:?}", self.locals);
 
                 //     let field_offset: usize = self
-                //         .classes
-                //         .get(&class)
-                //         .expect("error getting class layout")
+                //         .structes
+                //         .get(&struct)
+                //         .expect("error getting struct layout")
                 //         .0
                 //         .fields
                 //         .iter()
@@ -588,34 +594,37 @@ impl CodeGen {
                 //         self.regs.push_back(val_reg);
                 //     }
                 // }
-                Expr::InstanceVar(class_name, field_name) => {
-                    // Get the class pointer from the local variable
-                    let class_info = self
+                Expr::InstanceVar(struct_name, field_name) => {
+                    // Get the struct pointer from the local variable
+                    let struct_info = self
                         .locals
-                        .get(class_name)
-                        .unwrap_or_else(|| panic!("Class '{}' not found in locals", class_name));
+                        .get(struct_name)
+                        .unwrap_or_else(|| panic!("Struct '{}' not found in locals", struct_name));
 
-                    let class_type = class_info
+                    let struct_type = struct_info
                         .0
                         .clone()
-                        .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
+                        .unwrap_or_else(|| panic!("Struct type not found for '{}'", struct_name));
 
-                    let class_offset = class_info.1;
+                    let struct_offset = struct_info.1;
 
-                    // Get class layout
-                    let class_layout = &self
-                        .classes
-                        .get(&class_type)
-                        .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
+                    // Get struct layout
+                    let struct_layout = &self
+                        .structes
+                        .get(&struct_type)
+                        .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                         .0;
 
                     // Find field offset
-                    let field_offset = class_layout
+                    let field_offset = struct_layout
                         .fields
                         .iter()
                         .find(|f| f.name == *field_name)
                         .unwrap_or_else(|| {
-                            panic!("Field '{}' not found in class '{}'", field_name, class_type)
+                            panic!(
+                                "Field '{}' not found in struct '{}'",
+                                field_name, struct_type
+                            )
                         })
                         .offset;
 
@@ -626,10 +635,10 @@ impl CodeGen {
                         self.local_offset(name).unwrap()
                     };
 
-                    // Get the field value from the class instance
+                    // Get the field value from the struct instance
                     let ptr_reg = self.regs.pop_front().expect("No registers available");
                     self.output
-                        .push_str(&format!("mov {ptr_reg}, qword [rbp - {class_offset}]\n"));
+                        .push_str(&format!("mov {ptr_reg}, qword [rbp - {struct_offset}]\n"));
 
                     match var_type {
                         Type::int => {
@@ -657,12 +666,12 @@ impl CodeGen {
                     self.regs.push_back(ptr_reg);
                 }
                 _ => {
-                    // let mut class = None;
+                    // let mut struct = None;
 
                     // if let Expr::Call { return_type, .. } = value {
                     //     match return_type {
-                    //         Type::Class { name, .. } => {
-                    //             class = Some(name);
+                    //         Type::Struct { name, .. } => {
+                    //             struct = Some(name);
                     //         }
                     //         _ => {}
                     //     }
@@ -681,7 +690,7 @@ impl CodeGen {
                 }
             },
 
-            // Stmt::ClassDecl {
+            // Stmt::StructDecl {
             //     name,
             //     instances,
             //     funcs,
@@ -728,6 +737,7 @@ impl CodeGen {
             _ => {}
         }
     }
+
     fn generate_function(&mut self, name: &str, params: Vec<(String, Type)>, body: &Vec<Stmt>) {
         self.locals.clear();
         self.stack_size = 0;
@@ -773,17 +783,26 @@ impl CodeGen {
                 }
             }
 
+            let mut base_ty = ty;
+
+            while let Type::Pointer(inside) = base_ty {
+                base_ty = inside;
+            }
+
             // Record local info
-            let class_info = match ty {
-                Type::Pointer(inner) => match &**inner {
-                    Type::Class { name, .. } => Some(name.clone()),
-                    _ => None,
-                },
-                Type::Class { name, .. } => Some(name.clone()),
+            let struct_info = match base_ty {
+                // Type::Pointer(inner) => match &**inner {
+                //     Type::Struct { name, .. } => Some(name.clone()),
+                //     _ => None,
+                // },
+                Type::Struct { name, .. } => Some(name.clone()),
                 _ => None,
             };
 
-            self.locals.insert(param_name.clone(), (class_info, offset.try_into().unwrap()));
+            self.locals.insert(
+                param_name.clone(),
+                (struct_info, offset.try_into().unwrap(), ty.clone()),
+            );
         }
 
         // Generate body
@@ -799,13 +818,13 @@ impl CodeGen {
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
     }
 
-    fn generate_class(&mut self, name: &str, instances: Vec<(String, Type)>, funcs: Vec<Stmt>) {
-        let class_layout = layout_fields(&instances);
+    fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>) {
+        let struct_layout = layout_fields(&instances);
         self.output
             .push_str(&format!("; ----- Layout: {name} -----\n"));
         self.output
-            .push_str(&format!("%define {}_size {}\n", name, class_layout.size));
-        for fld in &class_layout.fields {
+            .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
+        for fld in &struct_layout.fields {
             self.output
                 .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
         }
@@ -899,7 +918,7 @@ impl CodeGen {
         self.output.push_str("mov rcx, rax\n");
 
         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
-            let off_in_obj = class_layout.fields[i].offset;
+            let off_in_obj = struct_layout.fields[i].offset;
             let mut slot_off = 0;
             for n in 0..i + 1 {
                 slot_off += stack_adj[n];
@@ -944,28 +963,27 @@ impl CodeGen {
 
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
 
-        for func in funcs.clone() {
-            if let Stmt::FunDecl {
-                name: mname,
-                params,
-                body,
-                ..
-            } = func
-            {
-                let sym = format!("{name}.{mname}");
-                // self.generate_function(&sym, params.clone(), &body);
-                self.functions.push((sym, params.clone(), body.clone()));
-            }
-        }
+        // for func in funcs.clone() {
+        //     if let Stmt::FunDecl {
+        //         name: mname,
+        //         params,
+        //         body,
+        //         ..
+        //     } = func
+        //     {
+        //         let sym = format!("{name}.{mname}");
+        //         // self.generate_function(&sym, params.clone(), &body);
+        //         self.functions.push((sym, params.clone(), body.clone()));
+        //     }
+        // }
 
-        self.classes.insert(
+        self.structes.insert(
             name.to_string(),
             (
-                class_layout,
-                Stmt::ClassDecl {
+                struct_layout,
+                Stmt::StructDecl {
                     name: name.to_string(),
                     instances: instances.to_vec(),
-                    funcs: funcs.to_vec(),
                 },
             ),
         );
@@ -980,6 +998,13 @@ impl CodeGen {
             "rsi" => "esi",
             "rdi" => "edi",
             "r8" => "r8d",
+            "r9" => "r9d",
+            "r10" => "r10d",
+            "r11" => "r11d",
+            "r12" => "r12d",
+            "r13" => "r13d",
+            "r14" => "r14d",
+            "r15" => "r15d",
             _ => "eax",
         }
     }
@@ -993,6 +1018,14 @@ impl CodeGen {
             "rsi" => "sil",
             "rdi" => "dil",
             "r8" => "r8b",
+            "r9" => "r9b",
+            "r10" => "r10b",
+            "r11" => "r11b",
+            "r12" => "r12b",
+            "r13" => "r13b",
+            "r14" => "r14b",
+            "r15" => "r15b",
+
             _ => "al",
         }
     }
@@ -1024,47 +1057,48 @@ impl CodeGen {
                 field,
                 value,
             } => {
-                // Get class information from locals
-                let class_info = self
+                // Get struct information from locals
+                let struct_info = self
                     .locals
                     .get(class_name)
-                    .unwrap_or_else(|| panic!("Class '{}' not found", class_name));
+                    .unwrap_or_else(|| panic!("Struct '{}' not found", class_name));
 
-                // Get class name and stack offset
-                let class_type = class_info
+                // Get struct name and stack offset
+                let struct_type = struct_info
                     .0
                     .clone()
-                    .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
-                let class_offset = class_info.1;
+                    .unwrap_or_else(|| panic!("Struct type not found for '{}'", class_name));
 
-                // Get class layout from classes registry
-                let class_layout = &self
-                    .classes
-                    .get(&class_type)
-                    .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
+                let struct_offset = struct_info.1;
+
+                // Get struct layout from structes registry
+                let struct_layout = &self
+                    .structes
+                    .get(&struct_type)
+                    .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                     .0;
 
-                // Find field in class layout
-                let field_offset = class_layout
+                // Find field in struct layout
+                let field_offset = struct_layout
                     .fields
                     .iter()
                     .find(|f| f.name == *field)
                     .map(|f| f.offset)
                     .unwrap_or_else(|| {
-                        panic!("Field '{}' not found in class '{}'", field, class_type)
+                        panic!("Field '{}' not found in struct '{}'", field, struct_type)
                     });
 
-                // Get field type from class declaration
+                // Get field type from struct declaration
                 let field_type = {
-                    let class_decl_stmt = &self.classes.get(&class_type).unwrap().1;
-                    if let Stmt::ClassDecl { instances, .. } = class_decl_stmt {
+                    let struct_decl_stmt = &self.structes.get(&struct_type).unwrap().1;
+                    if let Stmt::StructDecl { instances, .. } = struct_decl_stmt {
                         instances
                             .iter()
                             .find(|(fname, _)| fname == field)
                             .map(|(_, ftype)| ftype.clone())
                             .unwrap_or_else(|| panic!("Field type not found for '{}'", field))
                     } else {
-                        panic!("Class declaration not found for '{}'", class_type)
+                        panic!("Struct declaration not found for '{}'", struct_type)
                     }
                 };
 
@@ -1073,21 +1107,35 @@ impl CodeGen {
                     .handle_expr(value, None)
                     .expect("Could not find register for field value");
 
-                // Calculate field address based on class location
+                // println!("{value:?}");
 
-                let reg = self.regs.pop_front().expect("No reg");
+                // Calculate field address based on struct location
 
-                self.output.push_str(&format!(
-                    "mov {reg}, qword [rbp - {class_offset} - {field_offset}]\n"
-                ));
+                let reg = self.regs.pop_front().unwrap();
+
+                self.output
+                    .push_str(&format!("mov {reg}, [rbp - {struct_offset}]\n"));
 
                 // Generate appropriate store instruction based on field type
                 match field_type {
                     Type::int => {
-                        self.output
-                            .push_str(&format!("mov dword [{reg}], {}\n", Self::reg32(&val_reg)));
+                        self.output.push_str(&format!(
+                            "mov dword [{reg} + {field_offset}], {}\n",
+                            Self::reg32(&val_reg)
+                        ));
                     }
-                    _ => {}
+                    Type::Bool | Type::Char => {
+                        self.output.push_str(&format!(
+                            "mov byte [{reg} + {field_offset}], {}\n",
+                            Self::reg8(&val_reg)
+                        ));
+                    }
+                    _ => {
+                        self.output.push_str(&format!(
+                            "mov qword [{reg} + {field_offset}], {}\n",
+                            val_reg
+                        ));
+                    }
                 }
 
                 // Return value register to pool
@@ -1145,7 +1193,7 @@ impl CodeGen {
                         }
                     }
 
-                    self.output.push_str(&format!("mov rax , {size}\n"));
+                    self.output.push_str(&format!("mov rax, {size}\n"));
 
                     return Some("rax".to_string());
                 }
@@ -1161,7 +1209,7 @@ impl CodeGen {
                 for (i, t) in temps.iter().enumerate() {
                     if t != abi_regs[i] {
                         self.output
-                            .push_str(&format!("mov {} , {}\n", abi_regs[i], t));
+                            .push_str(&format!("mov {}, {}\n", abi_regs[i], t));
                     }
                 }
                 for t in temps {
@@ -1185,61 +1233,66 @@ impl CodeGen {
             Expr::FloatLiteral(_f) => None,
             Expr::CharLiteral(n) => {
                 let av_reg = self.regs.pop_front().expect("No registers");
-                self.output
-                    .push_str(&format!("mov {}, '{n}'\n", Self::reg8(&av_reg)));
+                // self.output
+                //     .push_str(&format!("mov {}, '{n}'\n", Self::reg8(&av_reg)));
+                self.output.push_str(&format!("mov {}, '{n}'\n", av_reg));
+
                 Some(av_reg)
             }
 
             Expr::BoolLiteral(b) => {
                 let val = if *b { 1 } else { 0 };
                 let av_reg = self.regs.pop_front().expect("No registers");
-                self.output
-                    .push_str(&format!("mov {}, {val}\n", Self::reg8(&av_reg)));
+                // self.output
+                //     .push_str(&format!("mov {}, {val}\n", Self::reg8(&av_reg)));
+                self.output.push_str(&format!("mov {}, {val}\n", av_reg));
                 Some(av_reg)
             }
 
             Expr::IntLiteral(n) => {
                 let av_reg = self.regs.pop_front().expect("No registers");
-                self.output
-                    .push_str(&format!("mov {}, {n}\n", Self::reg32(&av_reg)));
+                // self.output
+                //     .push_str(&format!("mov {}, {n}\n", Self::reg32(&av_reg)));
+                self.output.push_str(&format!("mov {}, {n}\n", av_reg));
+
                 Some(av_reg)
             }
-            Expr::InstanceVar(class_name, instance_name) => {
+            Expr::InstanceVar(struct_name, instance_name) => {
                 // let av_reg = self.regs.pop_front().expect("No registers");
 
-                // // Get the class pointer from the local variable
-                // let class_ptr_off = self
-                //     .local_offset(class_name)
-                //     .expect("Error reading class name");
+                // // Get the struct pointer from the local variable
+                // let struct_ptr_off = self
+                //     .local_offset(struct_name)
+                //     .expect("Error reading struct name");
 
-                // // Load the pointer to the class instance
+                // // Load the pointer to the struct instance
                 // self.output
-                //     .push_str(&format!("mov {av_reg}, qword [rbp - {class_ptr_off}]\n"));
+                //     .push_str(&format!("mov {av_reg}, qword [rbp - {struct_ptr_off}]\n"));
 
-                // // Get class type information
-                // let class_type = self
+                // // Get struct type information
+                // let struct_type = self
                 //     .locals
-                //     .get(class_name)
+                //     .get(struct_name)
                 //     .unwrap_or_else(|| {
-                //         panic!("Error parsing class type for variable: {class_name}")
+                //         panic!("Error parsing struct type for variable: {struct_name}")
                 //     })
                 //     .0
                 //     .clone()
                 //     .unwrap_or_else(|| {
-                //         panic!("Error parsing class type for variable: {class_name}")
+                //         panic!("Error parsing struct type for variable: {struct_name}")
                 //     });
 
-                // let class_layout = &self
-                //     .classes
-                //     .get(class_type.trim())
+                // let struct_layout = &self
+                //     .structes
+                //     .get(struct_type.trim())
                 //     .unwrap_or_else(|| {
-                //         panic!("Error parsing class type for variable: {class_name}")
+                //         panic!("Error parsing struct type for variable: {struct_name}")
                 //     })
                 //     .0;
 
                 // // Find the field offset
                 // let mut field_offset = None;
-                // for field in &class_layout.fields {
+                // for field in &struct_layout.fields {
                 //     if &field.name == instance_name {
                 //         field_offset = Some(field.offset);
                 //         break;
@@ -1248,34 +1301,34 @@ impl CodeGen {
 
                 // let av_reg = self.regs.pop_front().expect("No registers");
                 // let mut off = self
-                //     .local_offset(class_name)
-                //     .expect("Error reading class name");
+                //     .local_offset(struct_name)
+                //     .expect("Error reading struct name");
 
-                // let class_ptr_reg = self
-                //     .handle_expr(&Expr::Variable(class_name.to_string()), None)
-                //     .unwrap_or_else(|| panic!("Could not locate: '{class_name}'"));
+                // let struct_ptr_reg = self
+                //     .handle_expr(&Expr::Variable(struct_name.to_string()), None)
+                //     .unwrap_or_else(|| panic!("Could not locate: '{struct_name}'"));
 
-                // let class_type = self
+                // let struct_type = self
                 //     .locals
-                //     .get(class_name)
+                //     .get(struct_name)
                 //     .unwrap_or_else(|| {
-                //         panic!("Error parsing class type for variable: {class_name}")
+                //         panic!("Error parsing struct type for variable: {struct_name}")
                 //     })
                 //     .0
                 //     .clone()
                 //     .unwrap_or_else(|| {
-                //         panic!("Error parsing class type for variable: {class_name}")
+                //         panic!("Error parsing struct type for variable: {struct_name}")
                 //     });
 
-                // let class_layout = &self
-                //     .classes
-                //     .get(class_type.trim())
+                // let struct_layout = &self
+                //     .structes
+                //     .get(struct_type.trim())
                 //     .unwrap_or_else(|| {
-                //         panic!("Error parsing class type for variable: {class_name}")
+                //         panic!("Error parsing struct type for variable: {struct_name}")
                 //     })
                 //     .0;
 
-                // for field in &class_layout.fields {
+                // for field in &struct_layout.fields {
                 //     if &field.name == instance_name {
                 //         off += field.offset as i32;
                 //     }
@@ -1284,13 +1337,13 @@ impl CodeGen {
                 // self.output
                 //     .push_str(&format!("mov {av_reg}, qword [{av_reg} - {off}]\n"));
 
-                // self.regs.push_front(class_ptr_reg);
+                // self.regs.push_front(struct_ptr_reg);
 
                 // Some(av_reg)
 
                 // let obj_ptr_off = self
-                //     .local_offset(class_name)
-                //     .expect("Error reading class name");
+                //     .local_offset(struct_name)
+                //     .expect("Error reading struct name");
                 // let obj_ptr_reg = self.regs.pop_front().expect("No registers");
 
                 // // load the object pointer from local variable
@@ -1299,7 +1352,7 @@ impl CodeGen {
 
                 // // compute field offset
                 // let mut field_offset = 0;
-                // for field in &class_layout.fields {
+                // for field in &struct_layout.fields {
                 //     if &field.name == instance_name {
                 //         field_offset = field.offset;
                 //         break;
@@ -1315,34 +1368,41 @@ impl CodeGen {
 
                 let val_reg = self.regs.pop_front().expect("No registers available");
 
-                let class_type = self
+                // println!("{:?}", self.locals);
+
+                let struct_type = self
                     .locals
-                    .get(class_name)
+                    .get(struct_name)
                     .unwrap_or_else(|| {
-                        panic!("Error getting class type for variable '{class_name}'")
+                        panic!("Error getting struct type for variable '{struct_name}'")
                     })
                     .0
                     .clone()
-                    .unwrap_or_else(|| panic!("Class type not found for variable '{class_name}'"));
+                    .unwrap_or_else(|| {
+                        panic!("Struct type not found for variable '{struct_name}'")
+                    });
 
                 let ptr_reg = self
-                    .handle_expr(&Expr::Variable(class_name.to_string(), Type::Unknown), None)
-                    .expect("Could not load class pointer");
+                    .handle_expr(
+                        &Expr::Variable(struct_name.to_string(), Type::Unknown),
+                        None,
+                    )
+                    .expect("Could not load struct pointer");
 
-                let class_layout = &self
-                    .classes
-                    .get(class_type.trim())
-                    .unwrap_or_else(|| panic!("Class layout not found for '{class_type}'"))
+                let struct_layout = &self
+                    .structes
+                    .get(struct_type.trim())
+                    .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                     .0;
 
                 let mut field_offset = None;
                 let mut field_type = None;
-                for field in &class_layout.fields {
+                for field in &struct_layout.fields {
                     if &field.name == instance_name {
                         field_offset = Some(field.offset as i32);
-                        // Get the field type from the class definition
-                        if let Some((_, class_stmt)) = self.classes.get(class_type.trim()) {
-                            if let Stmt::ClassDecl { instances, .. } = class_stmt {
+                        // Get the field type from the struct definition
+                        if let Some((_, struct_stmt)) = self.structes.get(struct_type.trim()) {
+                            if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                 for (fname, ftype) in instances {
                                     if fname == instance_name {
                                         field_type = Some(ftype);
@@ -1356,13 +1416,13 @@ impl CodeGen {
                 }
 
                 let field_offset = field_offset.expect(&format!(
-                    "Field '{}' not found in class '{}'",
-                    instance_name, class_type
+                    "Field '{}' not found in struct '{}'",
+                    instance_name, struct_type
                 ));
 
                 let field_type = field_type.expect(&format!(
-                    "Field type for '{}' not found in class '{}'",
-                    instance_name, class_type
+                    "Field type for '{}' not found in struct '{}'",
+                    instance_name, struct_type
                 ));
 
                 match field_type {
@@ -1385,6 +1445,21 @@ impl CodeGen {
                     }
                 }
 
+                let _field_type = {
+                    let struct_decl_stmt = &self.structes.get(&struct_type).unwrap().1;
+                    if let Stmt::StructDecl { instances, .. } = struct_decl_stmt {
+                        instances
+                            .iter()
+                            .find(|(fname, _)| fname == instance_name)
+                            .map(|(_, ftype)| ftype.clone())
+                            .unwrap_or_else(|| {
+                                panic!("Field type not found for '{}'", instance_name)
+                            })
+                    } else {
+                        panic!("Struct declaration not found for '{}'", struct_type)
+                    }
+                };
+
                 self.regs.push_back(ptr_reg);
                 Some(val_reg)
             }
@@ -1394,9 +1469,29 @@ impl CodeGen {
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
                 let av_reg = self.regs.pop_front().expect("No registers");
 
-                self.output
-                    .push_str(&format!("mov {av_reg}, qword [rbp - {off}]\n"));
-                Some(av_reg)
+                let t = &self.locals.get(name).unwrap().2;
+
+                match t {
+                    Type::int | Type::float => {
+                        self.output.push_str(&format!(
+                            "mov {}, dword [rbp - {off}]\n",
+                            Self::reg32(&av_reg)
+                        ));
+                        Some(av_reg)
+                    }
+                    Type::Char | Type::Bool => {
+                        self.output.push_str(&format!(
+                            "mov {}, byte [rbp - {off}]\n",
+                            Self::reg8(&av_reg)
+                        ));
+                        Some(av_reg)
+                    }
+                    _ => {
+                        self.output
+                            .push_str(&format!("mov {av_reg}, qword [rbp - {off}]\n"));
+                        Some(av_reg)
+                    }
+                }
             }
             Expr::ArrayAccess { array, index, .. } => {
                 let (_name, base_off) = match &**array {
@@ -1429,23 +1524,23 @@ impl CodeGen {
                 }
             }
 
-            Expr::ClassInit { name, params } => {
-                let class_info = self.classes.get(name);
+            Expr::StructInit { name, params } => {
+                let struct_info = self.structes.get(name);
 
-                if class_info.is_none() {
-                    panic!("Class {} not found", name);
+                if struct_info.is_none() {
+                    panic!("Struct {} not found", name);
                 }
 
-                let (class_layout, _) = class_info.unwrap();
+                let (struct_layout, _) = struct_info.unwrap();
 
                 // Clone the field names and positions to avoid borrowing issues
-                let field_positions: HashMap<String, usize> = class_layout
+                let field_positions: HashMap<String, usize> = struct_layout
                     .fields
                     .iter()
                     .enumerate()
                     .map(|(i, field)| (field.name.clone(), i))
                     .collect();
-                let field_count = class_layout.fields.len();
+                let field_count = struct_layout.fields.len();
 
                 // First, evaluate all expressions to get their register values
                 let mut param_values = Vec::new();
@@ -1460,7 +1555,7 @@ impl CodeGen {
                     if let Some(&pos) = field_positions.get(param_name) {
                         ordered_args[pos] = reg;
                     } else {
-                        panic!("Field {} not found in class {}", param_name, name);
+                        panic!("Field {} not found in struct {}", param_name, name);
                     }
                 }
 
@@ -1484,9 +1579,10 @@ impl CodeGen {
                 }
 
                 let ctor = format!("{name}.new");
+
                 self.call_with_alignment(&ctor);
 
-                let _class = &Type::Pointer(Box::new(Type::Class {
+                let _struct = &Type::Pointer(Box::new(Type::Struct {
                     name: name.to_string(),
                     instances: params
                         .iter()
@@ -1494,7 +1590,7 @@ impl CodeGen {
                         .collect(),
                 }));
 
-                // println!("allocated {class:?}");
+                // println!("allocated {struct:?}");
 
                 let reg = self.regs.pop_front().expect("No regs");
 
@@ -1512,6 +1608,13 @@ impl CodeGen {
                         let var_off = self
                             .local_offset(&x)
                             .expect(&format!("Error with variable: {x}"));
+
+                        // match ty {
+                        //     Type::int | Type::float => {}
+                        //     Type::Char | Type::Bool => {}
+                        //     _ =>
+                        // }
+
                         self.output
                             .push_str(&format!("mov qword [rbp - {offset}], [rbp - {var_off}]"));
                     }
@@ -1528,85 +1631,133 @@ impl CodeGen {
                         self.output
                             .push_str(&format!("mov byte [rbp - {offset}], {c}\n"));
                     }
-                    Expr::InstanceVar(class_name, instance_name) => {
-                        let class_type = self
-                            .locals
-                            .get(&class_name)
-                            .unwrap_or_else(|| panic!("Class '{}' not found", class_name))
-                            .0
-                            .clone()
-                            .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
+                    // Expr::InstanceVar(struct_name, instance_name) => {
+                    //     let struct_type = self
+                    //         .locals
+                    //         .get(&struct_name)
+                    //         .unwrap_or_else(|| panic!("Struct '{}' not found", struct_name))
+                    //         .0
+                    //         .clone()
+                    //         .unwrap_or_else(|| panic!("Struct type not found for '{}'", struct_name));
 
-                        let class_layout = &self
-                            .classes
-                            .get(class_type.trim())
-                            .unwrap_or_else(|| panic!("Class layout not found for '{class_type}'"))
-                            .0;
+                    //     let struct_layout = &self
+                    //         .structes
+                    //         .get(struct_type.trim())
+                    //         .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
+                    //         .0;
 
-                        let mut field_offset = None;
-                        let mut field_type = None;
-                        for field in &class_layout.fields {
-                            if &field.name == &instance_name {
-                                field_offset = Some(field.offset as i32);
-                                // Get the field type from the class definition
-                                if let Some((_, class_stmt)) = self.classes.get(class_type.trim()) {
-                                    if let Stmt::ClassDecl { instances, .. } = class_stmt {
-                                        for (fname, ftype) in instances {
-                                            if fname == &instance_name {
-                                                field_type = Some(ftype);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                        }
+                    //     let mut field_offset = None;
+                    //     let mut field_type = None;
+                    //     for field in &struct_layout.fields {
+                    //         if &field.name == &instance_name {
+                    //             field_offset = Some(field.offset as i32);
+                    //             // Get the field type from the struct definition
+                    //             if let Some((_, struct_stmt)) = self.structes.get(struct_type.trim()) {
+                    //                 if let Stmt::StructDecl { instances, .. } = struct_stmt {
+                    //                     for (fname, ftype) in instances {
+                    //                         if fname == &instance_name {
+                    //                             field_type = Some(ftype);
+                    //                             break;
+                    //                         }
+                    //                     }
+                    //                 }
+                    //             }
+                    //             break;
+                    //         }
+                    //     }
 
-                        let _field_offset = field_offset.expect(&format!(
-                            "Field '{}' not found in class '{}'",
-                            instance_name, class_type
+                    //     let _field_offset = field_offset.expect(&format!(
+                    //         "Field '{}' not found in struct '{}'",
+                    //         instance_name, struct_type
+                    //     ));
+
+                    //     let field_type = field_type.expect(&format!(
+                    //         "Field type for '{}' not found in struct '{}'",
+                    //         instance_name, struct_type
+                    //     ));
+
+                    //     match field_type {
+                    //         Type::int => {
+                    //             if let Some(val_reg) = self.handle_expr(value, None) {
+                    //                 self.output.push_str(&format!(
+                    //                     "mov dword [rbp - {offset}], {val_reg}\n"
+                    //                 ));
+                    //                 self.regs.push_back(val_reg);
+                    //             }
+                    //         }
+                    //         Type::Char => {
+                    //             if let Some(val_reg) = self.handle_expr(value, None) {
+                    //                 self.output.push_str(&format!(
+                    //                     "mov byte [rbp - {offset}], {val_reg}\n"
+                    //                 ));
+                    //                 self.regs.push_back(val_reg);
+                    //             }
+                    //         }
+                    //         Type::Bool => {
+                    //             if let Some(val_reg) = self.handle_expr(value, None) {
+                    //                 self.output.push_str(&format!(
+                    //                     "mov byte [rbp - {offset}], {val_reg}\n"
+                    //                 ));
+                    //                 self.regs.push_back(val_reg);
+                    //             }
+                    //         }
+                    //         _ => {
+                    //             if let Some(val_reg) = self.handle_expr(value, None) {
+                    //                 self.output.push_str(&format!(
+                    //                     "mov qword [rbp - {offset}], {val_reg}\n"
+                    //                 ));
+                    //                 self.regs.push_back(val_reg);
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    Expr::InstanceVar(struct_name, field_name) => {
+                        // Get struct pointer from local variable
+                        let struct_ptr_off = self
+                            .local_offset(&struct_name)
+                            .expect("Struct variable not found");
+                        let struct_ptr_reg = self.regs.pop_front().expect("No register available");
+                        self.output.push_str(&format!(
+                            "mov {struct_ptr_reg}, qword [rbp - {struct_ptr_off}]\n"
                         ));
 
-                        let field_type = field_type.expect(&format!(
-                            "Field type for '{}' not found in class '{}'",
-                            instance_name, class_type
-                        ));
+                        // Get struct layout and field information
+                        let struct_type = self.locals.get(&struct_name).unwrap().0.clone().unwrap();
+                        let struct_layout = &self.structes.get(&struct_type).unwrap().0;
 
-                        match field_type {
+                        let field_offset = struct_layout
+                            .fields
+                            .iter()
+                            .find(|f| f.name == *field_name)
+                            .unwrap()
+                            .offset;
+
+                        // Get value to store
+                        let val_reg = self.handle_expr(value, None).expect("No value register");
+
+                        // Store to struct field based on type
+                        match value.get_type() {
                             Type::int => {
-                                if let Some(val_reg) = self.handle_expr(value, None) {
-                                    self.output.push_str(&format!(
-                                        "mov dword [rbp - {offset}], {val_reg}\n"
-                                    ));
-                                    self.regs.push_back(val_reg);
-                                }
+                                self.output.push_str(&format!(
+                                    "mov dword [{struct_ptr_reg} + {field_offset}], {}\n",
+                                    Self::reg32(&val_reg)
+                                ));
                             }
-                            Type::Char => {
-                                if let Some(val_reg) = self.handle_expr(value, None) {
-                                    self.output.push_str(&format!(
-                                        "mov byte [rbp - {offset}], {val_reg}\n"
-                                    ));
-                                    self.regs.push_back(val_reg);
-                                }
-                            }
-                            Type::Bool => {
-                                if let Some(val_reg) = self.handle_expr(value, None) {
-                                    self.output.push_str(&format!(
-                                        "mov byte [rbp - {offset}], {val_reg}\n"
-                                    ));
-                                    self.regs.push_back(val_reg);
-                                }
+                            Type::Char | Type::Bool => {
+                                self.output.push_str(&format!(
+                                    "mov byte [{struct_ptr_reg} + {field_offset}], {}\n",
+                                    Self::reg8(&val_reg)
+                                ));
                             }
                             _ => {
-                                if let Some(val_reg) = self.handle_expr(value, None) {
-                                    self.output.push_str(&format!(
-                                        "mov qword [rbp - {offset}], {val_reg}\n"
-                                    ));
-                                    self.regs.push_back(val_reg);
-                                }
+                                self.output.push_str(&format!(
+                                    "mov qword [{struct_ptr_reg} + {field_offset}], {val_reg}\n"
+                                ));
                             }
                         }
+
+                        self.regs.push_back(struct_ptr_reg);
+                        self.regs.push_back(val_reg);
                     }
                     _ => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
@@ -1661,24 +1812,24 @@ impl CodeGen {
                     self.regs.push_back(idx_reg);
                     Some(addr)
                 }
-                Expr::ClassInit { name, params } => {
-                    // Get the class layout to map named parameters to field positions
-                    let class_info = self.classes.get(name);
+                Expr::StructInit { name, params } => {
+                    // Get the struct layout to map named parameters to field positions
+                    let struct_info = self.structes.get(name);
 
-                    if class_info.is_none() {
-                        panic!("Class {} not found", name);
+                    if struct_info.is_none() {
+                        panic!("Struct {} not found", name);
                     }
 
-                    let (class_layout, _) = class_info.unwrap();
+                    let (struct_layout, _) = struct_info.unwrap();
 
                     // Clone the field names and positions to avoid borrowing issues
-                    let field_positions: HashMap<String, usize> = class_layout
+                    let field_positions: HashMap<String, usize> = struct_layout
                         .fields
                         .iter()
                         .enumerate()
                         .map(|(i, field)| (field.name.clone(), i))
                         .collect();
-                    let field_count = class_layout.fields.len();
+                    let field_count = struct_layout.fields.len();
 
                     // First, evaluate all expressions to get their register values
                     let mut param_values = Vec::new();
@@ -1693,7 +1844,7 @@ impl CodeGen {
                         if let Some(&pos) = field_positions.get(param_name) {
                             ordered_args[pos] = reg;
                         } else {
-                            panic!("Field {} not found in class {}", param_name, name);
+                            panic!("Field {} not found in struct {}", param_name, name);
                         }
                     }
 
@@ -1719,7 +1870,7 @@ impl CodeGen {
                     let ctor = format!("{name}.new");
                     self.call_with_alignment(&ctor);
 
-                    let _class = &Type::Pointer(Box::new(Type::Class {
+                    let _struct = &Type::Pointer(Box::new(Type::Struct {
                         name: name.to_string(),
                         instances: params
                             .iter()
@@ -1727,7 +1878,7 @@ impl CodeGen {
                             .collect(),
                     }));
 
-                    // println!("allocated {class:?}");
+                    // println!("allocated {struct:?}");
 
                     let reg = self.regs.pop_front().expect("No regs");
 
@@ -1735,31 +1886,34 @@ impl CodeGen {
 
                     Some(reg)
                 }
-                Expr::InstanceVar(class_name, field_name) => {
+                Expr::InstanceVar(struct_name, field_name) => {
                     let obj_ptr_reg = self
-                        .handle_expr(&Expr::Variable(class_name.clone(), Type::Unknown), None)
-                        .expect("Could not load class pointer");
+                        .handle_expr(&Expr::Variable(struct_name.clone(), Type::Unknown), None)
+                        .expect("Could not load struct pointer");
 
-                    let class_type = self
+                    let struct_type = self
                         .locals
-                        .get(class_name)
-                        .unwrap_or_else(|| panic!("Class '{}' not found", class_name))
+                        .get(struct_name)
+                        .unwrap_or_else(|| panic!("Struct '{}' not found", struct_name))
                         .0
                         .clone()
-                        .unwrap_or_else(|| panic!("Class type not found for '{}'", class_name));
+                        .unwrap_or_else(|| panic!("Struct type not found for '{}'", struct_name));
 
-                    let class_layout = &self
-                        .classes
-                        .get(&class_type)
-                        .unwrap_or_else(|| panic!("Class layout not found for '{}'", class_type))
+                    let struct_layout = &self
+                        .structes
+                        .get(&struct_type)
+                        .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                         .0;
 
-                    let field_offset = class_layout
+                    let field_offset = struct_layout
                         .fields
                         .iter()
                         .find(|f| &f.name == field_name)
                         .unwrap_or_else(|| {
-                            panic!("Field '{}' not found in class '{}'", field_name, class_type)
+                            panic!(
+                                "Field '{}' not found in struct '{}'",
+                                field_name, struct_type
+                            )
                         })
                         .offset;
 
@@ -1797,9 +1951,101 @@ impl CodeGen {
                 Expr::Variable(_, _) => {
                     let ptr = self.handle_expr(expr, None).expect("ptr reg");
 
+                    // match ty {
+                    //     Type::int | Type::float => todo!(),
+
+                    //     Type::Char | Type::Bool => todo!(),
+                    //     _ => {}
+                    // }
+
                     self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
 
                     Some(ptr)
+                }
+                Expr::InstanceVar(struct_name, instance_name) => {
+                    let val_reg = self.regs.pop_front().expect("No registers available");
+
+                    let struct_type = self
+                        .locals
+                        .get(struct_name)
+                        .unwrap_or_else(|| {
+                            panic!("Error getting struct type for variable '{struct_name}'")
+                        })
+                        .0
+                        .clone()
+                        .unwrap_or_else(|| {
+                            panic!("Struct type not found for variable '{struct_name}'")
+                        });
+
+                    let ptr_reg = self
+                        .handle_expr(
+                            &Expr::Variable(struct_name.to_string(), Type::Unknown),
+                            None,
+                        )
+                        .expect("Could not load struct pointer");
+
+                    let struct_layout = &self
+                        .structes
+                        .get(struct_type.trim())
+                        .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
+                        .0;
+
+                    let mut field_offset = None;
+                    let mut field_type = None;
+                    for field in &struct_layout.fields {
+                        if &field.name == instance_name {
+                            field_offset = Some(field.offset as i32);
+                            // Get the field type from the struct definition
+                            if let Some((_, struct_stmt)) = self.structes.get(struct_type.trim()) {
+                                if let Stmt::StructDecl { instances, .. } = struct_stmt {
+                                    for (fname, ftype) in instances {
+                                        if fname == instance_name {
+                                            field_type = Some(ftype);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    let field_offset = field_offset.expect(&format!(
+                        "Field '{}' not found in struct '{}'",
+                        instance_name, struct_type
+                    ));
+
+                    let field_type = field_type.expect(&format!(
+                        "Field type for '{}' not found in struct '{}'",
+                        instance_name, struct_type
+                    ));
+
+                    match field_type {
+                        Type::int => {
+                            self.output.push_str(&format!(
+                                "mov {}, dword [{ptr_reg} + {field_offset}]\n",
+                                Self::reg32(&val_reg)
+                            ));
+                        }
+                        Type::Char | Type::Bool => {
+                            self.output.push_str(&format!(
+                                "mov {}, byte [{ptr_reg} + {field_offset}]\n",
+                                Self::reg8(&val_reg)
+                            ));
+                        }
+                        _ => {
+                            self.output.push_str(&format!(
+                                "mov {val_reg}, qword [{ptr_reg} + {field_offset}]\n"
+                            ));
+                        }
+                    }
+
+                    self.output
+                        .push_str(&format!("mov {ptr_reg}, qword [{val_reg}]\n"));
+
+                    self.regs.push_back(val_reg);
+
+                    Some(ptr_reg)
                 }
                 _ => self.handle_expr(expr, None),
             },
@@ -1850,43 +2096,46 @@ impl CodeGen {
             Expr::Binary {
                 left, op, right, ..
             } => {
-                let lhs = self.handle_expr(left, None).unwrap();
-                let rhs = self.handle_expr(right, None).unwrap();
-
-                // println!("{lhs}, {rhs}");
-
                 match left.get_type() {
                     Type::Pointer(inside_ty) => match right.get_type() {
                         Type::int => {
                             let size = inside_ty.size();
 
-                            // Make sure the RHS literal is in a register
-                            let rhs_reg = if let Expr::IntLiteral(n) = &**right {
-                                let r = self.regs.pop_front().expect("No registers");
-                                self.output.push_str(&format!("mov {}, {}\n", r, n));
-                                r
-                            } else {
-                                self.handle_expr(right, None).expect("index reg")
-                            };
+                            if right.get_type() == Type::int {
+                                let lhs = self.handle_expr(left, None).unwrap();
 
-                            // Multiply by type size only if > 1
-                            if size > 1 {
-                                self.output
-                                    .push_str(&format!("imul {}, {}\n", rhs_reg, size));
-                            }
+                                if let Expr::IntLiteral(n) = &**right {
+                                    let r = self.regs.pop_front().expect("No registers");
 
-                            match op {
-                                BinaryOp::Add => {
-                                    self.output.push_str(&format!("add {}, {}\n", lhs, rhs_reg));
-                                    self.regs.push_back(rhs_reg);
-                                    return Some(lhs);
+                                    self.output.push_str(&format!(
+                                        "mov {}, {}\n",
+                                        Self::reg32(&r),
+                                        n
+                                    ));
+
+                                    let rhs_reg = r;
+
+                                    if size > 1 {
+                                        self.output
+                                            .push_str(&format!("imul {}, {}\n", rhs_reg, size));
+                                    }
+
+                                    match op {
+                                        BinaryOp::Add => {
+                                            self.output
+                                                .push_str(&format!("add {}, {}\n", lhs, rhs_reg));
+                                            self.regs.push_back(rhs_reg);
+                                            return Some(lhs);
+                                        }
+                                        BinaryOp::Sub => {
+                                            self.output
+                                                .push_str(&format!("sub {}, {}\n", lhs, rhs_reg));
+                                            self.regs.push_back(rhs_reg);
+                                            return Some(lhs);
+                                        }
+                                        _ => return None,
+                                    }
                                 }
-                                BinaryOp::Sub => {
-                                    self.output.push_str(&format!("sub {}, {}\n", lhs, rhs_reg));
-                                    self.regs.push_back(rhs_reg);
-                                    return Some(lhs);
-                                }
-                                _ => return None,
                             }
                         }
                         _ => {}
@@ -1899,37 +2148,44 @@ impl CodeGen {
                         Type::int => {
                             let size = inside_ty.size();
 
-                            let lhs_reg = if let Expr::IntLiteral(n) = &**left {
-                                let r = self.regs.pop_front().expect("No registers");
-                                self.output.push_str(&format!("mov {}, {}\n", r, n));
-                                r
-                            } else {
-                                self.handle_expr(left, None).expect("lhs reg")
-                            };
+                            if left.get_type() == Type::int {
+                                let rhs = self.handle_expr(&right, None).unwrap();
 
-                            if size > 1 {
-                                self.output
-                                    .push_str(&format!("imul {}, {}\n", lhs_reg, size));
-                            }
+                                if let Expr::IntLiteral(n) = &**left {
+                                    let r = self.regs.pop_front().expect("No registers");
+                                    self.output.push_str(&format!("mov {}, {}\n", r, n));
+                                    let lhs_reg = r;
 
-                            match op {
-                                BinaryOp::Add => {
-                                    self.output.push_str(&format!("add {}, {}\n", rhs, lhs_reg));
-                                    self.regs.push_back(lhs_reg);
-                                    return Some(rhs);
+                                    if size > 1 {
+                                        self.output
+                                            .push_str(&format!("imul {}, {}\n", lhs_reg, size));
+                                    }
+
+                                    match op {
+                                        BinaryOp::Add => {
+                                            self.output
+                                                .push_str(&format!("add {}, {}\n", rhs, lhs_reg));
+                                            self.regs.push_back(lhs_reg);
+                                            return Some(rhs);
+                                        }
+                                        BinaryOp::Sub => {
+                                            self.output
+                                                .push_str(&format!("sub {}, {}\n", rhs, lhs_reg));
+                                            self.regs.push_back(lhs_reg);
+                                            return Some(rhs);
+                                        }
+                                        _ => return None,
+                                    }
                                 }
-                                BinaryOp::Sub => {
-                                    self.output.push_str(&format!("sub {}, {}\n", rhs, lhs_reg));
-                                    self.regs.push_back(lhs_reg);
-                                    return Some(rhs);
-                                }
-                                _ => return None,
                             }
                         }
                         _ => {}
                     },
                     _ => {}
                 }
+
+                let lhs = self.handle_expr(left, None).unwrap();
+                let rhs = self.handle_expr(right, None).unwrap();
 
                 match op {
                     BinaryOp::Add => {

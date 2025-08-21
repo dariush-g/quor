@@ -181,7 +181,7 @@ impl Parser {
         if self.match_token(&[TokenType::While]) {
             return self.while_statement();
         }
-        if self.match_token(&[TokenType::Class]) {
+        if self.match_token(&[TokenType::Struct]) {
             return self.class_dec();
         }
         if self.match_token(&[TokenType::Return]) {
@@ -212,7 +212,9 @@ impl Parser {
         };
 
         self.consume(TokenType::Colon, "Expected ':' after variable name")?;
+
         let var_type = self.parse_type()?;
+
         self.consume(TokenType::Equal, "Expected '=' after variable type")?;
 
         let initializer = self.expression()?;
@@ -239,35 +241,29 @@ impl Parser {
 
         self.consume(TokenType::LeftBrace, "Expected '{' after class name")?;
 
-        let mut functions = Vec::new();
         let mut fields = Vec::new();
 
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
-            if self.match_token(&[TokenType::Def]) {
-                functions.push(self.fn_dec()?);
+            let field_name_tok =
+                self.consume(TokenType::Identifier("".into()), "Expected field name")?;
+            let field_name = if let TokenType::Identifier(n) = &field_name_tok.token_type {
+                n.clone()
             } else {
-                let field_name_tok =
-                    self.consume(TokenType::Identifier("".into()), "Expected field name")?;
-                let field_name = if let TokenType::Identifier(n) = &field_name_tok.token_type {
-                    n.clone()
-                } else {
-                    return Err(ParseError::UnexpectedToken(field_name_tok.clone()));
-                };
+                return Err(ParseError::UnexpectedToken(field_name_tok.clone()));
+            };
 
-                self.consume(TokenType::Colon, "Expected ':' after field name")?;
-                let ty = self.parse_type()?;
+            self.consume(TokenType::Colon, "Expected ':' after field name")?;
+            let ty = self.parse_type()?;
 
-                self.consume(TokenType::Semicolon, "Expected ';' after field declaration")?;
-                fields.push((field_name, ty));
-            }
+            self.consume(TokenType::Semicolon, "Expected ';' after field declaration")?;
+            fields.push((field_name, ty));
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after class body")?;
 
-        Ok(Stmt::ClassDecl {
+        Ok(Stmt::StructDecl {
             name: class_name,
             instances: fields,
-            funcs: functions,
         })
     }
 
@@ -753,7 +749,7 @@ impl Parser {
                         "Expected ')' after class initializer",
                     )?;
 
-                    return Ok(Expr::ClassInit {
+                    return Ok(Expr::StructInit {
                         name,
                         params: inits,
                     });
@@ -883,12 +879,14 @@ impl Parser {
             }
             TokenType::Identifier(name) => {
                 // Handle class names as types
-                let class_name = name.clone();
+                let struct_name = name.clone();
                 self.advance();
-                Type::Class {
-                    name: class_name,
+                // Type::Pointer(Box::new(
+                Type::Struct {
+                    name: struct_name,
                     instances: Vec::new(),
                 }
+                // ))
             }
             _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
         };

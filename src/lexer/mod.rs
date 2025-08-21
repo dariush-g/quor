@@ -191,7 +191,7 @@ impl Lexer {
             "let" => TokenType::Let,
             "if" => TokenType::If,
 
-            "class" => TokenType::Class,
+            "struct" => TokenType::Struct,
 
             "else" => TokenType::Else,
             "while" => TokenType::While,

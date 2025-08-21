@@ -11,7 +11,7 @@ pub enum Type {
 
     Function,
 
-    Class {
+    Struct {
         name: String,
         instances: Vec<(String, Type)>,
     },
@@ -46,7 +46,7 @@ impl Type {
             Type::Bool => 1,
             Type::Pointer(_) => 8,
             Type::Array(elem, len) => elem.size() * len.unwrap(),
-            Type::Class { .. } => 8, // instances.iter().map(|f| f.1.size()).sum(),
+            Type::Struct { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
             _ => 0,
         }
     }
@@ -61,7 +61,7 @@ pub enum Expr {
     // name of class
     CharLiteral(char),
 
-    ClassInit {
+    StructInit {
         name: String,
         params: Vec<(String, Expr)>,
     },
@@ -122,7 +122,7 @@ pub enum Expr {
 impl Expr {
     pub fn get_type(&self) -> Type {
         match self {
-            Expr::ClassInit { name, params } => Type::Class {
+            Expr::StructInit { name, params } => Type::Struct {
                 name: name.to_string(),
                 instances: params
                     .iter()
@@ -135,7 +135,7 @@ impl Expr {
             Expr::CharLiteral(_) => Type::Char,
             Expr::Variable(_, ty) => ty.clone(),
             Expr::Binary { result_type, .. } => result_type.clone(),
-            Expr::Unary { result_type, .. } => result_type.clone(),
+            Expr::Unary { expr, .. } => expr.get_type(),
             Expr::Call { return_type, .. } => return_type.clone(),
             Expr::Cast { target_type, .. } => target_type.clone(),
             Expr::AddressOf(expr) => Type::Pointer(Box::new(expr.get_type())),
@@ -143,7 +143,13 @@ impl Expr {
             Expr::Array(elements, element_type) => {
                 Type::Array(Box::new(element_type.clone()), Some(elements.len()))
             }
-            // Expr::StringLiteral(_) => Type::Class { name: (), instances: () },
+            Expr::StringLiteral(_) => Type::Struct {
+                name: "string".to_owned(),
+                instances: vec![
+                    ("size".to_string(), Type::int),
+                    ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
+                ],
+            },
             // Expr::InstanceVar(_, _) => todo!(),
             Expr::Assign { value, .. } => value.get_type(),
             // Expr::ArrayAccess { array, index } => todo!(),
@@ -197,10 +203,9 @@ pub enum Stmt {
         return_type: Type,
         body: Vec<Stmt>,
     },
-    ClassDecl {
+    StructDecl {
         name: String,
         instances: Vec<(String, Type)>,
-        funcs: Vec<Stmt>,
     },
     If {
         condition: Expr,
