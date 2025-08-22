@@ -41,6 +41,11 @@ fn canonicalize_path(path: &str) -> PathBuf {
 }
 
 pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
+    program.push(Stmt::AtDecl(
+        "import".to_owned(),
+        Some("string.qu!".to_owned()),
+    ));
+
     let mut imported_files: HashSet<PathBuf> = HashSet::new();
 
     for stmt in program.clone() {
@@ -50,7 +55,6 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                     .clone()
                     .unwrap_or_else(|| panic!("Unable to locate import"));
 
-                // === Resolve final path string ===
                 let path = if param.ends_with('!') {
                     // stdlib import
                     param.pop(); // remove '!'
@@ -61,17 +65,13 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                     param.clone()
                 };
 
-                // === Canonicalize path ===
                 let abs_path = canonicalize_path(&path);
 
-                // === Deduplication check ===
                 if imported_files.contains(&abs_path) {
-                    // already imported → skip
                     continue;
                 }
                 imported_files.insert(abs_path.clone());
 
-                // === Read + process source ===
                 let source = match fs::read_to_string(&abs_path) {
                     Ok(s) => s,
                     Err(e) => {
@@ -98,7 +98,6 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                     }
                 };
 
-                // === Prepend imported program ===
                 program_new.append(&mut program.clone());
                 *program = program_new;
             }

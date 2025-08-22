@@ -10,3 +10,6 @@ def get_index(str: string*, index: int) :: char {
     return *ret;
 }
 
+def is_alphabetic(c: char) :: bool {
+    return (c >= 'a' && c <= 'z');
+}
