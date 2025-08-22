@@ -232,6 +232,19 @@ impl TypeChecker {
             .declare_fn("print_int", vec![Type::int], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
         type_checker
+            .declare_fn(
+                "print_str",
+                vec![Type::Pointer(Box::new(Type::Struct {
+                    name: "string".to_owned(),
+                    instances: vec![
+                        // ("size".to_owned(), Type::int),
+                        // ("data".to_owned(), Type::Pointer(Box::new(Type::Char))),
+                    ],
+                }))],
+                Type::Void,
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
             .declare_fn("print_bool", vec![Type::Bool], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
         type_checker

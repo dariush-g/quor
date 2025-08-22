@@ -16,7 +16,6 @@ def get_index(str: string*, index: int) :: char {
         exit(1);
     }
 
-
     let ret: char* = str.data + index;
     return *ret;
 }

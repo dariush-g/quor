@@ -229,7 +229,7 @@ fn main() {
         }
     };
 
-    // println!("{typed:?}");
+    println!("{typed:?}");
 
     // Codegen → ASM
     let codegen = CodeGen::generate(&typed);
