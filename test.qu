@@ -1,23 +1,10 @@
-@import::<string.qu>;
-
-
 
 def main() :: int {
 
-    let ptr: void* = malloc(2);
-    
-    *ptr = 'h';
-    ptr = ptr + 1;
-    *ptr = 'i';
-    ptr = ptr - 1;
 
+    // let str: string* = "hello";
 
-    let str1: string* = string::(size: 2, data: ptr); 
-    
-    let str: string* = "hello";
-
-    
-    print_char(get_index(str, 2));
+    print_bool(is_alphabetic('2'));
 
     return 0;
 }
