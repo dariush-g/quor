@@ -143,13 +143,13 @@ impl Expr {
             Expr::Array(elements, element_type) => {
                 Type::Array(Box::new(element_type.clone()), Some(elements.len()))
             }
-            Expr::StringLiteral(_) => Type::Struct {
+            Expr::StringLiteral(_) => Type::Pointer(Box::new(Type::Struct {
                 name: "string".to_owned(),
                 instances: vec![
                     ("size".to_string(), Type::int),
                     ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
                 ],
-            },
+            })),
             // Expr::InstanceVar(_, _) => todo!(),
             Expr::Assign { value, .. } => value.get_type(),
             // Expr::ArrayAccess { array, index } => todo!(),

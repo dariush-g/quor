@@ -684,7 +684,21 @@ impl Parser {
                 self.advance();
                 Ok(Expr::CharLiteral(c))
             }
-            TokenType::DoubleQuote => Ok(Expr::StringLiteral("".to_string())),
+            TokenType::DoubleQuote => {
+                self.advance();
+                if let TokenType::Identifier(n) = &self.peek().clone().token_type {
+                    self.consume(
+                        TokenType::DoubleColon,
+                        "Expected double quote to end string",
+                    )?;
+                    return Ok(Expr::StringLiteral(n.to_string()));
+                }
+                Err(ParseError::Expected {
+                    expected: TokenType::Identifier("".to_string()),
+                    found: self.peek().clone(),
+                    message: "Expected double quote".to_owned(),
+                })
+            }
             TokenType::LeftBracket => {
                 self.advance();
                 let mut elements = Vec::new();

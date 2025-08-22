@@ -1,15 +1,23 @@
-@import::(test_class.qu);
-@import::(example.qu);
+@import::<string.qu>;
 
-class X {
-    x: int;
-}
+
 
 def main() :: int {
 
-    let x: X = X::(x: 5);
+    let ptr: void* = malloc(2);
+    
+    *ptr = 'h';
+    ptr = ptr + 1;
+    *ptr = 'i';
+    ptr = ptr - 1;
 
-    print_int(x.x);
+
+    let str1: string* = string::(size: 2, data: ptr); 
+    
+    let str: string* = "hello";
+
+    
+    print_char(get_index(str, 2));
 
     return 0;
 }

@@ -218,6 +218,8 @@ fn main() {
         }
     };
 
+    // println!("{program:?}");
+
     // Type check
     let typed = match TypeChecker::analyze_program(program) {
         Ok(tp) => tp,
