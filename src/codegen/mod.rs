@@ -420,6 +420,16 @@ impl CodeGen {
                                 // rdi - size
                                 // rsi - char*
 
+                                let index = self
+                                    .regs
+                                    .iter()
+                                    .enumerate()
+                                    .find(|(_, reg)| *reg == "rax")
+                                    .unwrap()
+                                    .0;
+
+                                self.regs.remove(index);
+
                                 for (i, ch) in str.chars().enumerate() {
                                     let reg = self.regs.pop_front().expect("No regs");
 
@@ -440,6 +450,8 @@ impl CodeGen {
 
                                 self.output
                                     .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
+
+                                self.regs.push_back("rax".to_owned());
                             }
 
                             _ => {
@@ -472,6 +484,16 @@ impl CodeGen {
                     // rdi - size
                     // rsi - char*
 
+                    let index = self
+                        .regs
+                        .iter()
+                        .enumerate()
+                        .find(|(_, reg)| *reg == "rax")
+                        .unwrap()
+                        .0;
+
+                    self.regs.remove(index);
+
                     for (i, ch) in str.chars().enumerate() {
                         let reg = self.regs.pop_front().expect("No regs");
 
@@ -490,6 +512,8 @@ impl CodeGen {
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
+
+                    self.regs.push_back("rax".to_owned());
                 }
 
                 Expr::StructInit { name: cls, params } => {
@@ -1106,7 +1130,6 @@ impl CodeGen {
             "r13" => "r13b",
             "r14" => "r14b",
             "r15" => "r15b",
-
             _ => "al",
         }
     }
@@ -1132,6 +1155,47 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
+            Expr::StringLiteral(str) => {
+                self.output
+                    .push_str(&format!("mov rdi, {}\ncall malloc\n", str.len()));
+
+                // rdi - size
+                // rsi - char*
+
+                let index = self
+                    .regs
+                    .iter()
+                    .enumerate()
+                    .find(|(_, reg)| *reg == "rax")
+                    .unwrap()
+                    .0;
+
+                self.regs.remove(index);
+
+                for (i, ch) in str.chars().enumerate() {
+                    let reg = self.regs.pop_front().expect("No regs");
+
+                    self.output
+                        .push_str(&format!("mov {}, '{ch}'\n", Self::reg8(&reg)));
+
+                    self.output
+                        .push_str(&format!("mov byte [rax + {i}], {}\n", Self::reg8(&reg)));
+
+                    self.regs.push_back(reg);
+                }
+
+                self.output
+                    .push_str(&format!("mov rdi, {}\nmov rsi, rax\n", str.len()));
+                self.output.push_str("call string.new\n");
+
+                let reg = self.regs.pop_front().expect("No regs");
+
+                self.output.push_str(&format!("mov {reg}, rax\n"));
+
+                self.regs.push_back("rax".to_owned());
+
+                Some(reg)
+            }
             // alloc to stack -> pointer to loc
             Expr::FieldAssign {
                 class_name,
@@ -1729,6 +1793,16 @@ impl CodeGen {
 
                         // rdi - size
                         // rsi - char*
+
+                        let index = self
+                            .regs
+                            .iter()
+                            .enumerate()
+                            .find(|(_, reg)| *reg == "rax")
+                            .unwrap()
+                            .0;
+
+                        self.regs.remove(index);
 
                         for (i, ch) in str.chars().enumerate() {
                             let reg = self.regs.pop_front().expect("No regs");

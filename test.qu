@@ -1,10 +1,10 @@
 
 def main() :: int {
 
+  
 
-    // let str: string* = "hello";
+    print_char(get_index("hello", 1));
 
-    print_bool(is_alphabetic('2'));
 
     return 0;
 }
