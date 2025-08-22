@@ -28,7 +28,7 @@ def main() :: int {
 ```
 
 ```quor
-struct Guy {
+struct Person {
     name: string;
     age: int;
 }
