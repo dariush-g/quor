@@ -2,13 +2,14 @@
 
 ## Current Features
 
-- Integers, chars, and booleans
+- Integers, chars, strings, booleans
 - Pointers (`&` for address-of, `*` for dereference)
 - Arrays
-- Basic classes (heap-allocated) with functions
+- Basic structs (heap-allocated)
 - Variables (stack-allocated for now, 8 bytes each)
 - Functions and function calls
-- `if` / `while` / `return`
+- `if` / `while`
+- imports to a standard lib and to local files
 
 ## Example
 
@@ -20,7 +21,7 @@ def add(a: int, b: int) :: int {
 }
 
 def main() :: int {
-    
+
     print_int(add(1, 2));
 
     return 0;
@@ -33,7 +34,7 @@ struct Person {
     age: int;
 }
 
-def get_name(self: Guy*) :: string {
+def get_name(self: Person*) :: string {
     return self.name;
 }
 

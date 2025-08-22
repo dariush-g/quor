@@ -2,7 +2,6 @@ extern malloc
 global _start
 _start:
 call main
-mov rbx, rax
 mov rdi, rax
 mov rax, 60
 syscall
@@ -36,10 +35,6 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-.while_start_0:
-mov rcx, 1
-cmp rcx, 1
-jne .while_end_0
 sub rsp, 8
 mov rdi, 5
 call malloc
@@ -51,18 +46,14 @@ mov byte [rax + 4], 'o'
 mov rdi, 5
 mov rsi, rax
 call string.new
+mov r10, rax
+mov r11, 3
+mov rdi, r10
+mov rsi, r11
+call get_index
 mov qword [rbp - 8], rax
-mov rdx, 'h'
-mov rdi, rdx
-call print_char
-mov r8, qword [rbp - 8]
-mov rdi, r8
-call free_string
-add rsp, 8
-jmp .while_start_0
-.while_end_0:
-mov r9, 0
-mov rax, r9
+mov r12, 0
+mov rax, r12
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
@@ -75,12 +66,12 @@ push rbp
 mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
-mov r11, qword [rbp - 8]
-mov r10, qword [r11 + 8]
-mov rdi, r10
+mov r14, qword [rbp - 8]
+mov r13, qword [r14 + 8]
+mov rdi, r13
 call free
-mov r12, qword [rbp - 8]
-mov rdi, r12
+mov rcx, qword [rbp - 8]
+mov rdi, rcx
 call free
 .Lret_free_string:
 mov rsp, rbp
@@ -93,15 +84,27 @@ mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
 mov dword [rbp - 12], esi
+mov edx, dword [rbp - 12]
+mov r9, qword [rbp - 8]
+mov r8d, dword [r9 + 0]
+cmp rdx, r8
+setge al
+movzx rax, al
+cmp rax, 0
+je .else0
+mov r10, 1
+mov rdi, r10
+call exit
+.else0:
 sub rsp, 8
-mov r14, qword [rbp - 8]
-mov r13, qword [r14 + 8]
-mov ecx, dword [rbp - 12]
-add r13, rcx
-mov qword [rbp - 24], r13
-mov rdx, qword [rbp - 24]
-mov rdx, qword [rdx]
-mov rax, rdx
+mov r12, qword [rbp - 8]
+mov r11, qword [r12 + 8]
+mov r14d, dword [rbp - 12]
+add r11, r14
+mov qword [rbp - 24], r11
+mov r13, qword [rbp - 24]
+mov r13, qword [r13]
+mov rax, r13
 jmp .Lret_get_index
 .Lret_get_index:
 mov rsp, rbp
@@ -159,4 +162,4 @@ str_true: db "true",10,0
 str_false: db "false",10,0
 extern malloc
 extern free
-
+extern exit

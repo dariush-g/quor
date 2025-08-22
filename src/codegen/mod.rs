@@ -178,7 +178,7 @@ impl CodeGen {
 
         code.output.push_str("global _start\n_start:\n");
         code.output.push_str("call main\n");
-        code.output.push_str("mov rbx, rax\n");
+        // code.output.push_str("mov rbx, rax\n");
         code.output.push_str("mov rdi, rax\n");
 
         #[cfg(target_arch = "aarch64")]
@@ -334,7 +334,8 @@ impl CodeGen {
 
                 // loop back
 
-                self.output.push_str(&format!("add rsp, {}\n", self.stack_size));
+                self.output
+                    .push_str(&format!("add rsp, {}\n", self.stack_size));
 
                 self.output.push_str(&format!("jmp {loop_start}\n"));
 

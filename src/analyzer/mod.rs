@@ -239,6 +239,10 @@ impl TypeChecker {
             .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker
+            .declare_fn("exit", vec![Type::int], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
             .declare_fn(
                 "free",
                 vec![Type::Pointer(Box::new(Type::Void))],

@@ -1,14 +1,8 @@
 
 def main() :: int {
 
-    
-    while (true) {
-    let str: string* = "hello";
+    let n: char = get_index("hello", 3);
 
-    print_char('h');
-
-    free_string(str);
-    }
 
     return 0;
 }
