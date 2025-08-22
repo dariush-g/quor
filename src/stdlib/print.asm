@@ -12,7 +12,6 @@ print_int:
     add rsp, 16
     pop rbp
     ret
-
 ; print_bool: rdi = 0 or 1
 global print_bool
 print_bool:
@@ -42,9 +41,21 @@ print_char:
     add rsp, 16
     pop rbp
     ret
-
+global print_str
+print_str:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    mov rsi, qword [rdi + 8]    
+    mov rdi, fmt_str            
+    xor rax, rax
+    call printf
+    add rsp, 16
+    pop rbp
+    ret
 section .data
 fmt_int: db "%d",10,0
 fmt_char: db "%c",10,0
+fmt_str: db "%s",10,0
 str_true: db "true",10,0
 str_false: db "false",10,0

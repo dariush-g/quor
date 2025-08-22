@@ -14,7 +14,8 @@ pub struct CodeGen {
     output: String,
     // imports: Vec<String>,
     regs: VecDeque<String>,
-    _fp_regs: VecDeque<String>,
+    fp_regs: VecDeque<String>,
+    fp_count: u32,
     _jmp_count: u32,
     functions: Functions,
     locals: HashMap<String, (Option<String>, i32, Type)>,
@@ -140,6 +141,7 @@ impl CodeGen {
     // asm      import paths
     pub fn generate(stmts: &Vec<Stmt>) -> String {
         let mut code = CodeGen {
+            fp_count: 0,
             output: String::new(),
             regs: VecDeque::from(vec![
                 "rcx".to_string(),
@@ -152,8 +154,9 @@ impl CodeGen {
                 "r12".to_string(),
                 "r13".to_string(),
                 "r14".to_string(),
+                "r15".to_string(),
             ]),
-            _fp_regs: VecDeque::from(vec![
+            fp_regs: VecDeque::from(vec![
                 "xmm0".to_string(),
                 "xmm1".to_string(),
                 "xmm2".to_string(),
@@ -162,6 +165,14 @@ impl CodeGen {
                 "xmm5".to_string(),
                 "xmm6".to_string(),
                 "xmm7".to_string(),
+                "xmm8".to_string(),
+                "xmm9".to_string(),
+                "xmm10".to_string(),
+                "xmm11".to_string(),
+                "xmm12".to_string(),
+                "xmm13".to_string(),
+                "xmm14".to_string(),
+                "xmm15".to_string(),
             ]),
             _jmp_count: 0,
             functions: vec![],
@@ -391,6 +402,10 @@ impl CodeGen {
                     for (i, element) in elements.iter().enumerate() {
                         let offset = base_offset - (i as i32) * 8;
                         match element {
+                            Expr::FloatLiteral(f) => {
+                                self.output
+                                    .push_str(&format!("movss [rbp - {offset}], {f}\n"));
+                            }
                             Expr::IntLiteral(n) => {
                                 self.output
                                     .push_str(&format!("mov qword [rbp - {offset}], {n}\n"));
@@ -752,10 +767,22 @@ impl CodeGen {
                     } else {
                         self.local_offset(name).unwrap()
                     };
-                    if let Some(val_reg) = self.handle_expr(value, None) {
-                        self.output
-                            .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n"));
-                        self.regs.push_back(val_reg);
+
+                    match var_type {
+                        Type::float => {
+                            if let Some(val_reg) = self.handle_expr(value, None) {
+                                self.output
+                                    .push_str(&format!("movss [rbp - {offset}], {val_reg}\n"));
+                                self.regs.push_back(val_reg);
+                            }
+                        }
+                        _ => {
+                            if let Some(val_reg) = self.handle_expr(value, None) {
+                                self.output
+                                    .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n"));
+                                self.regs.push_back(val_reg);
+                            }
+                        }
                     }
                 }
             },
@@ -1325,7 +1352,21 @@ impl CodeGen {
                 }
                 Some("rax".to_string())
             }
-            Expr::FloatLiteral(_f) => None,
+            Expr::FloatLiteral(f) => {
+                self.output.push_str(&format!(
+                    "section .data\nfp{}: dd {f}\nsection .text\n",
+                    self.fp_count
+                ));
+
+                let reg = self.fp_regs.pop_front().expect("No fp reg");
+
+                self.output
+                    .push_str(&format!("movss {reg}, [fp{}]\n", self.fp_count));
+
+                self.fp_count += 1;
+
+                Some(reg)
+            }
             Expr::CharLiteral(n) => {
                 let av_reg = self.regs.pop_front().expect("No registers");
                 // self.output
@@ -2433,6 +2474,19 @@ impl CodeGen {
                         Some("rax".to_string())
                     }
                 }
+            }
+            Expr::Unary {
+                op: UnaryOp::Negate,
+                expr,
+                ..
+            } => {
+                let reg = self
+                    .handle_expr(expr, None)
+                    .expect("No reg for unary negate");
+
+                self.output.push_str(&format!("neg {reg}\n"));
+
+                Some(reg)
             }
             _ => None,
         }

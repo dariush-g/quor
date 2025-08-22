@@ -1,8 +1,8 @@
 
 def main() :: int {
 
-    let n: char = get_index("hello", 3);
 
+    let x: float = 1.0;
 
     return 0;
 }

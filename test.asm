@@ -36,24 +36,13 @@ push rbp
 mov rbp, rsp
 sub rsp, 0
 sub rsp, 8
-mov rdi, 5
-call malloc
-mov byte [rax + 0], 'h'
-mov byte [rax + 1], 'e'
-mov byte [rax + 2], 'l'
-mov byte [rax + 3], 'l'
-mov byte [rax + 4], 'o'
-mov rdi, 5
-mov rsi, rax
-call string.new
-mov r10, rax
-mov r11, 3
-mov rdi, r10
-mov rsi, r11
-call get_index
-mov qword [rbp - 8], rax
-mov r12, 0
-mov rax, r12
+section .data
+fp0: dd 1
+section .text
+movss xmm0, [fp0]
+movss [rbp - 8], xmm0
+mov rcx, 0
+mov rax, rcx
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
@@ -66,12 +55,12 @@ push rbp
 mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
-mov r14, qword [rbp - 8]
-mov r13, qword [r14 + 8]
-mov rdi, r13
+mov rax, qword [rbp - 8]
+mov rdx, qword [rax + 8]
+mov rdi, rdx
 call free
-mov rcx, qword [rbp - 8]
-mov rdi, rcx
+mov r8, qword [rbp - 8]
+mov rdi, r8
 call free
 .Lret_free_string:
 mov rsp, rbp
@@ -84,27 +73,27 @@ mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
 mov dword [rbp - 12], esi
-mov edx, dword [rbp - 12]
-mov r9, qword [rbp - 8]
-mov r8d, dword [r9 + 0]
-cmp rdx, r8
+mov r9d, dword [rbp - 12]
+mov r11, qword [rbp - 8]
+mov r10d, dword [r11 + 0]
+cmp r9, r10
 setge al
 movzx rax, al
 cmp rax, 0
 je .else0
-mov r10, 1
-mov rdi, r10
+mov r12, 1
+mov rdi, r12
 call exit
 .else0:
 sub rsp, 8
-mov r12, qword [rbp - 8]
-mov r11, qword [r12 + 8]
-mov r14d, dword [rbp - 12]
-add r11, r14
-mov qword [rbp - 24], r11
-mov r13, qword [rbp - 24]
-mov r13, qword [r13]
-mov rax, r13
+mov r14, qword [rbp - 8]
+mov r13, qword [r14 + 8]
+mov r15d, dword [rbp - 12]
+add r13, r15
+mov qword [rbp - 24], r13
+mov xmm0, qword [rbp - 24]
+mov xmm0, qword [xmm0]
+mov rax, xmm0
 jmp .Lret_get_index
 .Lret_get_index:
 mov rsp, rbp
@@ -124,7 +113,6 @@ print_int:
     add rsp, 16
     pop rbp
     ret
-
 ; print_bool: rdi = 0 or 1
 global print_bool
 print_bool:
@@ -154,10 +142,22 @@ print_char:
     add rsp, 16
     pop rbp
     ret
-
+global print_str
+print_str:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    mov rsi, qword [rdi + 8]    
+    mov rdi, fmt_str            
+    xor rax, rax
+    call printf
+    add rsp, 16
+    pop rbp
+    ret
 section .data
 fmt_int: db "%d",10,0
 fmt_char: db "%c",10,0
+fmt_str: db "%s",10,0
 str_true: db "true",10,0
 str_false: db "false",10,0
 extern malloc
