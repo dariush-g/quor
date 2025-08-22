@@ -1,10 +1,14 @@
 
 def main() :: int {
 
-  
+    
+    while (true) {
+    let str: string* = "hello";
 
-    print_char(get_index("hello", 1));
+    print_char('h');
 
+    free_string(str);
+    }
 
     return 0;
 }

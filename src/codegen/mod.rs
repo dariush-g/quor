@@ -2,6 +2,7 @@ use crate::{
     analyzer::base_type,
     lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
 };
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
@@ -299,14 +300,14 @@ impl CodeGen {
 
     fn call_with_alignment(&mut self, target: &str) {
         let slots = self.stack_size / 8;
-        let need_pad = (slots & 1) != 0;
-        if need_pad {
-            self.output.push_str("sub rsp, 8\n");
-        }
+        let _need_pad = (slots & 1) != 0;
+        // if need_pad {
+        //     self.output.push_str("sub rsp, 8\n");
+        // }
         self.output.push_str(&format!("call {target}\n"));
-        if need_pad {
-            self.output.push_str("add rsp, 8\n");
-        }
+        // if need_pad {
+        //     self.output.push_str("add rsp, 8\n");
+        // }
     }
 
     fn handle_stmt(&mut self, stmt: &Stmt) {
@@ -332,6 +333,9 @@ impl CodeGen {
                 self.handle_stmt(body);
 
                 // loop back
+
+                self.output.push_str(&format!("add rsp, {}\n", self.stack_size));
+
                 self.output.push_str(&format!("jmp {loop_start}\n"));
 
                 // exit
@@ -420,28 +424,9 @@ impl CodeGen {
                                 // rdi - size
                                 // rsi - char*
 
-                                let index = self
-                                    .regs
-                                    .iter()
-                                    .enumerate()
-                                    .find(|(_, reg)| *reg == "rax")
-                                    .unwrap()
-                                    .0;
-
-                                self.regs.remove(index);
-
                                 for (i, ch) in str.chars().enumerate() {
-                                    let reg = self.regs.pop_front().expect("No regs");
-
                                     self.output
-                                        .push_str(&format!("mov {}, '{ch}'\n", Self::reg8(&reg)));
-
-                                    self.output.push_str(&format!(
-                                        "mov byte [rax + {i}], {}\n",
-                                        Self::reg8(&reg)
-                                    ));
-
-                                    self.regs.push_back(reg);
+                                        .push_str(&format!("mov byte [rax + {i}], '{ch}'\n"));
                                 }
 
                                 self.output
@@ -450,8 +435,6 @@ impl CodeGen {
 
                                 self.output
                                     .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
-
-                                self.regs.push_back("rax".to_owned());
                             }
 
                             _ => {
@@ -484,26 +467,9 @@ impl CodeGen {
                     // rdi - size
                     // rsi - char*
 
-                    let index = self
-                        .regs
-                        .iter()
-                        .enumerate()
-                        .find(|(_, reg)| *reg == "rax")
-                        .unwrap()
-                        .0;
-
-                    self.regs.remove(index);
-
                     for (i, ch) in str.chars().enumerate() {
-                        let reg = self.regs.pop_front().expect("No regs");
-
                         self.output
-                            .push_str(&format!("mov {}, '{ch}'\n", Self::reg8(&reg)));
-
-                        self.output
-                            .push_str(&format!("mov byte [rax + {i}], {}\n", Self::reg8(&reg)));
-
-                        self.regs.push_back(reg);
+                            .push_str(&format!("mov byte [rax + {i}], '{}'\n", ch));
                     }
 
                     self.output
@@ -512,8 +478,6 @@ impl CodeGen {
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
-
-                    self.regs.push_back("rax".to_owned());
                 }
 
                 Expr::StructInit { name: cls, params } => {
@@ -1162,24 +1126,11 @@ impl CodeGen {
                 // rdi - size
                 // rsi - char*
 
-                let index = self
-                    .regs
-                    .iter()
-                    .enumerate()
-                    .find(|(_, reg)| *reg == "rax")
-                    .unwrap()
-                    .0;
-
-                self.regs.remove(index);
-
                 for (i, ch) in str.chars().enumerate() {
                     let reg = self.regs.pop_front().expect("No regs");
 
                     self.output
-                        .push_str(&format!("mov {}, '{ch}'\n", Self::reg8(&reg)));
-
-                    self.output
-                        .push_str(&format!("mov byte [rax + {i}], {}\n", Self::reg8(&reg)));
+                        .push_str(&format!("mov byte [rax + {i}], '{ch}'\n"));
 
                     self.regs.push_back(reg);
                 }
@@ -1191,8 +1142,6 @@ impl CodeGen {
                 let reg = self.regs.pop_front().expect("No regs");
 
                 self.output.push_str(&format!("mov {reg}, rax\n"));
-
-                self.regs.push_back("rax".to_owned());
 
                 Some(reg)
             }
@@ -1794,26 +1743,9 @@ impl CodeGen {
                         // rdi - size
                         // rsi - char*
 
-                        let index = self
-                            .regs
-                            .iter()
-                            .enumerate()
-                            .find(|(_, reg)| *reg == "rax")
-                            .unwrap()
-                            .0;
-
-                        self.regs.remove(index);
-
                         for (i, ch) in str.chars().enumerate() {
-                            let reg = self.regs.pop_front().expect("No regs");
-
                             self.output
-                                .push_str(&format!("mov {}, '{ch}'\n", Self::reg8(&reg)));
-
-                            self.output
-                                .push_str(&format!("mov byte [rax + {i}], {}\n", Self::reg8(&reg)));
-
-                            self.regs.push_back(reg);
+                                .push_str(&format!("mov byte [rax + {i}], '{ch}'\n"));
                         }
 
                         self.output
