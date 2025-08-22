@@ -5,6 +5,12 @@ struct string {
     data: char*;
 }
 
+def free_string(str: string*) :: void {
+    free(str.data);
+    free(str);
+}
+
+
 def get_index(str: string*, index: int) :: char {
     let ret: char* = str.data + index;
     return *ret;
