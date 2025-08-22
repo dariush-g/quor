@@ -455,13 +455,13 @@ impl TypeChecker {
 
                 Ok(ty)
             }
-            Expr::StringLiteral(_) => Ok(Type::Struct {
+            Expr::StringLiteral(_) => Ok(Type::Pointer(Box::new(Type::Struct {
                 name: "string".to_owned(),
                 instances: vec![
                     ("size".to_string(), Type::int),
                     ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
                 ],
-            }),
+            }))),
             Expr::BoolLiteral(_) => Ok(Type::Bool),
             Expr::IntLiteral(_) => Ok(Type::int),
             Expr::FloatLiteral(_) => Ok(Type::float),
@@ -916,14 +916,12 @@ impl TypeChecker {
                 var_type,
                 value,
             } => {
-                // Resolve class types to include field information
                 let resolved_type = if let Type::Struct {
                     name: class_name,
                     instances,
                 } = &var_type
                 {
                     if instances.is_empty() {
-                        // This is a class type reference, look up the actual class definition
                         let class_fields = self
                             .class_fields
                             .get(class_name)
@@ -940,8 +938,6 @@ impl TypeChecker {
                 };
 
                 let value_type = self.type_check_expr(value)?;
-
-                // For class types, we need to check that the value is a valid class instance
 
                 // println!("{value_type:?}, {resolved_type:?}");
 
@@ -962,7 +958,6 @@ impl TypeChecker {
                             }
                         }
                     } else if let Type::Pointer(boxed_expected) = base_type(&resolved_type) {
-                        // If the declared type is a pointer to a struct, check if the value is a pointer to the same struct
                         if let Type::Pointer(boxed_value) = base_type(&value_type) {
                             match (&*boxed_expected, &*boxed_value) {
                                 (
@@ -992,7 +987,6 @@ impl TypeChecker {
                             ));
                         }
                     } else if let Type::Struct { name: name2, .. } = base_type(&resolved_type) {
-                        // If the declared type is a pointer to a struct, check if the value is a pointer to the same struct
                         if let Type::Struct { name: name1, .. } = base_type(&value_type) {
                             if name1 != name2 {
                                 return Err(format!(
