@@ -10,8 +10,13 @@ def free_string(str: string*) :: void {
     free(str);
 }
 
-
 def get_index(str: string*, index: int) :: char {
+
+    if (index >= str.size) {
+        exit(1);
+    }
+
+
     let ret: char* = str.data + index;
     return *ret;
 }
