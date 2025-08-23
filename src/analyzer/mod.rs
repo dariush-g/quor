@@ -59,7 +59,7 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                     // stdlib import
                     param.pop(); // remove '!'
                     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-                    format!("{manifest_dir}/src/stdlib/{param}")
+                    format!("{manifest_dir}/stdlib/{param}")
                 } else {
                     // local import
                     param.clone()
@@ -247,12 +247,17 @@ impl TypeChecker {
         type_checker
             .declare_fn("print_bool", vec![Type::Bool], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
+
         type_checker
             .declare_fn("print_char", vec![Type::Char], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker
             .declare_fn("exit", vec![Type::int], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn("print_fp", vec![Type::float], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker

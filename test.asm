@@ -2,7 +2,10 @@ extern malloc
 global _start
 _start:
 call main
-mov rdi, rax
+mov rbx, rax
+mov rdi, 10
+call print_char
+mov rdi, rbx
 mov rax, 60
 syscall
 ; ----- Layout: string -----
@@ -41,8 +44,24 @@ fp0: dd 1
 section .text
 movss xmm0, [fp0]
 movss [rbp - 8], xmm0
-mov rcx, 0
-mov rax, rcx
+sub rsp, 8
+section .data
+fp1: dd 2
+section .text
+movss xmm1, [fp1]
+movss [rbp - 16], xmm1
+mov ecx, dword [rbp - 8]
+mov edx, dword [rbp - 16]
+cmp rcx, rdx
+setl al
+movzx rax, al
+mov rdi, rax
+call print_bool
+mov r8d, dword [rbp - 8]
+mov rdi, r8
+call print_fp
+mov r9, 0
+mov rax, r9
 jmp .Lret_main
 xor rax, rax
 .Lret_main:
@@ -55,12 +74,12 @@ push rbp
 mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
-mov rax, qword [rbp - 8]
-mov rdx, qword [rax + 8]
-mov rdi, rdx
+mov r11, qword [rbp - 8]
+mov r10, qword [r11 + 8]
+mov rdi, r10
 call free
-mov r8, qword [rbp - 8]
-mov rdi, r8
+mov r12, qword [rbp - 8]
+mov rdi, r12
 call free
 .Lret_free_string:
 mov rsp, rbp
@@ -73,29 +92,58 @@ mov rbp, rsp
 sub rsp, 16
 mov qword [rbp - 8], rdi
 mov dword [rbp - 12], esi
-mov r9d, dword [rbp - 12]
-mov r11, qword [rbp - 8]
-mov r10d, dword [r11 + 0]
-cmp r9, r10
+mov r13d, dword [rbp - 12]
+mov r15, qword [rbp - 8]
+mov r14d, dword [r15 + 0]
+cmp r13, r14
 setge al
 movzx rax, al
 cmp rax, 0
 je .else0
-mov r12, 1
-mov rdi, r12
+mov rcx, 1
+mov rdi, rcx
 call exit
 .else0:
 sub rsp, 8
-mov r14, qword [rbp - 8]
-mov r13, qword [r14 + 8]
-mov r15d, dword [rbp - 12]
-add r13, r15
-mov qword [rbp - 24], r13
-mov xmm0, qword [rbp - 24]
-mov xmm0, qword [xmm0]
-mov rax, xmm0
+mov r11, qword [rbp - 8]
+mov rdx, qword [r11 + 8]
+mov r10d, dword [rbp - 12]
+add rdx, r10
+mov qword [rbp - 24], rdx
+mov rax, qword [rbp - 24]
+mov rax, qword [rax]
 jmp .Lret_get_index
 .Lret_get_index:
+mov rsp, rbp
+pop rbp
+ret
+global concat
+concat:
+push rbp
+mov rbp, rsp
+sub rsp, 16
+mov qword [rbp - 8], rdi
+mov qword [rbp - 16], rsi
+mov rdi, 11
+call malloc
+mov byte [rax + 0], 'p'
+mov byte [rax + 1], 'l'
+mov byte [rax + 2], 'a'
+mov byte [rax + 3], 'c'
+mov byte [rax + 4], 'e'
+mov byte [rax + 5], 'h'
+mov byte [rax + 6], 'o'
+mov byte [rax + 7], 'l'
+mov byte [rax + 8], 'd'
+mov byte [rax + 9], 'e'
+mov byte [rax + 10], 'r'
+mov rdi, 11
+mov rsi, rax
+call string.new
+mov rcx, rax
+mov rax, rcx
+jmp .Lret_concat
+.Lret_concat:
 mov rsp, rbp
 pop rbp
 ret
@@ -154,12 +202,28 @@ print_str:
     add rsp, 16
     pop rbp
     ret
+global print_fp
+print_fp:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    mov rsi, rdi
+    mov rdi, fmt_float
+    xor rax, rax
+    call printf
+    add rsp, 16
+    pop rbp
+    ret
+
+
 section .data
-fmt_int: db "%d",10,0
-fmt_char: db "%c",10,0
-fmt_str: db "%s",10,0
-str_true: db "true",10,0
-str_false: db "false",10,0
+fmt_int: db "%d",0
+fmt_char: db "%c",0
+fmt_str: db "%s",0
+fmt_float db "%f",0
+str_true: db "true",0
+str_false: db "false",0
+
 extern malloc
 extern free
 extern exit

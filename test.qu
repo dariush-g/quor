@@ -1,8 +1,17 @@
 
-def main() :: int {
 
+def main() :: int {
 
     let x: float = 1.0;
 
+    let y: float = 2.0;
+
+    print_bool(x < y);
+ 
+
+    print_fp(x);
+
     return 0;
 }
+
+
