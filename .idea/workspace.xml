@@ -12,23 +12,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="6ecfe9ad-2e5d-4fc7-b281-ad99197172d8" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/aera.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/analyzer/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/analyzer/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/codegen/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/codegen/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lexer/ast.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lexer/ast.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lexer/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lexer/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lexer/token.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lexer/token.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/parser/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/parser/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/syntax.md" beforeDir="false" afterPath="$PROJECT_DIR$/syntax.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/stdlib/mem.asm" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/stdlib/print.asm" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/stdlib/string.qu" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/test" beforeDir="false" afterPath="$PROJECT_DIR$/test" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/test.asm" beforeDir="false" afterPath="$PROJECT_DIR$/test.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test.o" beforeDir="false" afterPath="$PROJECT_DIR$/test.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/test.qu" beforeDir="false" afterPath="$PROJECT_DIR$/test.qu" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -66,21 +58,21 @@
     <option name="openDirectoriesWithSingleClick" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Cargo.Run quco.executor": "Run",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.rust.reset.selective.auto.import": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/dariushghassemieh/quco",
-    "nodejs_package_manager_path": "npm",
-    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
-    "org.rust.first.attach.projects": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Cargo.Run quco.executor&quot;: &quot;Run&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/dariushg/quor&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
+    &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager" selected="Cargo.Run quco">
     <configuration name="Run quco" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="buildProfileId" value="release" />
@@ -135,10 +127,23 @@
       <updated>1755117868709</updated>
       <workItem from="1755117870083" duration="34000" />
       <workItem from="1755212438206" duration="250000" />
+      <workItem from="1755924863368" duration="57000" />
+      <workItem from="1755924974742" duration="67000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

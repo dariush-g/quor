@@ -4,8 +4,7 @@ use crate::{
 };
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    fs,
+    collections::{HashMap, HashSet, VecDeque}, fmt::format, fs
 };
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
@@ -188,9 +187,15 @@ impl CodeGen {
         code.output.push_str("extern malloc\n");
 
         code.output.push_str("global _start\n_start:\n");
+
         code.output.push_str("call main\n");
         // code.output.push_str("mov rbx, rax\n");
-        code.output.push_str("mov rdi, rax\n");
+
+        code.output.push_str("mov rbx, rax\n");
+
+        code.output.push_str("mov rdi, 10\ncall print_char\n");
+
+        code.output.push_str("mov rdi, rbx\n");
 
         #[cfg(target_arch = "aarch64")]
         code.output.push_str("mov rax, 0x2000001\n");
@@ -248,14 +253,14 @@ impl CodeGen {
 
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let mut print = fs::read_to_string(format!("{manifest_dir}/src/stdlib/print.asm"))
+        let mut print = fs::read_to_string(format!("{manifest_dir}/stdlib/io.asm"))
             .unwrap_or_else(|_| panic!("Error importing io"));
 
         print.push('\n');
 
         code.output.push_str(&print);
 
-        let mut mem = fs::read_to_string(format!("{manifest_dir}/src/stdlib/mem.asm"))
+        let mut mem = fs::read_to_string(format!("{manifest_dir}/stdlib/mem.asm"))
             .unwrap_or_else(|_| panic!("Error importing mem"));
 
         mem.push('\n');
@@ -773,7 +778,7 @@ impl CodeGen {
                             if let Some(val_reg) = self.handle_expr(value, None) {
                                 self.output
                                     .push_str(&format!("movss [rbp - {offset}], {val_reg}\n"));
-                                self.regs.push_back(val_reg);
+                                self.fp_regs.push_back(val_reg);
                             }
                         }
                         _ => {
@@ -801,7 +806,9 @@ impl CodeGen {
             Stmt::Return(Some(ex)) => {
                 self.handle_expr(ex, None);
             }
-            Stmt::Return(None) => {}
+            Stmt::Return(None) => {
+                self.output.push_str("ret\n");
+            }
             Stmt::If {
                 condition,
                 then_stmt,
@@ -1753,6 +1760,25 @@ impl CodeGen {
 
                         self.output
                             .push_str(&format!("mov qword [rbp - {offset}], [rbp - {var_off}]"));
+                    }
+                    Expr::FloatLiteral(f) => {
+
+                        
+                        self.output
+                            .push_str(&format!("section .data\nfp{}: dd {f}\nsection .text\n", self.fp_count));
+
+                        let reg = self.fp_regs.pop_front().expect("No fp regs");
+
+                        
+                        self.output
+                            .push_str(&format!("movss {reg}, [fp{}]", self.fp_count));
+
+                        self.fp_count += 1;
+
+                        self.output
+                            .push_str(&format!("movss [rbp - {offset}], {reg} "));
+
+                        self.fp_regs.push_back(reg);
                     }
                     Expr::IntLiteral(n) => {
                         self.output

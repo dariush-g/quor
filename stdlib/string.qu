@@ -20,3 +20,10 @@ def get_index(str: string*, index: int) :: char {
     return *ret;
 }
 
+def concat(str1: string*, str2: string*) :: string* {
+    
+    
+
+
+    return "placeholder";
+} 

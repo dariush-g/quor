@@ -53,9 +53,24 @@ print_str:
     add rsp, 16
     pop rbp
     ret
+global print_fp
+print_fp:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    mov rsi, rdi
+    mov rdi, fmt_float
+    xor rax, rax
+    call printf
+    add rsp, 16
+    pop rbp
+    ret
+
+
 section .data
-fmt_int: db "%d",10,0
-fmt_char: db "%c",10,0
-fmt_str: db "%s",10,0
-str_true: db "true",10,0
-str_false: db "false",10,0
+fmt_int: db "%d",0
+fmt_char: db "%c",0
+fmt_str: db "%s",0
+fmt_float db "%f",0
+str_true: db "true",0
+str_false: db "false",0
