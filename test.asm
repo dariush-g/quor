@@ -57,7 +57,7 @@ setl al
 movzx rax, al
 mov rdi, rax
 call print_bool
-mov r8d, dword [rbp - 8]
+mov r8, [rbp - 8]
 mov rdi, r8
 call print_fp
 mov r9, 0
@@ -114,36 +114,6 @@ mov rax, qword [rbp - 24]
 mov rax, qword [rax]
 jmp .Lret_get_index
 .Lret_get_index:
-mov rsp, rbp
-pop rbp
-ret
-global concat
-concat:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-mov qword [rbp - 16], rsi
-mov rdi, 11
-call malloc
-mov byte [rax + 0], 'p'
-mov byte [rax + 1], 'l'
-mov byte [rax + 2], 'a'
-mov byte [rax + 3], 'c'
-mov byte [rax + 4], 'e'
-mov byte [rax + 5], 'h'
-mov byte [rax + 6], 'o'
-mov byte [rax + 7], 'l'
-mov byte [rax + 8], 'd'
-mov byte [rax + 9], 'e'
-mov byte [rax + 10], 'r'
-mov rdi, 11
-mov rsi, rax
-call string.new
-mov rcx, rax
-mov rax, rcx
-jmp .Lret_concat
-.Lret_concat:
 mov rsp, rbp
 pop rbp
 ret

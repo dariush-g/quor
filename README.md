@@ -1,4 +1,4 @@
-# Quor
+# <font color="blue">Quor</font>
 
 ## Current Features
 
