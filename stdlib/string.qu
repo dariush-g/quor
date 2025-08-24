@@ -1,0 +1,11 @@
+
+
+def strlen(str: char*) :: int {
+    let count: int = 0;
+
+    while *str != null {
+        count = count + 1;       
+    }
+
+    return count;
+}

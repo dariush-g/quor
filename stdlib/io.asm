@@ -1,13 +1,27 @@
-extern printf, strlen, fopen, fclose, fread, fwrite
+extern printf, strlen, fopen, fclose, fread, fwrite, fseek, ftell, rewind
 section .data
 fmt_int: db "%d",0
 fmt_char: db "%c",0
 fmt_str: db "%s",0
 fmt_float: db "%f",0
+fmt_long: db "%ld",0
 str_true: db "true",0
 str_false: db "false",0
 mode_write: db "w",0
+mode_read: db "rb",0
 section .text
+global print_long
+print_long:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16         ;
+    mov rsi, rdi
+    mov rdi, fmt_long
+    xor rax, rax
+    call printf
+    add rsp, 16
+    pop rbp
+    ret
 global print_int
 print_int:
     push rbp
@@ -73,44 +87,82 @@ print_fp:
     add rsp, 16
     pop rbp
     ret
+global write_file
+write_file:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
+    push rbx
+    push r12
+    mov rbx, rdi
+    mov r12, rsi
+    mov rdi, rbx
+    lea rsi, [rel mode_write]
+    call fopen
+    test rax, rax
+    jz .error
+    mov rbx, rax    
+    mov rdi, r12
+    call strlen
+    mov rdi, r12    
+    mov rsi, 1      
+    mov rdx, rax   
+    mov rcx, rbx    
+    call fwrite
+    mov rdi, rbx
+    call fclose
+    mov rax, 0
+    jmp .cleanup
+    .error:
+    mov rax, -1
+    .cleanup:
+    pop r12
+    pop rbx
+    add rsp, 32
+    pop rbp
+    ret
+global read_file
+read_file:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
 
-global write_to_file
-write_to_file:
- push rbp
- mov rbp, rsp
- sub rsp, 32
- push rbx
- push r12
- 
- mov rbx, rdi
- mov r12, rsi
- 
- mov rdi, rbx
- lea rsi, [rel mode_write]
- call fopen
- test rax, rax
- jz .error
- 
- mov rbx, rax    
- mov rdi, r12
- call strlen
- 
- mov rdi, r12    
- mov rsi, 1      
- mov rdx, rax   
- mov rcx, rbx    
- call fwrite
- 
- mov rdi, rbx
- call fclose
- 
- mov rax, 0
- jmp .cleanup
+    add rsp, 32
+    pop rbp
+    ret
+
+
+global file_size
+file_size:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    push rbx
+    
+    lea rsi, [rel mode_read]    
+    call fopen          
+    test rax, rax
+    jz .error
+    mov rbx, rax
+    
+    mov rdi, rbx          
+    xor rsi, rsi          
+    mov rdx, 2            
+    call fseek
+    
+    mov rdi, rbx
+    call ftell
+    mov rcx, rax         
+    
+    mov rdi, rbx  
+    call fclose
+    mov rax, rcx          
+    jmp .done
+    
 .error:
- mov rax, -1
-.cleanup:
- pop r12
- pop rbx
- add rsp, 32
- pop rbp
- ret
+    mov rax, -1
+.done:
+    pop rbx
+    add rsp, 16
+    pop rbp
+    ret

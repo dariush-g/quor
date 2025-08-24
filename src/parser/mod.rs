@@ -891,6 +891,10 @@ impl Parser {
                 self.advance();
                 Type::Char
             }
+            TokenType::Long => {
+                self.advance();
+                Type::Long
+            }
             TokenType::Identifier(name) => {
                 // Handle class names as types
                 let struct_name = name.clone();

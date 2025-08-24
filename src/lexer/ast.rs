@@ -3,6 +3,7 @@
 pub enum Type {
     int,
     float,
+    Long,
     Char,
 
     Bool,
@@ -55,6 +56,7 @@ impl Type {
 #[derive(Debug, Clone)]
 pub enum Expr {
     IntLiteral(i32),
+    LongLiteral(i64),
     FloatLiteral(f32),
     BoolLiteral(bool),
     StringLiteral(String),

@@ -206,6 +206,7 @@ impl Lexer {
             "bool" => TokenType::Boolean,
             "void" => TokenType::Void,
             "char" => TokenType::Char,
+            "long" => TokenType::Long,
             _ => TokenType::Identifier(text),
         };
 
