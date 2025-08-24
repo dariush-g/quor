@@ -2,10 +2,9 @@
 
 def main() :: int {
 
-    let str: char* = "hello";
+    let size: long = file_size("test.o");
     
-    print_str(str);
-
+    print_long(size);
 
     return 0;
 }

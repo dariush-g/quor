@@ -245,9 +245,13 @@ impl TypeChecker {
         //     )
         //     .map_err(|e| format!("Global scope error: {e}"))?;
 
+         type_checker
+            .declare_fn("print_long", vec![Type::Long], Type::Void)
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
         type_checker
             .declare_fn(
-                "write_to_file",
+                "write_file",
                 vec![
                     Type::Pointer(Box::new(Type::Char)),
                     Type::Pointer(Box::new(Type::Char)),
@@ -258,9 +262,17 @@ impl TypeChecker {
 
         type_checker
             .declare_fn(
-                "read_from_file",
+                "read_file",
                 vec![Type::Pointer(Box::new(Type::Char))],
-                Type::Void,
+                Type::Pointer(Box::new(Type::Char)),
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "file_size",
+                vec![Type::Pointer(Box::new(Type::Char))],
+                Type::Long,
             )
             .map_err(|e| format!("Global scope error: {e}"))?;
 
@@ -490,6 +502,7 @@ impl TypeChecker {
 
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
         match expr {
+            Expr::LongLiteral(_) => Ok(Type::Long),
             Expr::FieldAssign {
                 class_name,
                 field,

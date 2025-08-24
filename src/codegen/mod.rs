@@ -65,7 +65,7 @@ fn size_align_of(ty: &Type) -> (usize, usize) {
         Type::Char | Type::Bool => (1, 1),
         Type::int => (4, 4),
         Type::float => (4, 4),
-        Type::Pointer(_) => (8, 8),
+        Type::Pointer(_) | Type::Long => (8, 8),
         // Type::Array(_elem, Some(_n)) => {
         // let (es, ea) = size_align_of(elem);
         // (es * *n, ea)
@@ -902,6 +902,10 @@ impl CodeGen {
 
         // save incoming args we will need after call to _malloc
         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+        let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+
+        let mut fpc = 0;
+
         let n_fields = instances.len().min(save_regs.len());
 
         // Ensure 16-byte stack alignment for malloc call
@@ -959,6 +963,11 @@ impl CodeGen {
                         Self::reg8(save_regs[i])
                     ));
                 }
+                Type::float => {
+                    self.output
+                        .push_str(&format!("movss [rbp - {}], {}\n", slot_off, save_fp[fpc]));
+                    fpc += 1;
+                }
                 _ => {
                     self.output.push_str(&format!(
                         "mov qword [rbp - {}], {}\n",
@@ -1007,7 +1016,7 @@ impl CodeGen {
                     self.output
                         .push_str(&format!("mov byte [rcx + {off_in_obj}], al\n"));
                 }
-                Type::Pointer(_) => {
+                Type::Pointer(_) | Type::Long => {
                     self.output
                         .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
                     self.output
@@ -1145,6 +1154,13 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
+            Expr::LongLiteral(l) => {
+                let reg = self.regs.pop_front().unwrap();
+
+                self.output.push_str(&format!("mov {reg}, {l}"));
+
+                Some(reg)
+            }
             Expr::StringLiteral(str) => {
                 let callee = ["rbx", "r12", "r13", "r14", "r15"];
 

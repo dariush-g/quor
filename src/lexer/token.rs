@@ -35,6 +35,7 @@ pub enum TokenType {
     FloatLiteral(f32),
     CharLiteral(char),
     StringLiteral(String),
+    LongLiteral(i64),
 
     Struct,
 
@@ -100,6 +101,7 @@ pub enum TokenType {
     Char,
     Float,
     Int,
+    Long,
 }
 
 impl TokenType {
