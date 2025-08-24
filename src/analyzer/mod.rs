@@ -41,10 +41,10 @@ fn canonicalize_path(path: &str) -> PathBuf {
 }
 
 pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
-    program.push(Stmt::AtDecl(
-        "import".to_owned(),
-        Some("string.qu!".to_owned()),
-    ));
+    // program.push(Stmt::AtDecl(
+    //     "import".to_owned(),
+    //     Some("string.qu!".to_owned()),
+    // ));
 
     let mut imported_files: HashSet<PathBuf> = HashSet::new();
 
@@ -231,19 +231,47 @@ impl TypeChecker {
         type_checker
             .declare_fn("print_int", vec![Type::int], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn(
+        //         "print_str",
+        //         vec![Type::Pointer(Box::new(Type::Struct {
+        //             name: "string".to_owned(),
+        //             instances: vec![
+        //                 // ("size".to_owned(), Type::int),
+        //                 // ("data".to_owned(), Type::Pointer(Box::new(Type::Char))),
+        //             ],
+        //         }))],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
         type_checker
             .declare_fn(
-                "print_str",
-                vec![Type::Pointer(Box::new(Type::Struct {
-                    name: "string".to_owned(),
-                    instances: vec![
-                        // ("size".to_owned(), Type::int),
-                        // ("data".to_owned(), Type::Pointer(Box::new(Type::Char))),
-                    ],
-                }))],
+                "write_to_file",
+                vec![
+                    Type::Pointer(Box::new(Type::Char)),
+                    Type::Pointer(Box::new(Type::Char)),
+                ],
                 Type::Void,
             )
             .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "read_from_file",
+                vec![Type::Pointer(Box::new(Type::Char))],
+                Type::Void,
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "print_str",
+                vec![Type::Pointer(Box::new(Type::Char))],
+                Type::Void,
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
         type_checker
             .declare_fn("print_bool", vec![Type::Bool], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
@@ -476,13 +504,7 @@ impl TypeChecker {
 
                 Ok(ty)
             }
-            Expr::StringLiteral(_) => Ok(Type::Pointer(Box::new(Type::Struct {
-                name: "string".to_owned(),
-                instances: vec![
-                    ("size".to_string(), Type::int),
-                    ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
-                ],
-            }))),
+            Expr::StringLiteral(_) => Ok(Type::Pointer(Box::new(Type::Char))),
             Expr::BoolLiteral(_) => Ok(Type::Bool),
             Expr::IntLiteral(_) => Ok(Type::int),
             Expr::FloatLiteral(_) => Ok(Type::float),
