@@ -4,7 +4,8 @@ use crate::{
 };
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque}, fmt::format, fs
+    collections::{HashMap, HashSet, VecDeque},
+    fs,
 };
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
@@ -146,6 +147,7 @@ impl CodeGen {
                 "rcx".to_string(),
                 "rdx".to_string(),
                 "rax".to_string(),
+                "rbx".to_string(),
                 "r8".to_string(),
                 "r9".to_string(),
                 "r10".to_string(),
@@ -425,44 +427,21 @@ impl CodeGen {
                                     .push_str(&format!("mov qword [rbp - {offset}], '{c}'\n"));
                             }
                             Expr::StringLiteral(str) => {
-                                // let offset = self.alloc_local(
-                                //     name,
-                                //     &Type::Struct {
-                                //         name: "string".to_owned(),
-                                //         instances: vec![
-                                //             ("size".to_string(), Type::int),
-                                //             (
-                                //                 "data".to_string(),
-                                //                 Type::Pointer(Box::new(Type::Char)),
-                                //             ),
-                                //         ],
-                                //     },
-                                // );
+                                let reg = self
+                                    .handle_expr(&Expr::StringLiteral(str.to_string()), None)
+                                    .expect("Unable to handle string?");
 
                                 self.output
-                                    .push_str(&format!("mov rdi, {}\ncall malloc\n", str.len()));
+                                    .push_str(&format!("mov qword [rbp - {offset}], {reg}\n"));
 
-                                // rdi - size
-                                // rsi - char*
-
-                                for (i, ch) in str.chars().enumerate() {
-                                    self.output
-                                        .push_str(&format!("mov byte [rax + {i}], '{ch}'\n"));
-                                }
-
-                                self.output
-                                    .push_str(&format!("mov rdi, {}\nmov rsi, rax\n", str.len()));
-                                self.output.push_str("call string.new\n");
-
-                                self.output
-                                    .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
+                                self.regs.push_back(reg);
                             }
-
                             _ => {
                                 if let Some(val_reg) = self.handle_expr(element, None) {
                                     self.output.push_str(&format!(
                                         "mov qword [rbp - {offset}], {val_reg}\n"
                                     ));
+
                                     self.regs.push_back(val_reg);
                                 }
                             }
@@ -471,34 +450,16 @@ impl CodeGen {
                 }
 
                 Expr::StringLiteral(str) => {
-                    let offset = self.alloc_local(
-                        name,
-                        &&Type::Pointer(Box::new(Type::Struct {
-                            name: "string".to_owned(),
-                            instances: vec![
-                                ("size".to_string(), Type::int),
-                                ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
-                            ],
-                        })),
-                    );
+                    let offset = self.alloc_local(name, &Type::Pointer(Box::new(Type::Char)));
+
+                    let reg = self
+                        .handle_expr(&Expr::StringLiteral(str.to_string()), None)
+                        .expect("Unable to handle string?");
 
                     self.output
-                        .push_str(&format!("mov rdi, {}\ncall malloc\n", str.len()));
+                        .push_str(&format!("mov qword [rbp - {offset}], {reg}\n"));
 
-                    // rdi - size
-                    // rsi - char*
-
-                    for (i, ch) in str.chars().enumerate() {
-                        self.output
-                            .push_str(&format!("mov byte [rax + {i}], '{}'\n", ch));
-                    }
-
-                    self.output
-                        .push_str(&format!("mov rdi, {}\nmov rsi, rax\n", str.len()));
-                    self.output.push_str("call string.new\n");
-
-                    self.output
-                        .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
+                    self.regs.push_back(reg);
                 }
 
                 Expr::StructInit { name: cls, params } => {
@@ -914,9 +875,9 @@ impl CodeGen {
             self.handle_stmt_with_epilogue(stmt, &epilogue);
         }
 
-        if name == "main" {
-            self.output.push_str("xor rax, rax\n");
-        }
+        // if name == "main" {
+        //     self.output.push_str("xor rax, rax\n");
+        // }
 
         self.output.push_str(&format!("{epilogue}:\n"));
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
@@ -1152,33 +1113,72 @@ impl CodeGen {
         }
     }
 
+    fn parse_escapes(s: &str) -> Vec<char> {
+        let mut result = Vec::new();
+        let mut chars = s.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                if let Some(&next) = chars.peek() {
+                    let escaped = match next {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        '\\' => '\\',
+                        '\'' => '\'',
+                        '"' => '"',
+                        '0' => '\0',
+                        _ => next,
+                    };
+                    result.push(escaped);
+                    chars.next();
+                } else {
+                    result.push('\\');
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
+    }
+
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
             Expr::StringLiteral(str) => {
+                let callee = ["rbx", "r12", "r13", "r14", "r15"];
+
+                let chs = Self::parse_escapes(str);
+
                 self.output
-                    .push_str(&format!("mov rdi, {}\ncall malloc\n", str.len()));
+                    .push_str(&format!("mov rdi, {}\ncall malloc\n", chs.len() + 1));
 
-                // rdi - size
-                // rsi - char*
-
-                for (i, ch) in str.chars().enumerate() {
-                    let reg = self.regs.pop_front().expect("No regs");
-
-                    self.output
-                        .push_str(&format!("mov byte [rax + {i}], '{ch}'\n"));
-
-                    self.regs.push_back(reg);
+                for (i, c) in chs.iter().enumerate() {
+                    match c {
+                        '\n' => {
+                            self.output.push_str(&format!("mov byte [rax + {i}], 10\n"));
+                        }
+                        _ => {
+                            self.output
+                                .push_str(&format!("mov byte [rax + {i}], '{c}'\n"));
+                        }
+                    }
                 }
 
                 self.output
-                    .push_str(&format!("mov rdi, {}\nmov rsi, rax\n", str.len()));
-                self.output.push_str("call string.new\n");
+                    .push_str(&format!("mov byte [rax + {}], 0\n", chs.len()));
 
-                let reg = self.regs.pop_front().expect("No regs");
+                let mut reg = None;
 
-                self.output.push_str(&format!("mov {reg}, rax\n"));
+                if let Some(pos) = self.regs.iter().position(|r| callee.contains(&r.as_str())) {
+                    reg = Some(self.regs[pos].clone());
+                    self.regs.remove(pos);
+                }
 
-                Some(reg)
+                self.output
+                    .push_str(&format!("mov {}, rax\n", reg.clone().unwrap()));
+
+                reg
             }
             // alloc to stack -> pointer to loc
             Expr::FieldAssign {
@@ -1335,12 +1335,14 @@ impl CodeGen {
                         panic!("More than 5 arguments not supported yet");
                     }
                 }
+
                 for (i, t) in temps.iter().enumerate() {
                     if t != abi_regs[i] {
                         self.output
                             .push_str(&format!("mov {}, {}\n", abi_regs[i], t));
                     }
                 }
+
                 for t in temps {
                     self.regs.push_back(t);
                 }
@@ -1351,12 +1353,15 @@ impl CodeGen {
                 } else {
                     format!("{name}")
                 };
+
                 self.call_with_alignment(&target);
+
                 for (i, reg) in self.regs.clone().iter().enumerate() {
                     if reg == "rax" {
                         self.regs.remove(i);
                     }
                 }
+
                 Some("rax".to_string())
             }
             Expr::FloatLiteral(f) => {
@@ -1762,14 +1767,13 @@ impl CodeGen {
                             .push_str(&format!("mov qword [rbp - {offset}], [rbp - {var_off}]"));
                     }
                     Expr::FloatLiteral(f) => {
-
-                        
-                        self.output
-                            .push_str(&format!("section .data\nfp{}: dd {f}\nsection .text\n", self.fp_count));
+                        self.output.push_str(&format!(
+                            "section .data\nfp{}: dd {f}\nsection .text\n",
+                            self.fp_count
+                        ));
 
                         let reg = self.fp_regs.pop_front().expect("No fp regs");
 
-                        
                         self.output
                             .push_str(&format!("movss {reg}, [fp{}]", self.fp_count));
 
@@ -1794,36 +1798,15 @@ impl CodeGen {
                             .push_str(&format!("mov byte [rbp - {offset}], {c}\n"));
                     }
                     Expr::StringLiteral(str) => {
-                        // let offset = self.alloc_local(
-                        //     name,
-                        //     &Type::Struct {
-                        //         name: "string".to_owned(),
-                        //         instances: vec![
-                        //             ("size".to_string(), Type::int),
-                        //             ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
-                        //         ],
-                        //     },
-                        // );
+                        let reg = self
+                            .handle_expr(&Expr::StringLiteral(str.to_string()), None)
+                            .expect("Unable to handle string?");
 
                         self.output
-                            .push_str(&format!("mov rdi, {}\ncall malloc\n", str.len()));
+                            .push_str(&format!("mov qword [rbp - {offset}], {reg}\n"));
 
-                        // rdi - size
-                        // rsi - char*
-
-                        for (i, ch) in str.chars().enumerate() {
-                            self.output
-                                .push_str(&format!("mov byte [rax + {i}], '{ch}'\n"));
-                        }
-
-                        self.output
-                            .push_str(&format!("mov rdi, {}\nmov rsi, rax\n", str.len()));
-                        self.output.push_str("call string.new\n");
-
-                        self.output
-                            .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
+                        self.regs.push_back(reg);
                     }
-
                     // Expr::InstanceVar(struct_name, instance_name) => {
                     //     let struct_type = self
                     //         .locals

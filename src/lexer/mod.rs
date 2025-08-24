@@ -287,7 +287,6 @@ impl Lexer {
                     '\'' => '\'',
                     '0' => '\0',
                     'x' => {
-                        // Optional: \xHH (two hex digits), fallback to error if malformed
                         let h1 = self.peek();
                         let h2 = self.peek_next();
                         if h1.is_ascii_hexdigit() && h2.is_ascii_hexdigit() {
