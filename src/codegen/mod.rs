@@ -581,6 +581,7 @@ impl CodeGen {
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {offset}], {ptr_reg}\n"));
+                    
                     self.regs.push_back(ptr_reg);
                 }
                 // Expr::InstanceVar(struct_name, field_name) => {
@@ -1174,6 +1175,9 @@ impl CodeGen {
                         '\n' => {
                             self.output.push_str(&format!("mov byte [rax + {i}], 10\n"));
                         }
+                        '\0' => {
+                            self.output.push_str(&format!("mov byte [rax + {i}], 0\n"));
+                        }
                         _ => {
                             self.output
                                 .push_str(&format!("mov byte [rax + {i}], '{c}'\n"));
@@ -1399,7 +1403,11 @@ impl CodeGen {
                 let av_reg = self.regs.pop_front().expect("No registers");
                 // self.output
                 //     .push_str(&format!("mov {}, '{n}'\n", Self::reg8(&av_reg)));
-                self.output.push_str(&format!("mov {}, '{n}'\n", av_reg));
+                if *n == '\0' {
+                    self.output.push_str(&format!("mov {}, 0\n", av_reg));
+                } else {
+                    self.output.push_str(&format!("mov {}, '{n}'\n", av_reg));
+                }
 
                 Some(av_reg)
             }
@@ -2140,7 +2148,7 @@ impl CodeGen {
                     expr: inner,
                     ..
                 } => self.handle_expr(inner, None),
-                Expr::Variable(_, _) => {
+                Expr::Variable(_, ty) => {
                     let ptr = self.handle_expr(expr, None).expect("ptr reg");
 
                     // match ty {
@@ -2150,7 +2158,19 @@ impl CodeGen {
                     //     _ => {}
                     // }
 
-                    self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
+                    match ty {
+                        Type::Bool | Type::Char => {
+                            self.output
+                                .push_str(&format!("mov {}, byte [{ptr}]\n", Self::reg8(&ptr)));
+                        }
+                        Type::int => {
+                            self.output
+                                .push_str(&format!("mov {}, dword [{ptr}]\n", Self::reg32(&ptr)));
+                        }
+                        _ => {
+                            self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
+                        }
+                    }
 
                     Some(ptr)
                 }

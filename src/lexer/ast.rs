@@ -6,6 +6,8 @@ pub enum Type {
     Long,
     Char,
 
+    null,
+
     Bool,
 
     Array(Box<Type>, Option<usize>),

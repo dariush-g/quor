@@ -1,10 +1,14 @@
-
+@import::<string.qu>;
 
 def main() :: int {
 
-    let size: long = file_size("test.o");
-    
-    print_long(size);
+    let str1: char* = "hello ";
+    let str2: char* = "world";
+
+    let str3: char* = concat(str1, str2);
+
+    print_str(str3);
+
 
     return 0;
 }

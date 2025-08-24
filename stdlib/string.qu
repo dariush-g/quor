@@ -3,9 +3,52 @@
 def strlen(str: char*) :: int {
     let count: int = 0;
 
-    while *str != null {
+    while (*str != '\0') {
         count = count + 1;       
+        str = str + 1;
     }
 
+    str = str - count;
+
     return count;
+}
+
+
+
+def concat(str1: char*, str2: char*) :: char* {
+    let len1: int = strlen(str1);
+    let len2: int = strlen(str2);
+
+    let new: void* = malloc(len1 + len2 + 1);
+
+
+    *new = ' ';
+
+    let ret: char* = new;
+
+
+    let count: int = len1;
+
+    while (count > 0) {
+        *new = *str1;
+        new = new + 1;
+        str1 = str1 + 1;
+    }
+
+    str1 = str1 - count;
+
+    let count1: int = len2;
+
+    while (count1 > 0) {
+        *new = *str2;
+        new = new + 1;
+        str2 = str2 + 1;
+    }
+
+    str2 = str2 - count;
+
+    new = new + 1;
+    *new = '\0';
+
+    return ret;
 }
