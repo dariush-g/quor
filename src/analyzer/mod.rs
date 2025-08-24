@@ -245,7 +245,7 @@ impl TypeChecker {
         //     )
         //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-         type_checker
+        type_checker
             .declare_fn("print_long", vec![Type::Long], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
 
@@ -317,6 +317,14 @@ impl TypeChecker {
         type_checker
             .declare_fn(
                 "sizeof",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::int,
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "strlen",
                 vec![Type::Pointer(Box::new(Type::Void))],
                 Type::int,
             )
@@ -697,6 +705,7 @@ impl TypeChecker {
             Expr::Cast { expr, target_type } => {
                 let expr_type = self.type_check_expr(expr)?;
                 match (&expr_type, target_type) {
+                    (Type::Pointer(void), Type::Pointer(_)) if **void == Type::Void => {}
                     (Type::int, Type::float) | (Type::float, Type::int) => {}
                     (Type::Char, Type::int) | (Type::int, Type::Char) => {}
                     (Type::Void, Type::int)
