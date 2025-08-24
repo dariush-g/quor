@@ -1,4 +1,4 @@
-fn main()->int {
+def main() :: int {
     print_int(42);
     return 0;
 }
