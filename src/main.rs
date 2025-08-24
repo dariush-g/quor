@@ -149,6 +149,7 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
     // 3) GCC
     run(
         Command::new("gcc").args([
+            // "./stdlib/read_file.o",
             "-nostartfiles",
             "-no-pie",
             obj.to_str().unwrap(),

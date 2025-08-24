@@ -1,7 +1,9 @@
 @import::<string.qu>;
 
 def main() :: int {
- 
+
+    print_str(read_file("README.md")); 
+    
 
     return 0;
 }

@@ -1,4 +1,4 @@
-extern printf, strlen, fopen, fclose, fread, fwrite, fseek, ftell, rewind
+extern printf, strlen, fopen, fclose, fwrite, stat, rewind, fread, fseek, ftell
 section .data
 fmt_int: db "%d",0
 fmt_char: db "%c",0
@@ -8,7 +8,6 @@ fmt_long: db "%ld",0
 str_true: db "true",0
 str_false: db "false",0
 mode_write: db "w",0
-mode_read: db "rb",0
 section .text
 global print_long
 print_long:
@@ -121,48 +120,78 @@ write_file:
     add rsp, 32
     pop rbp
     ret
-global read_file
-read_file:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 32
-
-    add rsp, 32
-    pop rbp
-    ret
-
-
 global file_size
 file_size:
     push rbp
     mov rbp, rsp
-    sub rsp, 16
-    push rbx
-    
-    lea rsi, [rel mode_read]    
-    call fopen          
-    test rax, rax
-    jz .error
-    mov rbx, rax
-    
-    mov rdi, rbx          
-    xor rsi, rsi          
-    mov rdx, 2            
-    call fseek
-    
-    mov rdi, rbx
-    call ftell
-    mov rcx, rax         
-    
-    mov rdi, rbx  
-    call fclose
-    mov rax, rcx          
+    sub rsp, 144             
+    mov rsi, rsp             
+    mov rdi, rdi             
+    call stat               
+    cmp eax, 0              
+    jne .error
+    mov rax, [rsp + 48]
     jmp .done
-    
 .error:
     mov rax, -1
 .done:
-    pop rbx
-    add rsp, 16
+    add rsp, 144
     pop rbp
+    ret
+global read_file
+section .rodata
+mode_rb: db "rb",0
+section .text
+read_file:
+    push    r12
+    push    rbp
+    push    rbx
+    lea     rsi, [rel mode_rb]
+    call    fopen
+    test    rax, rax
+    je      .error
+    mov     rbx, rax           
+    mov     rdi, rbx
+    mov     edx, 2           
+    xor     esi, esi          
+    call    fseek
+
+    mov     rdi, rbx
+    call    ftell
+    mov     r12, rax           
+    mov     rdi, rbx
+    call    rewind
+
+    lea     rdi, [r12+1]      
+    call    malloc
+    mov     rbp, rax         
+    test    rax, rax
+    je      .malloc_error
+
+    mov     rdi, rbp          
+    mov     rsi, 1            
+    mov     rdx, r12          
+    mov     rcx, rbx          
+    call    fread
+
+    mov     byte [rbp+r12], 0
+
+    mov     rdi, rbx
+    call    fclose
+
+    mov     rax, rbp
+    pop     rbx
+    pop     rbp
+    pop     r12
+    ret
+
+.malloc_error:
+    mov     rdi, rbx
+    call    fclose
+
+.error:
+    xor     eax, eax           
+    pop     rbx
+    pop     rbp
+    pop     r12
     ret
