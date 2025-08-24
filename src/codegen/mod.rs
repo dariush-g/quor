@@ -581,7 +581,7 @@ impl CodeGen {
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {offset}], {ptr_reg}\n"));
-                    
+
                     self.regs.push_back(ptr_reg);
                 }
                 // Expr::InstanceVar(struct_name, field_name) => {
@@ -2167,6 +2167,22 @@ impl CodeGen {
                             self.output
                                 .push_str(&format!("mov {}, dword [{ptr}]\n", Self::reg32(&ptr)));
                         }
+                        Type::Pointer(inside) => match **inside {
+                            Type::Bool | Type::Char => {
+                                self.output
+                                    .push_str(&format!("mov {}, byte [{ptr}]\n", Self::reg8(&ptr)));
+                            }
+                            Type::int => {
+                                self.output.push_str(&format!(
+                                    "mov {}, dword [{ptr}]\n",
+                                    Self::reg32(&ptr)
+                                ));
+                            }
+
+                            _ => {
+                                self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
+                            }
+                        },
                         _ => {
                             self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
                         }
@@ -2290,6 +2306,42 @@ impl CodeGen {
                             self.regs.push_back(ptr_reg);
                         }
                     }
+                    Type::Pointer(inside) => match *inside {
+                        Type::int | Type::float => {
+                            if let Some(val_reg) = self.handle_expr(value, None) {
+                                self.output.push_str(&format!(
+                                    "mov dword [{ptr_reg}], {}\n",
+                                    Self::reg32(&val_reg)
+                                ));
+                                self.regs.push_back(ptr_reg);
+                                self.regs.push_back(val_reg);
+                            } else {
+                                self.regs.push_back(ptr_reg);
+                            }
+                        }
+                        Type::Bool | Type::Char => {
+                            if let Some(val_reg) = self.handle_expr(value, None) {
+                                self.output.push_str(&format!(
+                                    "mov byte [{ptr_reg}], {}\n",
+                                    Self::reg8(&val_reg)
+                                ));
+                                self.regs.push_back(ptr_reg);
+                                self.regs.push_back(val_reg);
+                            } else {
+                                self.regs.push_back(ptr_reg);
+                            }
+                        }
+                        _ => {
+                            if let Some(val_reg) = self.handle_expr(value, None) {
+                                self.output
+                                    .push_str(&format!("mov qword [{ptr_reg}], {val_reg}\n"));
+                                self.regs.push_back(ptr_reg);
+                                self.regs.push_back(val_reg);
+                            } else {
+                                self.regs.push_back(ptr_reg);
+                            }
+                        }
+                    },
                     _ => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
                             self.output

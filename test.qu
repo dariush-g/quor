@@ -7,7 +7,11 @@ def main() :: int {
 
     let str3: char* = concat(str1, str2);
 
+    free(str1);
+    free(str2);
+
     print_str(str3);
+
 
 
     return 0;
