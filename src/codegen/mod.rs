@@ -1110,6 +1110,8 @@ impl CodeGen {
                 if let Some(ex) = opt {
                     if let Some(reg) = self.handle_expr(ex, None) {
                         if reg != "rax" {
+                            self.output.push_str("xor rax, rax\n");
+
                             self.output.push_str(&format!("mov rax, {reg}\n"));
                             self.regs.push_back(reg);
                         }
@@ -2158,37 +2160,41 @@ impl CodeGen {
                     //     _ => {}
                     // }
 
+                    let reg = self.regs.pop_front().unwrap();
+
                     match ty {
                         Type::Bool | Type::Char => {
                             self.output
-                                .push_str(&format!("mov {}, byte [{ptr}]\n", Self::reg8(&ptr)));
+                                .push_str(&format!("mov {}, byte [{ptr}]\n", Self::reg8(&reg)));
                         }
                         Type::int => {
                             self.output
-                                .push_str(&format!("mov {}, dword [{ptr}]\n", Self::reg32(&ptr)));
+                                .push_str(&format!("mov {}, dword [{ptr}]\n", Self::reg32(&reg)));
                         }
                         Type::Pointer(inside) => match **inside {
                             Type::Bool | Type::Char => {
                                 self.output
-                                    .push_str(&format!("mov {}, byte [{ptr}]\n", Self::reg8(&ptr)));
+                                    .push_str(&format!("mov {}, byte [{ptr}]\n", Self::reg8(&reg)));
                             }
                             Type::int => {
                                 self.output.push_str(&format!(
                                     "mov {}, dword [{ptr}]\n",
-                                    Self::reg32(&ptr)
+                                    Self::reg32(&reg)
                                 ));
                             }
 
                             _ => {
-                                self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
+                                self.output.push_str(&format!("mov {reg}, qword [{ptr}]\n"));
                             }
                         },
                         _ => {
-                            self.output.push_str(&format!("mov {ptr}, qword [{ptr}]\n"));
+                            self.output.push_str(&format!("mov {reg}, qword [{ptr}]\n"));
                         }
                     }
 
-                    Some(ptr)
+                    self.regs.push_back(ptr);
+
+                    Some(reg)
                 }
                 Expr::InstanceVar(struct_name, instance_name) => {
                     let val_reg = self.regs.pop_front().expect("No registers available");
