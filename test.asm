@@ -1,66 +1,37 @@
-extern malloc
-global _start
-_start:
-call main
-mov rbx, rax
-mov rdi, 10
-call print_char
-mov rdi, rbx
-mov rax, 60
-syscall
 global main
 main:
 push rbp
 mov rbp, rsp
-sub rsp, 0
-mov rdi, 10
-call malloc
-mov byte [rax + 0], 'R'
-mov byte [rax + 1], 'E'
-mov byte [rax + 2], 'A'
-mov byte [rax + 3], 'D'
-mov byte [rax + 4], 'M'
-mov byte [rax + 5], 'E'
-mov byte [rax + 6], '.'
-mov byte [rax + 7], 'm'
-mov byte [rax + 8], 'd'
-mov byte [rax + 9], 0
-mov rbx, rax
+sub rsp, 16
+mov dword [rbp - 4], edi
+mov qword [rbp - 12], rsi
+mov rcx, qword [rbp - 12]
+mov edx, 1
+imul rdx, 8
+add rcx, rdx
+mov qword [rbp - 12], rcx
+mov rax, qword [rbp - 12]
+sub rsp, 8
+mov rax, [rax]
+mov qword [rbp - 24], rax
+mov rbx, qword [rbp - 24]
 mov rdi, rbx
-call read_file
-mov rdi, rax
 call print_str
-mov rcx, 0
+mov r8, 5
+mov rdi, r8
+call print_int
+mov r9, 0
 xor rax, rax
-mov rax, rcx
+mov rax, r9
+mov rdi, 10
+call print_char
+mov rdi, rbx
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp
 pop rbp
 ret
-global get_char_at
-get_char_at:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-mov dword [rbp - 12], esi
-sub rsp, 8
-mov rdx, qword [rbp - 8]
-mov r8, qword [rbp - 8]
-mov r9d, dword [rbp - 12]
-add r8, r9
-mov qword [rbp - 24], r8
-mov r10, qword [rbp - 24]
-mov r11b, byte [r10]
-xor rax, rax
-mov rax, r11
-jmp .Lret_get_char_at
-.Lret_get_char_at:
-mov rsp, rbp
-pop rbp
-ret
-extern printf, strlen, fopen, fclose, fwrite, stat, rewind, fread, fseek, ftell
+extern printf, strlen, fopen, fclose, fwrite, stat, rewind, fread, fseek, ftell, fflush
 section .data
 fmt_int: db "%d",0
 fmt_char: db "%c",0

@@ -48,7 +48,7 @@ impl Type {
             Type::Char => 1,
             Type::Bool => 1,
             Type::Pointer(_) => 8,
-            Type::Array(elem, len) => elem.size() * len.unwrap(),
+            Type::Array(elem, len) => elem.size() * len.unwrap_or(0),
             Type::Struct { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
             _ => 0,
         }

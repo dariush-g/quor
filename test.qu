@@ -1,9 +1,16 @@
-@import::<string.qu>;
 
-def main() :: int {
 
-    print_str(read_file("README.md")); 
-    
+def main(argc: int, args: char**) :: int {
+
+    args = args + 1;
+
+    let second: char* = *args;
+
+   
+
+    print_str(second);
+
+    print_int(5);
 
     return 0;
 }

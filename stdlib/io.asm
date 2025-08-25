@@ -1,4 +1,4 @@
-extern printf, strlen, fopen, fclose, fwrite, stat, rewind, fread, fseek, ftell
+extern printf, strlen, fopen, fclose, fwrite, stat, rewind, fread, fseek, ftell, fflush
 section .data
 fmt_int: db "%d",0
 fmt_char: db "%c",0

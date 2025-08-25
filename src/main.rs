@@ -150,7 +150,7 @@ pub fn build_link_run(asm_text: &str, workdir: impl Into<PathBuf>, out: &str) ->
     run(
         Command::new("gcc").args([
             // "./stdlib/read_file.o",
-            "-nostartfiles",
+            //"-nostartfiles",
             "-no-pie",
             obj.to_str().unwrap(),
             "-o".into(),
@@ -230,7 +230,7 @@ fn main() {
         }
     };
 
-    // println!("{typed:?}");
+    println!("{typed:?}");
 
     // Codegen → ASM
     let codegen = CodeGen::generate(&typed);
