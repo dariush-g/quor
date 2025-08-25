@@ -1,16 +1,8 @@
+@import::<string.qu>;
 
+def main() :: int {
 
-def main(argc: int, args: char**) :: int {
-
-    args = args + 1;
-
-    let second: char* = *args;
-
-   
-
-    print_str(second);
-
-    print_int(5);
+    print_str(concat("hello", "world")); 
 
     return 0;
 }

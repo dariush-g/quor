@@ -207,12 +207,14 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    if params[0].1 == Type::int {
-                        if let Type::Pointer(boxed_ty) = &params[1].1 {
-                            if let Type::Pointer(inside) = *boxed_ty.clone() {
-                                if *inside == Type::Char {
-                                    code.generate_function("main", params.clone(), body);
-                                    has_main = true;
+                    if params.len() > 0 {
+                        if params[0].1 == Type::int {
+                            if let Type::Pointer(boxed_ty) = &params[1].1 {
+                                if let Type::Pointer(inside) = *boxed_ty.clone() {
+                                    if *inside == Type::Char {
+                                        code.generate_function("main", params.clone(), body);
+                                        has_main = true;
+                                    }
                                 }
                             }
                         }
