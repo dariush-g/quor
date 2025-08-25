@@ -3,3 +3,34 @@ def get_char_at(str: char*, index: int) :: char {
     return *ret;
 }
 
+
+def concat(str: char*, str1: char*) :: char* {
+    let len: int = strlen(str);
+    let len1: int = strlen(str1);
+    let new: void* = malloc(len + len1 + 1);
+
+    *new = ' ';
+
+    let ret: char* = new;
+
+    let count: int = 0;
+    while (count < len) {
+        *new = *str;
+        new = new + 1;
+        str = str + 1;
+        count = count + 1;
+    }
+
+    count = 0;
+    while (count < len1) {
+        *new = *str1;
+        new = new + 1;
+        str1 = str1 + 1;
+        count = count + 1;
+    }
+
+    *new = '\0';
+
+    return ret;
+}
+
