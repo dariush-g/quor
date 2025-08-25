@@ -183,27 +183,21 @@ impl CodeGen {
             structes: HashMap::new(),
         };
 
-        #[cfg(target_arch = "aarch64")]
-        code.output.push_str("extern _malloc\n");
-        #[cfg(target_arch = "x86_64")]
-        code.output.push_str("extern malloc\n");
+        // #[cfg(target_arch = "aarch64")]
+        // code.output.push_str("extern _malloc\n");
+        // #[cfg(target_arch = "x86_64")]
+        // code.output.push_str("extern malloc\n");
 
-        code.output.push_str("global _start\n_start:\n");
+        // code.output.push_str("global _start\n_start:\n");
 
-        code.output.push_str("call main\n");
+        // code.output.push_str("call main\n");
         // code.output.push_str("mov rbx, rax\n");
 
-        code.output.push_str("mov rbx, rax\n");
-
-        code.output.push_str("mov rdi, 10\ncall print_char\n");
-
-        code.output.push_str("mov rdi, rbx\n");
-
-        #[cfg(target_arch = "aarch64")]
-        code.output.push_str("mov rax, 0x2000001\n");
-        #[cfg(target_arch = "x86_64")]
-        code.output.push_str("mov rax, 60\n");
-        code.output.push_str("syscall\n");
+        // #[cfg(target_arch = "aarch64")]
+        // code.output.push_str("mov rax, 0x2000001\n");
+        // #[cfg(target_arch = "x86_64")]
+        // code.output.push_str("mov rax, 60\n");
+        // code.output.push_str("syscall\n");
 
         let mut has_main = false;
 
@@ -213,8 +207,19 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    code.generate_function("main", vec![], body);
-                    has_main = true;
+                    if params[0].1 == Type::int {
+                        if let Type::Pointer(boxed_ty) = &params[1].1 {
+                            if let Type::Pointer(inside) = *boxed_ty.clone() {
+                                if *inside == Type::Char {
+                                    code.generate_function("main", params.clone(), body);
+                                    has_main = true;
+                                }
+                            }
+                        }
+                    } else {
+                        code.generate_function("main", vec![], body);
+                        has_main = true;
+                    }
                 } else {
                     code.functions
                         .push((name.clone(), params.clone(), body.clone()));
@@ -578,6 +583,9 @@ impl CodeGen {
                             );
                         }
                     }
+
+                    self.output
+                        .push_str(&format!("mov {ptr_reg}, [{ptr_reg}]\n"));
 
                     self.output
                         .push_str(&format!("mov qword [rbp - {offset}], {ptr_reg}\n"));
@@ -1119,6 +1127,13 @@ impl CodeGen {
                         self.output.push_str("xor rax, rax\n");
                     }
                 }
+
+                if epilogue == ".Lret_main" {
+                    self.output.push_str("mov rdi, 10\ncall print_char\n");
+
+                    self.output.push_str("mov rdi, rbx\n");
+                }
+
                 self.output.push_str(&format!("jmp {epilogue}\n"));
             }
             _ => self.handle_stmt(stmt),
