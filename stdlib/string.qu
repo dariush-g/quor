@@ -1,4 +1,4 @@
-def get_char_at(str: char*, index: int) :: char {
+def char_at(str: char*, index: int) :: char {
     let ret: char* = str + index;
     return *ret;
 }
@@ -34,3 +34,31 @@ def concat(str: char*, str1: char*) :: char* {
     return ret;
 }
 
+def split_str(str: char*) :: void {
+    let spaceCount: int = 0;
+    let count: int = 0;
+    let len: int = strlen(str);
+    while (count < len) {
+        if (char_at(str, count) == ' ') {
+            spaceCount = spaceCount + 1;
+        }
+        count = count + 1;
+    }
+
+    // let split: [char*, spaceCount] = [];
+    
+
+}
+
+
+def contains_char(str: char*, c: char) :: bool {
+    let len: int = strlen(str);
+    let count: int = 0;
+    while (count < len) {
+        if (char_at(str, count) == c) {
+            return true;
+        }
+        count = count + 1;
+    }
+    return false;
+}
