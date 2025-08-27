@@ -116,6 +116,12 @@ pub enum Expr {
         //element_type: Type,
     },
 
+    IndexAssign {
+        array: Box<Expr>,
+        index: Box<Expr>,
+        value: Box<Expr>,
+    },
+
     FieldAssign {
         class_name: String,
         field: String,
@@ -154,6 +160,7 @@ impl Expr {
                     ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
                 ],
             })),
+            Expr::IndexAssign { value, .. } => value.get_type(),
             // Expr::InstanceVar(_, _) => todo!(),
             Expr::Assign { value, .. } => value.get_type(),
             // Expr::ArrayAccess { array, index } => todo!(),

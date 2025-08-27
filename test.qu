@@ -1,8 +1,12 @@
-@import::<string.qu>;
+
 
 def main() :: int {
 
-    print_str(concat("hello", "world")); 
+    let arr: [int, 5] = [1, 2, 3];
+
+    arr[3] = 1;
+
+    print_int(arr[3]);
 
     return 0;
 }

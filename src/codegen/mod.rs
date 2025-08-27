@@ -399,7 +399,12 @@ impl CodeGen {
                 value,
             } => match value {
                 Expr::Array(elements, ty) => {
-                    let count = elements.len();
+                    let mut count = elements.len();
+
+                    if let Type::Array(_, len) = var_type {
+                        count = len.unwrap();
+                    }
+
                     let total_size = (count as i32) * 8;
                     self.stack_size += total_size;
                     self.output.push_str(&format!("sub rsp, {total_size}\n"));
@@ -413,6 +418,8 @@ impl CodeGen {
                         ),
                     );
 
+                    // > TODO : Offset array members by type size, not always 8 <
+
                     for (i, element) in elements.iter().enumerate() {
                         let offset = base_offset - (i as i32) * 8;
                         match element {
@@ -422,16 +429,16 @@ impl CodeGen {
                             }
                             Expr::IntLiteral(n) => {
                                 self.output
-                                    .push_str(&format!("mov qword [rbp - {offset}], {n}\n"));
+                                    .push_str(&format!("mov dword [rbp - {offset}], {n}\n"));
                             }
                             Expr::BoolLiteral(b) => {
                                 let val = if *b { 1 } else { 0 };
                                 self.output
-                                    .push_str(&format!("mov qword [rbp - {offset}], {val}\n"));
+                                    .push_str(&format!("mov byte [rbp - {offset}], {val}\n"));
                             }
                             Expr::CharLiteral(c) => {
                                 self.output
-                                    .push_str(&format!("mov qword [rbp - {offset}], '{c}'\n"));
+                                    .push_str(&format!("mov byte [rbp - {offset}], '{c}'\n"));
                             }
                             Expr::StringLiteral(str) => {
                                 let reg = self
@@ -444,13 +451,25 @@ impl CodeGen {
                                 self.regs.push_back(reg);
                             }
                             _ => {
-                                if let Some(val_reg) = self.handle_expr(element, None) {
+                                if let Some(val_reg) = self.handle_expr(&element, None) {
                                     self.output.push_str(&format!(
                                         "mov qword [rbp - {offset}], {val_reg}\n"
                                     ));
 
                                     self.regs.push_back(val_reg);
                                 }
+                            }
+                        }
+                    }
+
+                    if let Type::Array(_, len) = var_type {
+                        let left = len.unwrap() - elements.len();
+                        if left > 0 {
+                            for i in elements.len()..elements.len() + left {
+                                let offset = base_offset - (i as i32) * 8;
+
+                                self.output
+                                    .push_str(&format!("mov dword [rbp - {offset}], 0\n"));
                             }
                         }
                     }
@@ -1174,6 +1193,37 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
+            Expr::IndexAssign {
+                array,
+                index,
+                value,
+            } => {
+                if let Expr::Variable(name, _) = *array.clone() {
+                    let var = self.locals.get(&name).unwrap();
+                    let off = var.1;
+                    let ty = match var.2 {
+                        Type::int => "dword",
+                        Type::Char | Type::Bool => "byte",
+                        _ => "qword",
+                    };
+
+                    let val_reg = self.handle_expr(value, None).unwrap();
+
+                    let index_reg = self.handle_expr(index, None).unwrap();
+
+                    let reg = self.regs.pop_front().unwrap();
+
+                    self.output.push_str(&format!(
+                        "imul {index_reg}, 8\nmov {reg}, rbp\nadd {reg}, {index_reg}\nsub {reg}, {off}\nmov {ty} [{reg}], {val_reg}\n"
+                    ));
+
+                    self.regs.push_back(reg);
+                    self.regs.push_back(index_reg);
+                    self.regs.push_back(val_reg);
+                }
+
+                None
+            }
             Expr::LongLiteral(l) => {
                 let reg = self.regs.pop_front().unwrap();
 

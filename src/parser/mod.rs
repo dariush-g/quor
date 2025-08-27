@@ -392,10 +392,18 @@ impl Parser {
                     // });
                 }
                 Expr::ArrayAccess { array, index } => {
-                    return Ok(Expr::DerefAssign {
-                        target: Box::new(Expr::ArrayAccess { array, index }),
+                    // return Ok( Expr::DerefAssign {
+                    //    target: Box::new(Expr::ArrayAccess { array, index }),
+                    //    value: Box::new(value),
+                    // });
+
+                    return Ok(Expr::IndexAssign {
+                        array,
+                        index,
                         value: Box::new(value),
                     });
+
+                    // return Ok(Expr::ArrayAccess { array, index })
                 }
 
                 _ => return Err(ParseError::InvalidAssignmentTarget),

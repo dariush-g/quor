@@ -5,6 +5,7 @@ use crate::{
     },
     parser::Parser,
 };
+
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -510,6 +511,9 @@ impl TypeChecker {
 
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
         match expr {
+            Expr::IndexAssign { value, .. } => {
+                return Ok(value.get_type());
+            }
             Expr::LongLiteral(_) => Ok(Type::Long),
             Expr::FieldAssign {
                 class_name,
@@ -1072,7 +1076,7 @@ impl TypeChecker {
 
                 if let (Type::Array(_, decl_size), Expr::Array(elems, _)) = (var_type, value) {
                     let decl_size = decl_size.expect("Error with array length");
-                    if !elems.is_empty() && elems.len() != decl_size {
+                    if !elems.is_empty() && elems.len() > decl_size {
                         return Err(format!(
                             "Array size mismatch in '{}': expected {}, found {}",
                             name,
