@@ -868,6 +868,7 @@ impl Parser {
                 TokenType::Comma,
                 "Expected ',' after element type or ']' for slice",
             )?;
+
             let size_tok = self.consume(TokenType::IntLiteral(0), "Expected array size")?;
             let size = match size_tok.token_type {
                 TokenType::IntLiteral(n) => n as usize,
