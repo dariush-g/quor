@@ -1193,6 +1193,12 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
+            Expr::Cast { expr, target_type } => {
+
+                
+
+                None
+            }
             Expr::IndexAssign {
                 array,
                 index,

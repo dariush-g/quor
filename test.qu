@@ -1,14 +1,12 @@
-
+@import::<string.qu>;
 
 def main() :: int {
 
-    let arr: [int, 5] = [1, 2, 3];
+    let c: char = 'e';
 
-    arr[3] = 1;
-
-    print_int(arr[3]);
+    let i: int = c as int;
+    
+    print_int(i);
 
     return 0;
 }
-
-
