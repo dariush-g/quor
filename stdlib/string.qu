@@ -10,9 +10,7 @@ def char_at(str: char*, index: int) :: char {
 def concat(str: char*, str1: char*) :: char* {
     let len: int = strlen(str);
     let len1: int = strlen(str1);
-    let new: void* = malloc(len + len1 + 1);
-
-    *new = ' ';
+    let new: char* = malloc(len + len1 + 1) as char*;
 
     let ret: char* = new;
 
@@ -37,8 +35,6 @@ def concat(str: char*, str1: char*) :: char* {
     return ret;
 }
 
-
-
 def contains_char(str: char*, c: char) :: bool {
     let len: int = strlen(str);
     let count: int = 0;
@@ -49,4 +45,8 @@ def contains_char(str: char*, c: char) :: bool {
         count = count + 1;
     }
     return false;
+}
+
+def main() :: int {
+    print_str(concat("hello ", "world!"));
 }
