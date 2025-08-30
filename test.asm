@@ -3,16 +3,9 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-sub rsp, 8
-mov rcx, 'e'
-mov qword [rbp - 8], rcx
-sub rsp, 8
-mov edx, dword [rbp - 16]
-mov rdi, rdx
-call print_int
-mov rbx, 0
+mov rcx, 0
 xor rax, rax
-mov rax, rbx
+mov rax, rcx
 mov rdi, 10
 call print_char
 mov rdi, rbx
@@ -29,15 +22,19 @@ sub rsp, 16
 mov qword [rbp - 8], rdi
 mov dword [rbp - 12], esi
 sub rsp, 8
-mov r8, qword [rbp - 8]
-mov r9, qword [rbp - 8]
-mov r10d, dword [rbp - 12]
-add r9, r10
-mov qword [rbp - 24], r9
-mov r11, qword [rbp - 24]
-mov r12b, byte [r11]
+xor rdx, rdx
+mov rdx, qword [rbp - 8]
 xor rax, rax
-mov rax, r12
+mov rax, qword [rbp - 8]
+xor rbx, rbx
+mov ebx, dword [rbp - 12]
+add rax, rbx
+mov qword [rbp - 24], rax
+xor r8, r8
+mov r8, qword [rbp - 24]
+mov r9b, byte [r8]
+xor rax, rax
+mov rax, r9
 jmp .Lret_char_at
 .Lret_char_at:
 mov rsp, rbp
@@ -51,94 +48,112 @@ sub rsp, 16
 mov qword [rbp - 8], rdi
 mov qword [rbp - 16], rsi
 sub rsp, 8
-mov r13, qword [rbp - 8]
-mov rdi, r13
+xor r10, r10
+mov r10, qword [rbp - 8]
+mov rdi, r10
 call strlen
 mov qword [rbp - 24], rax
 sub rsp, 8
-mov r14, qword [rbp - 16]
-mov rdi, r14
+xor r11, r11
+mov r11, qword [rbp - 16]
+mov rdi, r11
 call strlen
 mov qword [rbp - 32], rax
-sub rsp, 8
-mov r15d, dword [rbp - 24]
-mov ecx, dword [rbp - 32]
-add r15, rcx
-mov rdx, 1
-add r15, rdx
-mov rdi, r15
+xor r12, r12
+mov r12d, dword [rbp - 24]
+xor r13, r13
+mov r13d, dword [rbp - 32]
+add r12, r13
+mov r14, 1
+add r12, r14
+mov rdi, r12
 call malloc
+sub rsp, 8
 mov qword [rbp - 40], rax
-mov rbx, qword [rbp - 40]
-mov r10, ' '
-mov byte [rbx], r10b
 sub rsp, 8
-mov r9, qword [rbp - 40]
-mov qword [rbp - 48], r9
+xor r15, r15
+mov r15, qword [rbp - 40]
+mov qword [rbp - 48], r15
 sub rsp, 8
-mov r11, 0
-mov qword [rbp - 56], r11
+mov rcx, 0
+mov dword [rbp - 56], ecx
 .while_start_0:
-mov r12d, dword [rbp - 56]
-mov r13d, dword [rbp - 24]
-cmp r12, r13
+xor rbx, rbx
+mov ebx, dword [rbp - 56]
+xor r8, r8
+mov r8d, dword [rbp - 24]
+cmp rbx, r8
 setl al
 movzx rax, al
 cmp rax, 1
 jne .while_end_0
-mov r14, qword [rbp - 40]
-mov rcx, qword [rbp - 8]
-mov dl, byte [rcx]
-mov byte [r14], dl
-mov r15, qword [rbp - 40]
+xor r9, r9
+mov r9, qword [rbp - 40]
+xor r10, r10
+mov r10, qword [rbp - 8]
+mov r11b, byte [r10]
+mov byte [r9], r11b
+xor r13, r13
+mov r13, qword [rbp - 40]
+mov r14d, 1
+add r13, r14
+mov qword [rbp - 40], r13
+xor r12, r12
+mov r12, qword [rbp - 8]
 mov eax, 1
-add r15, rax
-mov qword [rbp - 40], r15
-mov rbx, qword [rbp - 8]
-mov r10d, 1
-add rbx, r10
-mov qword [rbp - 8], rbx
-mov r9d, dword [rbp - 56]
-mov r11, 1
-add r9, r11
-mov qword [rbp - 56], r9
+add r12, rax
+mov qword [rbp - 8], r12
+xor r15, r15
+mov r15d, dword [rbp - 56]
+mov rcx, 1
+add r15, rcx
+mov qword [rbp - 56], r15
 add rsp, 56
 jmp .while_start_0
 .while_end_0:
 mov dword [rbp - 56], 0
 .while_start_1:
-mov r12d, dword [rbp - 56]
-mov r13d, dword [rbp - 32]
-cmp r12, r13
+xor rbx, rbx
+mov ebx, dword [rbp - 56]
+xor r8, r8
+mov r8d, dword [rbp - 32]
+cmp rbx, r8
 setl al
 movzx rax, al
 cmp rax, 1
 jne .while_end_1
+xor rax, rax
 mov rax, qword [rbp - 40]
-mov rcx, qword [rbp - 16]
-mov r14b, byte [rcx]
-mov byte [rax], r14b
-mov rdx, qword [rbp - 40]
+xor r10, r10
+mov r10, qword [rbp - 16]
+mov r9b, byte [r10]
+mov byte [rax], r9b
+xor r11, r11
+mov r11, qword [rbp - 40]
+mov r14d, 1
+add r11, r14
+mov qword [rbp - 40], r11
+xor r13, r13
+mov r13, qword [rbp - 16]
 mov eax, 1
-add rdx, rax
-mov qword [rbp - 40], rdx
-mov r15, qword [rbp - 16]
-mov r10d, 1
-add r15, r10
-mov qword [rbp - 16], r15
-mov ebx, dword [rbp - 56]
-mov r11, 1
-add rbx, r11
-mov qword [rbp - 56], rbx
+add r13, rax
+mov qword [rbp - 16], r13
+xor r12, r12
+mov r12d, dword [rbp - 56]
+mov rcx, 1
+add r12, rcx
+mov qword [rbp - 56], r12
 add rsp, 56
 jmp .while_start_1
 .while_end_1:
-mov r9, qword [rbp - 40]
-mov r12, 0
-mov byte [r9], r12b
-mov r13, qword [rbp - 48]
+xor r15, r15
+mov r15, qword [rbp - 40]
+mov rbx, 0
+mov byte [r15], bl
+xor r8, r8
+mov r8, qword [rbp - 48]
 xor rax, rax
-mov rax, r13
+mov rax, r8
 jmp .Lret_concat
 .Lret_concat:
 mov rsp, rbp
@@ -152,44 +167,51 @@ sub rsp, 16
 mov qword [rbp - 8], rdi
 mov byte [rbp - 9], sil
 sub rsp, 8
+xor rax, rax
 mov rax, qword [rbp - 8]
 mov rdi, rax
 call strlen
 mov qword [rbp - 24], rax
 sub rsp, 8
-mov rcx, 0
-mov qword [rbp - 32], rcx
+mov r10, 0
+mov dword [rbp - 32], r10d
 .while_start_2:
-mov r14d, dword [rbp - 32]
-mov eax, dword [rbp - 24]
-cmp r14, rax
+xor r9, r9
+mov r9d, dword [rbp - 32]
+xor r14, r14
+mov r14d, dword [rbp - 24]
+cmp r9, r14
 setl al
 movzx rax, al
 cmp rax, 1
 jne .while_end_2
-mov r10, qword [rbp - 8]
-mov r15d, dword [rbp - 32]
-mov rdi, r10
-mov rsi, r15
+xor r11, r11
+mov r11, qword [rbp - 8]
+xor rax, rax
+mov eax, dword [rbp - 32]
+mov rdi, r11
+mov rsi, rax
 call char_at
-mov r11b, byte [rbp - 9]
-cmp rax, r11
+xor rcx, rcx
+mov cl, byte [rbp - 9]
+cmp rax, rcx
 sete al
 movzx rax, al
 cmp rax, 0
 je .else3
-mov rbx, 1
-.else3:
-mov r9d, dword [rbp - 32]
 mov r12, 1
-add r9, r12
-mov qword [rbp - 32], r9
+.else3:
+xor r15, r15
+mov r15d, dword [rbp - 32]
+mov rbx, 1
+add r15, rbx
+mov qword [rbp - 32], r15
 add rsp, 32
 jmp .while_start_2
 .while_end_2:
-mov r13, 0
+mov r8, 0
 xor rax, rax
-mov rax, r13
+mov rax, r8
 jmp .Lret_contains_char
 .Lret_contains_char:
 mov rsp, rbp

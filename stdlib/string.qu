@@ -47,6 +47,4 @@ def contains_char(str: char*, c: char) :: bool {
     return false;
 }
 
-def main() :: int {
-    print_str(concat("hello ", "world!"));
-}
+
