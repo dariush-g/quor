@@ -1,12 +1,10 @@
 @import::<string.qu>;
+@import::("tests/printing.qu");
+
 
 def main() :: int {
 
-    let c: char = 'e';
 
-    let i: int = c as int;
-    
-    print_int(i);
 
     return 0;
 }

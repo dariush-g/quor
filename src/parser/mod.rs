@@ -133,7 +133,7 @@ impl Parser {
                 }
                 if let TokenType::LeftParen = self.peek().token_type {
                     self.advance(); // consume '('
-                    let mut param = if let TokenType::Identifier(s) = &self.peek().token_type {
+                    let mut param = if let TokenType::StringLiteral(s) = &self.peek().token_type {
                         let val = s.clone();
                         self.advance(); // consume string
                         val

@@ -398,6 +398,22 @@ impl CodeGen {
                 var_type,
                 value,
             } => match value {
+                Expr::Cast { expr, target_type } => {
+                    let reg = self.handle_expr(&expr, None).unwrap();
+                    let off = self.alloc_local(name, target_type);
+
+                    match target_type {
+                        Type::int => 
+                            self.output.push_str(&format!("mov dword [rbp - {off}], {}\n", Self::reg32(&reg))),
+                        
+                        Type::Bool | Type::Char =>self.output.push_str(&format!("mov byte [rbp - {off}], {}\n", Self::reg8(&reg))),
+
+                        _ =>  self.output.push_str(&format!("mov qword [rbp - {off}], {reg}\n")),
+
+                    }
+
+                    self.regs.push_back(reg);
+                }
                 Expr::Array(elements, ty) => {
                     let mut count = elements.len();
 
@@ -774,8 +790,18 @@ impl CodeGen {
                         }
                         _ => {
                             if let Some(val_reg) = self.handle_expr(value, None) {
-                                self.output
-                                    .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n"));
+                                match value.get_type() {
+                                    Type::int => self.output.push_str(&format!(
+                                        "mov dword [rbp - {offset}], {}\n", Self::reg32(&val_reg)
+                                    )),
+                                    Type::Char | Type::Bool => self.output.push_str(&format!(
+                                        "mov byte [rbp - {offset}], {}\n", Self::reg8(&val_reg)
+                                    )),
+                                    _ => self.output.push_str(&format!(
+                                        "mov qword [rbp - {offset}], {val_reg}\n"
+                                    )),
+                                }
+
                                 self.regs.push_back(val_reg);
                             }
                         }
@@ -1161,8 +1187,7 @@ impl CodeGen {
         }
     }
 
-    fn parse_escapes(s: &str) -> Vec<char> {
-        let mut result = Vec::new();
+    fn parse_escapes(s: &str) -> Vec<char> { let mut result = Vec::new();
         let mut chars = s.chars().peekable();
 
         while let Some(c) = chars.next() {
@@ -1193,12 +1218,9 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
-            Expr::Cast { expr, target_type } => {
-
-                
-
-                None
-            }
+            Expr::Cast { expr, .. } => {
+                self.handle_expr(expr, None) 
+            },
             Expr::IndexAssign {
                 array,
                 index,
@@ -1715,6 +1737,8 @@ impl CodeGen {
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
                 let av_reg = self.regs.pop_front().expect("No registers");
+                
+                self.output.push_str(&format!("xor {av_reg}, {av_reg}\n"));
 
                 let t = &self.locals.get(name).unwrap().2;
 
