@@ -15,6 +15,7 @@ pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
     functions: HashMap<String, (Vec<Type>, Type)>,
     classes: Vec<String>,
+    globals: HashMap<String, Type>,
     //                  class name, instances
     class_fields: HashMap<String, Vec<(String, Type)>>,
     current_return_type: Option<Type>,
@@ -24,6 +25,7 @@ pub struct TypeChecker {
 impl Default for TypeChecker {
     fn default() -> Self {
         Self {
+            globals: HashMap::new(),
             variables: vec![HashMap::new()],
             functions: HashMap::new(),
             classes: Vec::new(),
@@ -50,7 +52,7 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
     let mut imported_files: HashSet<PathBuf> = HashSet::new();
 
     for stmt in program.clone() {
-        if let Stmt::AtDecl(decl, param) = stmt {
+        if let Stmt::AtDecl(decl, param, _) = stmt {
             if decl.as_str() == "import" {
                 let mut param = param
                     .clone()
@@ -111,6 +113,32 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
 impl TypeChecker {
     pub fn analyze_program(mut program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
+
+        for stmt in &program {
+            if let Stmt::AtDecl(decl, param, val) = stmt {
+                if decl.as_str() == "define" {
+                    let param = param
+                        .clone()
+                        .unwrap_or_else(|| panic!("Unable to locate define name"));
+
+                    match val.clone().unwrap() {
+                        Expr::IntLiteral(_) => {}
+                        Expr::LongLiteral(_) => {}
+                        Expr::FloatLiteral(_) => {}
+                        Expr::BoolLiteral(_) => {}
+                        Expr::StringLiteral(_) => {}
+                        Expr::CharLiteral(_) => {}
+                        _ => {
+                            panic!("Expected literal value for global definition")
+                        }
+                    }
+
+                    let ty = val.clone().unwrap().get_type();
+
+                    type_checker.globals.insert(param, ty);
+                }
+            }
+        }
 
         // for stmt in program.clone() {
         //     if let Stmt::AtDecl(decl, param) = stmt {
@@ -497,7 +525,8 @@ impl TypeChecker {
                 return Some(ty);
             }
         }
-        None
+
+        self.globals.get(name)
     }
 
     fn declare_fn(&mut self, name: &str, params: Vec<Type>, ret: Type) -> Result<(), String> {
@@ -973,8 +1002,9 @@ impl TypeChecker {
 
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
-            Stmt::AtDecl(decl, _) => match decl.as_str() {
+            Stmt::AtDecl(decl, _, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
+                "define" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
                 _ => Err(format!("unknown declaration '{decl}'")),

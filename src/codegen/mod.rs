@@ -13,6 +13,7 @@ type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
 pub struct CodeGen {
     output: String,
     // imports: Vec<String>,
+    globals: HashMap<String, Type>,
     regs: VecDeque<String>,
     fp_regs: VecDeque<String>,
     fp_count: u32,
@@ -141,6 +142,7 @@ impl CodeGen {
     // asm      import paths
     pub fn generate(stmts: &Vec<Stmt>) -> String {
         let mut code = CodeGen {
+            globals: HashMap::new(),
             fp_count: 0,
             output: String::new(),
             regs: VecDeque::from(vec![
@@ -202,6 +204,35 @@ impl CodeGen {
         let mut has_main = false;
 
         for stmt in stmts {
+            if let Stmt::AtDecl(decl, param, val) = stmt {
+                if decl.as_str() == "define" {
+                    let param = param.clone().unwrap();
+                    code.output.push_str("section .data\n");
+                    if let Some(val) = val {
+                        match val {
+                            Expr::IntLiteral(n) => {
+                                code.output.push_str(&format!("{param}: dd {n}\n"))
+                            }
+                            Expr::FloatLiteral(n) => {
+                                code.output.push_str(&format!("{param}: dd {n}\n"))
+                            }
+                            Expr::BoolLiteral(n) => {
+                                code.output.push_str(&format!("{param}: db {}\n", *n as u8))
+                            }
+                            Expr::CharLiteral(n) => {
+                                code.output.push_str(&format!("{param}: db {n}\n"))
+                            }
+                            Expr::StringLiteral(n) => {
+                                code.output.push_str(&format!("{param}: db \"{n}\",0\n"))
+                            }
+                            _ => {}
+                        }
+                    }
+                    code.globals
+                        .insert(param.clone(), val.clone().unwrap().get_type());
+                    code.output.push_str("section .text\n");
+                }
+            }
             if let Stmt::FunDecl {
                 name, params, body, ..
             } = stmt
@@ -367,32 +398,7 @@ impl CodeGen {
                 // exit
                 self.output.push_str(&format!("{loop_end}:\n"));
             }
-            // Stmt::AtDecl(decl, param) => {
-            //     // v v v v v v v v v v v v v v v v v v v
-            //     //>//TODO: IMPROVE IMPORT HANDLING!!!! <
-            //     // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
 
-            //     if decl.as_str() == "import" {
-            //         let mut param = param
-            //             .clone()
-            //             .unwrap_or_else(|| panic!("Unable to locate import"));
-
-            //         if param.ends_with('!') {
-            //             param.remove(param.len() - 1);
-
-            //             let manifest_dir = env!("CARGO_MANIFEST_DIR");
-
-            //             match param.as_str() {
-            //                 _ => {}
-            //             }
-            //         } else {
-            //             let file = fs::read_to_string(param.clone())
-            //                 .unwrap_or_else(|_| panic!("Unable to find file {param}"));
-
-            //             self.output.push_str(&file);
-            //         }
-            //     }
-            // }
             Stmt::VarDecl {
                 name,
                 var_type,
@@ -403,13 +409,17 @@ impl CodeGen {
                     let off = self.alloc_local(name, target_type);
 
                     match target_type {
-                        Type::int => 
-                            self.output.push_str(&format!("mov dword [rbp - {off}], {}\n", Self::reg32(&reg))),
-                        
-                        Type::Bool | Type::Char =>self.output.push_str(&format!("mov byte [rbp - {off}], {}\n", Self::reg8(&reg))),
+                        Type::int => self
+                            .output
+                            .push_str(&format!("mov dword [rbp - {off}], {}\n", Self::reg32(&reg))),
 
-                        _ =>  self.output.push_str(&format!("mov qword [rbp - {off}], {reg}\n")),
+                        Type::Bool | Type::Char => self
+                            .output
+                            .push_str(&format!("mov byte [rbp - {off}], {}\n", Self::reg8(&reg))),
 
+                        _ => self
+                            .output
+                            .push_str(&format!("mov qword [rbp - {off}], {reg}\n")),
                     }
 
                     self.regs.push_back(reg);
@@ -792,10 +802,12 @@ impl CodeGen {
                             if let Some(val_reg) = self.handle_expr(value, None) {
                                 match value.get_type() {
                                     Type::int => self.output.push_str(&format!(
-                                        "mov dword [rbp - {offset}], {}\n", Self::reg32(&val_reg)
+                                        "mov dword [rbp - {offset}], {}\n",
+                                        Self::reg32(&val_reg)
                                     )),
                                     Type::Char | Type::Bool => self.output.push_str(&format!(
-                                        "mov byte [rbp - {offset}], {}\n", Self::reg8(&val_reg)
+                                        "mov byte [rbp - {offset}], {}\n",
+                                        Self::reg8(&val_reg)
                                     )),
                                     _ => self.output.push_str(&format!(
                                         "mov qword [rbp - {offset}], {val_reg}\n"
@@ -1162,6 +1174,11 @@ impl CodeGen {
     fn handle_stmt_with_epilogue(&mut self, stmt: &Stmt, epilogue: &str) {
         match stmt {
             Stmt::Return(opt) => {
+                if epilogue == ".Lret_main" {
+                    self.output.push_str("mov rdi, 10\ncall print_char\n");
+
+                    self.output.push_str("mov rdi, rbx\n");
+                }
                 if let Some(ex) = opt {
                     if let Some(reg) = self.handle_expr(ex, None) {
                         if reg != "rax" {
@@ -1175,19 +1192,14 @@ impl CodeGen {
                     }
                 }
 
-                if epilogue == ".Lret_main" {
-                    self.output.push_str("mov rdi, 10\ncall print_char\n");
-
-                    self.output.push_str("mov rdi, rbx\n");
-                }
-
                 self.output.push_str(&format!("jmp {epilogue}\n"));
             }
             _ => self.handle_stmt(stmt),
         }
     }
 
-    fn parse_escapes(s: &str) -> Vec<char> { let mut result = Vec::new();
+    fn parse_escapes(s: &str) -> Vec<char> {
+        let mut result = Vec::new();
         let mut chars = s.chars().peekable();
 
         while let Some(c) = chars.next() {
@@ -1218,9 +1230,7 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
-            Expr::Cast { expr, .. } => {
-                self.handle_expr(expr, None) 
-            },
+            Expr::Cast { expr, .. } => self.handle_expr(expr, None),
             Expr::IndexAssign {
                 array,
                 index,
@@ -1733,12 +1743,32 @@ impl CodeGen {
                 Some(val_reg)
             }
             Expr::Variable(name, _) => {
+                let av_reg = self.regs.pop_front().expect("No registers");
+
+                self.output.push_str(&format!("xor {av_reg}, {av_reg}\n"));
+
+                if let Some(t) = self.globals.get(name) {
+                    match t {
+                        Type::int | Type::float => {
+                            self.output
+                                .push_str(&format!("mov {}, [{name}]\n", Self::reg32(&av_reg)));
+                            return Some(av_reg);
+                        }
+                        Type::Char | Type::Bool => {
+                            self.output
+                                .push_str(&format!("mov {}, [{name}]\n", Self::reg8(&av_reg)));
+                            return Some(av_reg);
+                        }
+                        _ => {
+                            self.output.push_str(&format!("mov {av_reg}, {name}\n"));
+                            return Some(av_reg);
+                        }
+                    }
+                }
+
                 let off = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
-                let av_reg = self.regs.pop_front().expect("No registers");
-                
-                self.output.push_str(&format!("xor {av_reg}, {av_reg}\n"));
 
                 let t = &self.locals.get(name).unwrap().2;
 

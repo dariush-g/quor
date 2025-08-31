@@ -129,7 +129,7 @@ impl Parser {
 
                     self.consume(TokenType::Greater, "Expected '>'")?;
                     self.consume(TokenType::Semicolon, "Expected ';'")?;
-                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param)));
+                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None));
                 }
                 if let TokenType::LeftParen = self.peek().token_type {
                     self.advance(); // consume '('
@@ -157,11 +157,25 @@ impl Parser {
                     self.consume(TokenType::RightParen, "Expected ')'")?;
                     self.consume(TokenType::Semicolon, "Expected ';'")?;
 
-                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param)));
+                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None));
                 }
             }
 
-            return Ok(Stmt::AtDecl(decl.to_string(), None));
+            if let TokenType::Identifier(name) = &self.peek().clone().token_type {
+                self.advance();
+
+                let expr = self.expression().unwrap_or_else(|_| panic!());
+
+                self.consume(TokenType::Semicolon, "Expected ';'")?;
+
+                return Ok(Stmt::AtDecl(
+                    decl.to_string(),
+                    Some(name.to_string()),
+                    Some(expr),
+                ));
+            }
+
+            return Ok(Stmt::AtDecl(decl.to_string(), None, None));
         }
 
         Err(ParseError::Expected {
