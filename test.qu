@@ -1,10 +1,9 @@
-@import::<string.qu>;
-@import::("tests/printing.qu");
 
+@define VAR "hello";
 
 def main() :: int {
 
-
+    print_str(VAR);
 
     return 0;
 }

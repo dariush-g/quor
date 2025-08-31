@@ -35,6 +35,13 @@ def concat(str: char*, str1: char*) :: char* {
     return ret;
 }
 
+def substring(str: char*, i: int, ii: int) :: char* {
+    let new: char* = malloc(strlen(str) + 1) as char*;
+
+
+    return new;
+}
+
 def contains_char(str: char*, c: char) :: bool {
     let len: int = strlen(str);
     let count: int = 0;

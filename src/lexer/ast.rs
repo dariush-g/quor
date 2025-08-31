@@ -153,13 +153,7 @@ impl Expr {
             Expr::Array(elements, element_type) => {
                 Type::Array(Box::new(element_type.clone()), Some(elements.len()))
             }
-            Expr::StringLiteral(_) => Type::Pointer(Box::new(Type::Struct {
-                name: "string".to_owned(),
-                instances: vec![
-                    ("size".to_string(), Type::int),
-                    ("data".to_string(), Type::Pointer(Box::new(Type::Char))),
-                ],
-            })),
+            Expr::StringLiteral(_) => Type::Pointer(Box::new(Type::Char)),
             Expr::IndexAssign { value, .. } => value.get_type(),
             // Expr::InstanceVar(_, _) => todo!(),
             Expr::Assign { value, .. } => value.get_type(),
@@ -202,7 +196,7 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    AtDecl(String, Option<String>),
+    AtDecl(String, Option<String>, Option<Expr>),
     VarDecl {
         name: String,
         var_type: Type,
