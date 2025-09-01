@@ -128,9 +128,8 @@ fn rec_import_walk(
                 let mut imported_stmts = rec_import_walk(&program_new, imported_files, &abs_path);
 
                 ret.append(&mut imported_stmts);
-
             } else {
-                ret.push(stmt.clone()); 
+                ret.push(stmt.clone());
             }
         } else {
             ret.push(stmt.clone());
@@ -143,7 +142,7 @@ impl TypeChecker {
     pub fn analyze_program(mut program: Vec<Stmt>, path: &Path) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
 
-        for stmt in &program {
+        for (i, stmt) in program.clone().iter().enumerate() {
             if let Stmt::AtDecl(decl, param, val) = stmt {
                 if decl.as_str() == "define" {
                     let param = param
@@ -165,6 +164,22 @@ impl TypeChecker {
                     let ty = val.clone().unwrap().get_type();
 
                     type_checker.globals.insert(param, ty);
+                }
+                if decl.as_str() == "union" {
+                    if let Stmt::StructDecl {
+                        name,
+                        instances,
+                        union,
+                    } = program.get(i + 1).unwrap()
+                    {
+                        program[i + 1] = Stmt::StructDecl {
+                            name: name.to_string(),
+                            instances: instances.to_vec(),
+                            union: *union,
+                        }
+                    } else {
+                        return Err("expected struct after union declaration".to_string());
+                    }
                 }
             }
         }
@@ -1034,6 +1049,7 @@ impl TypeChecker {
             Stmt::AtDecl(decl, _, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
                 "define" => Ok(stmt.clone()),
+                "union" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
                 _ => Err(format!("unknown declaration '{decl}'")),
@@ -1312,7 +1328,11 @@ impl TypeChecker {
                 }
                 Ok(Stmt::Continue)
             }
-            Stmt::StructDecl { name, instances } => {
+            Stmt::StructDecl {
+                name,
+                instances,
+                union,
+            } => {
                 for (i, instance) in instances.clone().iter().enumerate() {
                     for (j, instance1) in instances.iter().enumerate() {
                         let n = instance.0.clone();
@@ -1350,6 +1370,7 @@ impl TypeChecker {
                 Ok(Stmt::StructDecl {
                     name: name.to_string(),
                     instances: instances.to_vec(),
+                    union: *union,
                 })
             }
         }

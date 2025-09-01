@@ -166,13 +166,14 @@ impl Parser {
 
                 let expr = self.expression().unwrap_or_else(|_| panic!());
 
-                self.consume(TokenType::Semicolon, "Expected ';'")?;
+                                self.consume(TokenType::Semicolon, "Expected ';'")?;
 
                 return Ok(Stmt::AtDecl(
                     decl.to_string(),
                     Some(name.to_string()),
                     Some(expr),
                 ));
+
             }
 
             return Ok(Stmt::AtDecl(decl.to_string(), None, None));
@@ -278,6 +279,7 @@ impl Parser {
         Ok(Stmt::StructDecl {
             name: class_name,
             instances: fields,
+            union: false,
         })
     }
 

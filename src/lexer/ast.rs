@@ -211,6 +211,7 @@ pub enum Stmt {
     StructDecl {
         name: String,
         instances: Vec<(String, Type)>,
+        union: bool,
     },
     If {
         condition: Expr,
