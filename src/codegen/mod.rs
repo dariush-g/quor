@@ -22,7 +22,7 @@ pub struct CodeGen {
     locals: HashMap<String, (Option<String>, i32, Type)>,
     stack_size: i32,
     externs: HashSet<String>,
-    structes: HashMap<String, (StructLayout, Stmt)>,
+    structures: HashMap<String, (StructLayout, Stmt)>,
 }
 
 #[inline]
@@ -181,7 +181,7 @@ impl CodeGen {
             locals: HashMap::new(),
             stack_size: 0,
             externs: HashSet::new(),
-            structes: HashMap::new(),
+            structures: HashMap::new(),
         };
 
         // #[cfg(target_arch = "aarch64")]
@@ -257,8 +257,13 @@ impl CodeGen {
                         .push((name.clone(), params.clone(), body.clone()));
                 }
             }
-            if let Stmt::StructDecl { name, instances } = stmt {
-                code.generate_struct(name, instances.clone());
+            if let Stmt::StructDecl {
+                name,
+                instances,
+                union,
+            } = stmt
+            {
+                code.generate_struct(name, instances.clone(), *union);
             }
         }
 
@@ -515,7 +520,7 @@ impl CodeGen {
 
                 Expr::StructInit { name: cls, params } => {
                     // Get the struct layout to map named parameters to field positions
-                    let struct_info = self.structes.get(cls);
+                    let struct_info = self.structures.get(cls);
                     if struct_info.is_none() {
                         panic!("Struct {} not found", cls);
                     }
@@ -656,7 +661,7 @@ impl CodeGen {
                 //     println!("{:?}", self.locals);
 
                 //     let field_offset: usize = self
-                //         .structes
+                //         .structures
                 //         .get(&struct)
                 //         .expect("error getting struct layout")
                 //         .0
@@ -716,7 +721,7 @@ impl CodeGen {
 
                     // Get struct layout
                     let struct_layout = &self
-                        .structes
+                        .structures
                         .get(&struct_type)
                         .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                         .0;
@@ -950,184 +955,220 @@ impl CodeGen {
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
     }
 
-    fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>) {
-        let struct_layout = layout_fields(&instances);
-        self.output
-            .push_str(&format!("; ----- Layout: {name} -----\n"));
-        self.output
-            .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
-        for fld in &struct_layout.fields {
+    fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
+        if !union {
+            let struct_layout = layout_fields(&instances);
             self.output
-                .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
-        }
-        self.output.push('\n');
-
-        let ctor_sym = format!("{name}.new");
-        self.output
-            .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
-        self.output.push_str("push rbp\nmov rbp, rsp\n");
-
-        // save incoming args we will need after call to _malloc
-        let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-        let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
-
-        let mut fpc = 0;
-
-        let n_fields = instances.len().min(save_regs.len());
-
-        // Ensure 16-byte stack alignment for malloc call
-        // let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
-        // if stack_adjust > 0 {
-        //     self.output
-        //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
-        // }
-
-        let mut stack_adj = vec![];
-        for instance in instances.clone() {
-            match instance.1 {
-                Type::int => stack_adj.push(4),
-                Type::float => stack_adj.push(4),
-                Type::Char => stack_adj.push(1),
-                Type::Bool => stack_adj.push(1),
-                _ => stack_adj.push(8),
+                .push_str(&format!("; ----- Layout: {name} -----\n"));
+            self.output
+                .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
+            for fld in &struct_layout.fields {
+                self.output
+                    .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
             }
-        }
+            self.output.push('\n');
 
-        let sum = stack_adj.iter().sum::<i32>();
+            let ctor_sym = format!("{name}.new");
+            self.output
+                .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
+            self.output.push_str("push rbp\nmov rbp, rsp\n");
 
-        let sum = sum + (sum % 8);
+            // save incoming args we will need after call to _malloc
+            let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+            let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
 
-        self.output.push_str(&format!("sub rsp, {sum}\n"));
+            let mut fpc = 0;
 
-        // stack_adj += 16 - (stack_adj % 16);
+            let n_fields = instances.len().min(save_regs.len());
 
-        // #[allow(clippy::needless_range_loop)]
-        // for i in 0..n_fields {
-        //     self.output.push_str(&format!(
-        //         "mov qword [rbp - {}], {}\n",
-        //         8 * (1 + i),
-        //         save_regs[i]
-        //     ));
-        // }
+            // Ensure 16-byte stack alignment for malloc call
+            // let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
+            // if stack_adjust > 0 {
+            //     self.output
+            //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
+            // }
 
-        for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
-            let mut slot_off = 0;
-            for n in 0..i + 1 {
-                slot_off += stack_adj[n];
-            }
-            match ty {
-                Type::int => {
-                    self.output.push_str(&format!(
-                        "mov dword [rbp - {}], {}\n",
-                        slot_off,
-                        Self::reg32(save_regs[i])
-                    ));
-                }
-                Type::Char | Type::Bool => {
-                    self.output.push_str(&format!(
-                        "mov byte [rbp - {}], {}\n",
-                        slot_off,
-                        Self::reg8(save_regs[i])
-                    ));
-                }
-                Type::float => {
-                    self.output
-                        .push_str(&format!("movss [rbp - {}], {}\n", slot_off, save_fp[fpc]));
-                    fpc += 1;
-                }
-                _ => {
-                    self.output.push_str(&format!(
-                        "mov qword [rbp - {}], {}\n",
-                        slot_off, save_regs[i]
-                    ));
+            let mut stack_adj = vec![];
+            for instance in instances.clone() {
+                match instance.1 {
+                    Type::int => stack_adj.push(4),
+                    Type::float => stack_adj.push(4),
+                    Type::Char => stack_adj.push(1),
+                    Type::Bool => stack_adj.push(1),
+                    _ => stack_adj.push(8),
                 }
             }
-        }
 
-        self.output.push_str(&format!("mov rdi, {name}_size\n"));
+            let sum = stack_adj.iter().sum::<i32>();
 
-        #[cfg(target_arch = "aarch64")]
-        self.output.push_str("call _malloc\n");
+            let sum = sum + (sum % 8);
 
-        #[cfg(target_arch = "x86_64")]
-        self.output.push_str("call malloc\n");
+            self.output.push_str(&format!("sub rsp, {sum}\n"));
 
-        // if stack_adj > 0 {
-        //     self.output.push_str(&format!("add rsp, {}\n", stack_adj));
-        // }
+            // stack_adj += 16 - (stack_adj % 16);
 
-        self.output.push_str("mov rcx, rax\n");
+            // #[allow(clippy::needless_range_loop)]
+            // for i in 0..n_fields {
+            //     self.output.push_str(&format!(
+            //         "mov qword [rbp - {}], {}\n",
+            //         8 * (1 + i),
+            //         save_regs[i]
+            //     ));
+            // }
 
-        for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
-            let off_in_obj = struct_layout.fields[i].offset;
-            let mut slot_off = 0;
-            for n in 0..i + 1 {
-                slot_off += stack_adj[n];
+            for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
+                let mut slot_off = 0;
+                for n in 0..i + 1 {
+                    slot_off += stack_adj[n];
+                }
+                match ty {
+                    Type::int => {
+                        self.output.push_str(&format!(
+                            "mov dword [rbp - {}], {}\n",
+                            slot_off,
+                            Self::reg32(save_regs[i])
+                        ));
+                    }
+                    Type::Char | Type::Bool => {
+                        self.output.push_str(&format!(
+                            "mov byte [rbp - {}], {}\n",
+                            slot_off,
+                            Self::reg8(save_regs[i])
+                        ));
+                    }
+                    Type::float => {
+                        self.output
+                            .push_str(&format!("movss [rbp - {}], {}\n", slot_off, save_fp[fpc]));
+                        fpc += 1;
+                    }
+                    _ => {
+                        self.output.push_str(&format!(
+                            "mov qword [rbp - {}], {}\n",
+                            slot_off, save_regs[i]
+                        ));
+                    }
+                }
             }
-            match ty {
-                Type::Array(_, _) => {
-                    self.output
-                        .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
-                    self.output
-                        .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
+
+            self.output.push_str(&format!("mov rdi, {name}_size\n"));
+
+            #[cfg(target_arch = "aarch64")]
+            self.output.push_str("call _malloc\n");
+
+            #[cfg(target_arch = "x86_64")]
+            self.output.push_str("call malloc\n");
+
+            // if stack_adj > 0 {
+            //     self.output.push_str(&format!("add rsp, {}\n", stack_adj));
+            // }
+
+            self.output.push_str("mov rcx, rax\n");
+
+            for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
+                let off_in_obj = struct_layout.fields[i].offset;
+                let mut slot_off = 0;
+                for n in 0..i + 1 {
+                    slot_off += stack_adj[n];
                 }
-                Type::int => {
-                    self.output
-                        .push_str(&format!("mov eax, dword [rbp - {slot_off}]\n"));
-                    self.output
-                        .push_str(&format!("mov dword [rcx + {off_in_obj}], eax\n"));
-                }
-                Type::Char | Type::Bool => {
-                    self.output
-                        .push_str(&format!("mov al, byte [rbp - {slot_off}]\n"));
-                    self.output
-                        .push_str(&format!("mov byte [rcx + {off_in_obj}], al\n"));
-                }
-                Type::Pointer(_) | Type::Long => {
-                    self.output
-                        .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
-                    self.output
-                        .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
-                }
-                _ => {
-                    self.output
-                        .push_str("; TODO: unsupported field type in ctor\n");
+                match ty {
+                    Type::Array(_, _) => {
+                        self.output
+                            .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
+                        self.output
+                            .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
+                    }
+                    Type::int => {
+                        self.output
+                            .push_str(&format!("mov eax, dword [rbp - {slot_off}]\n"));
+                        self.output
+                            .push_str(&format!("mov dword [rcx + {off_in_obj}], eax\n"));
+                    }
+                    Type::Char | Type::Bool => {
+                        self.output
+                            .push_str(&format!("mov al, byte [rbp - {slot_off}]\n"));
+                        self.output
+                            .push_str(&format!("mov byte [rcx + {off_in_obj}], al\n"));
+                    }
+                    Type::Pointer(_) | Type::Long => {
+                        self.output
+                            .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
+                        self.output
+                            .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
+                    }
+                    _ => {
+                        self.output
+                            .push_str("; TODO: unsupported field type in ctor\n");
+                    }
                 }
             }
+
+            self.output.push_str("mov rax, rcx\n");
+
+            if n_fields > 0 {
+                self.output.push_str(&format!("add rsp, {sum}\n"));
+            }
+
+            self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
+
+            // for func in funcs.clone() {
+            //     if let Stmt::FunDecl {
+            //         name: mname,
+            //         params,
+            //         body,
+            //         ..
+            //     } = func
+            //     {
+            //         let sym = format!("{name}.{mname}");
+            //         // self.generate_function(&sym, params.clone(), &body);
+            //         self.functions.push((sym, params.clone(), body.clone()));
+            //     }
+            // }
+
+            self.structures.insert(
+                name.to_string(),
+                (
+                    struct_layout,
+                    Stmt::StructDecl {
+                        name: name.to_string(),
+                        instances: instances.to_vec(),
+                        union: union,
+                    },
+                ),
+            );
+        } else {
+            let struct_layout = layout_fields(&instances);
+            self.output
+                .push_str(&format!("; ----- Layout: Union {name} -----\n"));
+            self.output
+                .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
+            for fld in &struct_layout.fields {
+                self.output
+                    .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
+            }
+            self.output.push('\n');
+
+            let ctor_sym = format!("{name}.new");
+            self.output
+                .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
+            self.output.push_str("push rbp\nmov rbp, rsp\n");
+
+            let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+            let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+
+            let sizes = instances
+                .iter()
+                .map(|instance| instance.1.size())
+                .collect::<Vec<usize>>();
+            let max = sizes.iter().max();
+
+            let alignment = 16;
+            let size = max.unwrap();
+
+            self.output.push_str(&format!(
+                "malloc {}\n",
+                (size + alignment - 1) / alignment * alignment
+            ));
         }
-
-        self.output.push_str("mov rax, rcx\n");
-
-        if n_fields > 0 {
-            self.output.push_str(&format!("add rsp, {sum}\n"));
-        }
-
-        self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
-
-        // for func in funcs.clone() {
-        //     if let Stmt::FunDecl {
-        //         name: mname,
-        //         params,
-        //         body,
-        //         ..
-        //     } = func
-        //     {
-        //         let sym = format!("{name}.{mname}");
-        //         // self.generate_function(&sym, params.clone(), &body);
-        //         self.functions.push((sym, params.clone(), body.clone()));
-        //     }
-        // }
-
-        self.structes.insert(
-            name.to_string(),
-            (
-                struct_layout,
-                Stmt::StructDecl {
-                    name: name.to_string(),
-                    instances: instances.to_vec(),
-                },
-            ),
-        );
     }
 
     fn reg32(r: &str) -> &'static str {
@@ -1326,9 +1367,9 @@ impl CodeGen {
 
                 let struct_offset = struct_info.1;
 
-                // Get struct layout from structes registry
+                // Get struct layout from structures registry
                 let struct_layout = &self
-                    .structes
+                    .structures
                     .get(&struct_type)
                     .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                     .0;
@@ -1345,7 +1386,7 @@ impl CodeGen {
 
                 // Get field type from struct declaration
                 let field_type = {
-                    let struct_decl_stmt = &self.structes.get(&struct_type).unwrap().1;
+                    let struct_decl_stmt = &self.structures.get(&struct_type).unwrap().1;
                     if let Stmt::StructDecl { instances, .. } = struct_decl_stmt {
                         instances
                             .iter()
@@ -1559,7 +1600,7 @@ impl CodeGen {
                 //     });
 
                 // let struct_layout = &self
-                //     .structes
+                //     .structures
                 //     .get(struct_type.trim())
                 //     .unwrap_or_else(|| {
                 //         panic!("Error parsing struct type for variable: {struct_name}")
@@ -1597,7 +1638,7 @@ impl CodeGen {
                 //     });
 
                 // let struct_layout = &self
-                //     .structes
+                //     .structures
                 //     .get(struct_type.trim())
                 //     .unwrap_or_else(|| {
                 //         panic!("Error parsing struct type for variable: {struct_name}")
@@ -1666,7 +1707,7 @@ impl CodeGen {
                     .expect("Could not load struct pointer");
 
                 let struct_layout = &self
-                    .structes
+                    .structures
                     .get(struct_type.trim())
                     .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                     .0;
@@ -1677,7 +1718,7 @@ impl CodeGen {
                     if &field.name == instance_name {
                         field_offset = Some(field.offset as i32);
                         // Get the field type from the struct definition
-                        if let Some((_, struct_stmt)) = self.structes.get(struct_type.trim()) {
+                        if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim()) {
                             if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                 for (fname, ftype) in instances {
                                     if fname == instance_name {
@@ -1722,7 +1763,7 @@ impl CodeGen {
                 }
 
                 let _field_type = {
-                    let struct_decl_stmt = &self.structes.get(&struct_type).unwrap().1;
+                    let struct_decl_stmt = &self.structures.get(&struct_type).unwrap().1;
                     if let Stmt::StructDecl { instances, .. } = struct_decl_stmt {
                         instances
                             .iter()
@@ -1824,7 +1865,7 @@ impl CodeGen {
             }
 
             Expr::StructInit { name, params } => {
-                let struct_info = self.structes.get(name);
+                let struct_info = self.structures.get(name);
 
                 if struct_info.is_none() {
                     panic!("Struct {} not found", name);
@@ -1968,7 +2009,7 @@ impl CodeGen {
                     //         .unwrap_or_else(|| panic!("Struct type not found for '{}'", struct_name));
 
                     //     let struct_layout = &self
-                    //         .structes
+                    //         .structures
                     //         .get(struct_type.trim())
                     //         .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                     //         .0;
@@ -1979,7 +2020,7 @@ impl CodeGen {
                     //         if &field.name == &instance_name {
                     //             field_offset = Some(field.offset as i32);
                     //             // Get the field type from the struct definition
-                    //             if let Some((_, struct_stmt)) = self.structes.get(struct_type.trim()) {
+                    //             if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim()) {
                     //                 if let Stmt::StructDecl { instances, .. } = struct_stmt {
                     //                     for (fname, ftype) in instances {
                     //                         if fname == &instance_name {
@@ -2050,7 +2091,7 @@ impl CodeGen {
 
                         // Get struct layout and field information
                         let struct_type = self.locals.get(&struct_name).unwrap().0.clone().unwrap();
-                        let struct_layout = &self.structes.get(&struct_type).unwrap().0;
+                        let struct_layout = &self.structures.get(&struct_type).unwrap().0;
 
                         let field_offset = struct_layout
                             .fields
@@ -2141,7 +2182,7 @@ impl CodeGen {
                 }
                 Expr::StructInit { name, params } => {
                     // Get the struct layout to map named parameters to field positions
-                    let struct_info = self.structes.get(name);
+                    let struct_info = self.structures.get(name);
 
                     if struct_info.is_none() {
                         panic!("Struct {} not found", name);
@@ -2227,7 +2268,7 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Struct type not found for '{}'", struct_name));
 
                     let struct_layout = &self
-                        .structes
+                        .structures
                         .get(&struct_type)
                         .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                         .0;
@@ -2344,7 +2385,7 @@ impl CodeGen {
                         .expect("Could not load struct pointer");
 
                     let struct_layout = &self
-                        .structes
+                        .structures
                         .get(struct_type.trim())
                         .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                         .0;
@@ -2355,7 +2396,8 @@ impl CodeGen {
                         if &field.name == instance_name {
                             field_offset = Some(field.offset as i32);
                             // Get the field type from the struct definition
-                            if let Some((_, struct_stmt)) = self.structes.get(struct_type.trim()) {
+                            if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim())
+                            {
                                 if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                     for (fname, ftype) in instances {
                                         if fname == instance_name {
