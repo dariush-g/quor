@@ -148,7 +148,6 @@ impl CodeGen {
             regs: VecDeque::from(vec![
                 "rcx".to_string(),
                 "rdx".to_string(),
-                "rax".to_string(),
                 "rbx".to_string(),
                 "r8".to_string(),
                 "r9".to_string(),
@@ -1451,7 +1450,9 @@ impl CodeGen {
 
                     self.output.push_str(&format!("mov rax, {size}\n"));
 
-                    return Some("rax".to_string());
+                    let reg = self.regs.pop_front().unwrap();
+                    self.output.push_str(&format!("mov {reg}, rax\n"));
+                    return Some(reg);
                 }
 
                 let mut temps: Vec<String> = Vec::new();
@@ -1483,13 +1484,9 @@ impl CodeGen {
 
                 self.call_with_alignment(&target);
 
-                for (i, reg) in self.regs.clone().iter().enumerate() {
-                    if reg == "rax" {
-                        self.regs.remove(i);
-                    }
-                }
-
-                Some("rax".to_string())
+                let reg = self.regs.pop_front().unwrap();
+                self.output.push_str(&format!("mov {reg}, rax\n"));
+                return Some(reg);
             }
             Expr::FloatLiteral(f) => {
                 self.output.push_str(&format!(
@@ -1743,6 +1740,7 @@ impl CodeGen {
                 Some(val_reg)
             }
             Expr::Variable(name, _) => {
+                // println!("{:?}", self.regs);
                 let av_reg = self.regs.pop_front().expect("No registers");
 
                 self.output.push_str(&format!("xor {av_reg}, {av_reg}\n"));
@@ -2606,7 +2604,10 @@ impl CodeGen {
                         self.output.push_str(&format!("div {rhs}\n"));
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::Equal => {
                         self.output.push_str(&format!("cmp {lhs}, {rhs}\n"));
@@ -2614,7 +2615,10 @@ impl CodeGen {
                         self.output.push_str("movzx rax, al\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::NotEqual => {
                         self.output.push_str(&format!("cmp {lhs}, {rhs}\n"));
@@ -2622,7 +2626,10 @@ impl CodeGen {
                         self.output.push_str("movzx rax, al\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::Less => {
                         self.output.push_str(&format!("cmp {lhs}, {rhs}\n"));
@@ -2630,7 +2637,10 @@ impl CodeGen {
                         self.output.push_str("movzx rax, al\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::LessEqual => {
                         self.output.push_str(&format!("cmp {lhs}, {rhs}\n"));
@@ -2638,7 +2648,10 @@ impl CodeGen {
                         self.output.push_str("movzx rax, al\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::Greater => {
                         self.output.push_str(&format!("cmp {lhs}, {rhs}\n"));
@@ -2646,7 +2659,10 @@ impl CodeGen {
                         self.output.push_str("movzx rax, al\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::GreaterEqual => {
                         self.output.push_str(&format!("cmp {lhs}, {rhs}\n"));
@@ -2654,7 +2670,10 @@ impl CodeGen {
                         self.output.push_str("movzx rax, al\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::And => {
                         let end_label = format!(".and_end_{}", self._jmp_count);
@@ -2673,7 +2692,10 @@ impl CodeGen {
                             .push_str(&format!(".and_done_{}:\n", self._jmp_count));
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::Or => {
                         let end_label = format!(".or_end_{}", self._jmp_count);
@@ -2692,7 +2714,10 @@ impl CodeGen {
                             .push_str(&format!(".or_done_{}:\n", self._jmp_count));
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                     BinaryOp::Mod => {
                         self.output.push_str(&format!("mov rax, {lhs}\n"));
@@ -2701,7 +2726,10 @@ impl CodeGen {
                         self.output.push_str("mov rax, rdx\n");
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
-                        Some("rax".to_string())
+
+                        let reg = self.regs.pop_front().unwrap();
+                        self.output.push_str(&format!("mov {reg}, rax\n"));
+                        Some(reg)
                     }
                 }
             }

@@ -219,10 +219,10 @@ fn main() {
         }
     };
 
-    println!("{program:?}");
+    // println!("{program:?}");
 
     // Type check
-    let typed = match TypeChecker::analyze_program(program) {
+    let typed = match TypeChecker::analyze_program(program, &src_path) {
         Ok(tp) => tp,
         Err(e) => {
             eprintln!("Type error: {e:?}");

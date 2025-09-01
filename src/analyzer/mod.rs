@@ -38,26 +38,51 @@ impl Default for TypeChecker {
 
 use std::path::{Path, PathBuf};
 
-fn canonicalize_path(path: &str) -> PathBuf {
-    fs::canonicalize(Path::new(path))
-        .unwrap_or_else(|_| panic!("Unable to canonicalize path {path}"))
+pub fn canonicalize_path(path: &str, base_dir: &Path) -> PathBuf {
+    let path_buf = PathBuf::from(path);
+
+    if path_buf.is_absolute() {
+        // If the path is already absolute, canonicalize it directly
+        path_buf.canonicalize().unwrap_or_else(|e| {
+            eprintln!("Failed to canonicalize absolute path {path:?}: {e}");
+            std::process::exit(1);
+        })
+    } else {
+        // If the path is relative, resolve it against the base directory
+        let full_path = base_dir.join(path_buf);
+        full_path.canonicalize().unwrap_or_else(|e| {
+            eprintln!(
+                "Failed to canonicalize relative path {path:?} against base {base_dir:?}: {e}"
+            );
+            std::process::exit(1);
+        })
+    }
 }
 
-pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
-    // program.push(Stmt::AtDecl(
-    //     "import".to_owned(),
-    //     Some("string.qu!".to_owned()),
-    // ));
-
+pub fn process_program(program: &mut Vec<Stmt>, path_: &Path) -> Vec<Stmt> {
     let mut imported_files: HashSet<PathBuf> = HashSet::new();
+    rec_import_walk(program, &mut imported_files, path_)
+}
 
-    for stmt in program.clone() {
+fn rec_import_walk(
+    stmts: &Vec<Stmt>,
+    imported_files: &mut HashSet<PathBuf>,
+    current_file: &Path,
+) -> Vec<Stmt> {
+    let mut ret = Vec::new();
+    println!("Analyzing {current_file:?}");
+
+    let current_dir = current_file.parent().unwrap_or_else(|| {
+        eprintln!("Cannot determine parent directory of {current_file:?}");
+        std::process::exit(1);
+    });
+
+    for stmt in stmts {
         if let Stmt::AtDecl(decl, param, _) = stmt {
             if decl.as_str() == "import" {
                 let mut param = param
                     .clone()
                     .unwrap_or_else(|| panic!("Unable to locate import"));
-
                 let path = if param.ends_with('!') {
                     // stdlib import
                     param.pop(); // remove '!'
@@ -68,10 +93,9 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                     param.clone()
                 };
 
-                let abs_path = canonicalize_path(&path);
-
+                let abs_path = canonicalize_path(&path, current_dir);
                 if imported_files.contains(&abs_path) {
-                    continue;
+                    continue; // Skip this import, don't add it to ret
                 }
                 imported_files.insert(abs_path.clone());
 
@@ -82,7 +106,6 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                         std::process::exit(1);
                     }
                 };
-
                 let mut lexer = Lexer::new(source);
                 let tokens = match lexer.tokenize() {
                     Ok(t) => t,
@@ -93,7 +116,8 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                 };
 
                 let mut parser = Parser::new(tokens);
-                let mut program_new = match parser.parse() {
+
+                let program_new = match parser.parse() {
                     Ok(p) => p,
                     Err(e) => {
                         eprintln!("Parser error: {e:?}");
@@ -101,17 +125,22 @@ pub fn process_program(program: &mut Vec<Stmt>) -> Vec<Stmt> {
                     }
                 };
 
-                program_new.append(&mut program.clone());
-                *program = program_new;
+                let mut imported_stmts = rec_import_walk(&program_new, imported_files, &abs_path);
+
+                ret.append(&mut imported_stmts);
+
+            } else {
+                ret.push(stmt.clone()); 
             }
+        } else {
+            ret.push(stmt.clone());
         }
     }
-
-    program.to_vec()
+    ret
 }
 
 impl TypeChecker {
-    pub fn analyze_program(mut program: Vec<Stmt>) -> Result<Vec<Stmt>, String> {
+    pub fn analyze_program(mut program: Vec<Stmt>, path: &Path) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
 
         for stmt in &program {
@@ -255,7 +284,7 @@ impl TypeChecker {
         //     }
         // }
 
-        let mut program = process_program(&mut program);
+        let mut program = process_program(&mut program, path);
 
         type_checker
             .declare_fn("print_int", vec![Type::int], Type::Void)
