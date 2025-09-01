@@ -1,9 +1,28 @@
+@import::<string.qu>;
 
-@define VAR "hello";
+def main(argc: int, argv: char**) :: int {
+    
+    if (argc != 2) {
+        exit(1);
+    }
+    
+    argv = argv + 1;
 
-def main() :: int {
+    let filename: char* = *argv;
 
-    print_str(VAR);
+
+    
+    let name_len: int = strlen(filename);
+
+    if (char_at(filename, name_len - 1) != 'u' && 
+        char_at(filename, name_len - 2) != 'q' && 
+        char_at(filename, name_len - 3) != '.') {
+        exit(1);
+    }
+
+    // let token: TOKEN* = TOKEN_NEW(0, 0, 0, 0, 0);
+    
+    // print_int(token.position);
 
     return 0;
 }
