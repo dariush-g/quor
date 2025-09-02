@@ -520,76 +520,81 @@ impl CodeGen {
 
                 Expr::StructInit { name: cls, params } => {
                     // Get the struct layout to map named parameters to field positions
-                    let struct_info = self.structures.get(cls);
-                    if struct_info.is_none() {
-                        panic!("Struct {} not found", cls);
-                    }
-                    let (struct_layout, _, _) = struct_info.unwrap();
+                    // let struct_info = self.structures.get(cls);
+                    // if struct_info.is_none() {
+                    //     panic!("Struct {} not found", cls);
+                    // }
+                    // let (struct_layout, _, _) = struct_info.unwrap();
 
-                    // Clone the field names and positions to avoid borrowing issues
-                    let field_positions: HashMap<String, usize> = struct_layout
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, field)| (field.name.clone(), i))
-                        .collect();
-                    let field_count = struct_layout.fields.len();
+                    // // Clone the field names and positions to avoid borrowing issues
+                    // let field_positions: HashMap<String, usize> = struct_layout
+                    //     .fields
+                    //     .iter()
+                    //     .enumerate()
+                    //     .map(|(i, field)| (field.name.clone(), i))
+                    //     .collect();
+                    // let field_count = struct_layout.fields.len();
 
-                    // First, evaluate all expressions to get their register values
-                    let mut param_values = Vec::new();
-                    for (param_name, param_expr) in params {
-                        let r = self.handle_expr(param_expr, None).expect("ctor arg");
-                        param_values.push((param_name, r));
-                    }
+                    // // First, evaluate all expressions to get their register values
+                    // let mut param_values = Vec::new();
+                    // for (param_name, param_expr) in params {
+                    //     let r = self.handle_expr(param_expr, None).expect("ctor arg");
+                    //     param_values.push((param_name, r));
+                    // }
 
-                    // Map named parameters to their correct positions
-                    let mut ordered_args = vec![String::new(); field_count];
-                    for (param_name, reg) in param_values {
-                        if let Some(&pos) = field_positions.get(param_name) {
-                            ordered_args[pos] = reg;
-                        } else {
-                            panic!("Field {} not found in struct {}", param_name, cls);
-                        }
-                    }
+                    // // Map named parameters to their correct positions
+                    // let mut ordered_args = vec![String::new(); field_count];
+                    // for (param_name, reg) in param_values {
+                    //     if let Some(&pos) = field_positions.get(param_name) {
+                    //         ordered_args[pos] = reg;
+                    //     } else {
+                    //         panic!("Field {} not found in struct {}", param_name, cls);
+                    //     }
+                    // }
 
-                    // Filter out empty strings and get the actual argument values
-                    let arg_vals: Vec<String> =
-                        ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
+                    // // Filter out empty strings and get the actual argument values
+                    // let arg_vals: Vec<String> =
+                    //     ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
 
-                    let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-                    if arg_vals.len() > abi_regs.len() {
-                        panic!("More than 5 constructor args not supported yet");
-                    }
+                    // let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+                    // if arg_vals.len() > abi_regs.len() {
+                    //     panic!("More than 5 constructor args not supported yet");
+                    // }
 
-                    for (i, r) in arg_vals.iter().enumerate() {
-                        if r != abi_regs[i] {
-                            self.output
-                                .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
-                        }
-                    }
-                    for r in arg_vals {
-                        self.regs.push_back(r);
-                    }
+                    // for (i, r) in arg_vals.iter().enumerate() {
+                    //     if r != abi_regs[i] {
+                    //         self.output
+                    //             .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
+                    //     }
+                    // }
+                    // for r in arg_vals {
+                    //     self.regs.push_back(r);
+                    // }
 
-                    // let ctor = format!("{cls}.new");
-                    // self.call_with_alignment(&ctor);
+                    // // let ctor = format!("{cls}.new");
+                    // // self.call_with_alignment(&ctor);
 
-                    self.output.push_str(&self.structures.get(name).unwrap().2);
+                    // self.output.push_str(&self.structures.get(cls).unwrap_or_else(|| panic!("Struct {cls} is not in struct list")).2);
 
-                    let struc = Type::Struct {
-                        name: cls.to_string(),
-                        instances: params
-                            .iter()
-                            .map(|(name, expr)| (name.clone(), expr.get_type()))
-                            .collect(),
-                    };
+                    // let struc = Type::Struct {
+                    //     name: cls.to_string(),
+                    //     instances: params
+                    //         .iter()
+                    //         .map(|(name, expr)| (name.clone(), expr.get_type()))
+                    //         .collect(),
+                    // };
 
-                    let _ = self.alloc_local(name, &struc);
+
+                    let reg = self.handle_expr(&Expr::StructInit { name: cls.to_string(), params: params.to_vec() }, None).unwrap();
+
+                    let off = self.alloc_local(name, &Type::Struct { name: cls.to_string(), instances: params.iter().map(|(i, j)| {(i.clone(), j.get_type())}).collect() });
 
                     // println!("allocated {struct:?}");
 
-                    // self.output
-                    //     .push_str(&format!("mov qword [rbp - {off}], rax\n"));
+                    self.output
+                        .push_str(&format!("mov qword [rbp - {off}], {reg}\n"));
+
+                    self.regs.push_back(reg);
                 }
                 Expr::AddressOf(inside) => {
                     if let Type::Struct { .. } = base_type(var_type) {
@@ -1189,7 +1194,7 @@ impl CodeGen {
     //     }
     // }
 
-    fn generate_stack_struct_inline(name: &str, instances: Vec<(String, Type)>) -> String {
+    fn generate_stack_struct_inline(&mut self, name: &str, instances: Vec<(String, Type)>) -> String {
         let struct_layout = layout_fields(&instances);
         let mut output = String::new();
 
@@ -1221,6 +1226,8 @@ impl CodeGen {
         let aligned_size = (stack_offset + 15) & !15;
         output.push_str(&format!("sub rsp, {}\n", aligned_size));
 
+        self.stack_size += aligned_size as i32;
+
         // Registers for arguments
         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
         let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
@@ -1232,21 +1239,21 @@ impl CodeGen {
             match ty {
                 Type::int => {
                     output.push_str(&format!(
-                        "mov dword [rsp + {}], {}\n",
+                        "mov dword [rbp + {}], {}\n",
                         offset,
                         Self::reg32(save_regs[i])
                     ));
                 }
                 Type::Char | Type::Bool => {
                     output.push_str(&format!(
-                        "mov byte [rsp + {}], {}\n",
+                        "mov byte [rbp + {}], {}\n",
                         offset,
                         Self::reg8(save_regs[i])
                     ));
                 }
                 Type::float => {
                     output.push_str(&format!(
-                        "movss [rsp + {}], {}\n",
+                        "movss [rbp + {}], {}\n",
                         offset, save_fp[fp_index]
                     ));
                     fp_index += 1;
@@ -1268,6 +1275,7 @@ impl CodeGen {
 
     fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
         let struct_layout = layout_fields(&instances);
+        let inline = self.generate_stack_struct_inline(name, instances.clone());
 
         self.structures.insert(
             name.to_string(),
@@ -1278,7 +1286,7 @@ impl CodeGen {
                     instances: instances.to_vec(),
                     union,
                 },
-                Self::generate_stack_struct_inline(name, instances),
+                inline
             ),
         );
     }
@@ -2031,6 +2039,8 @@ impl CodeGen {
                     self.regs.push_back(r);
                 }
 
+                let off = self.stack_size;
+
                 self.output.push_str(&self.structures.get(name).unwrap().2);
 
                 // let ctor = format!("{name}.new");
@@ -2054,7 +2064,12 @@ impl CodeGen {
 
                 // self.output.push_str(&format!("mov {reg}, rax\n"));
 
-                None
+                let reg = self.regs.pop_front().unwrap();
+
+                self.output.push_str(&format!("mov {reg}, rbp\n"));
+                self.output.push_str(&format!("add {reg}, {off}\n"));
+                    
+                Some(reg)            
             }
 
             Expr::Assign { name, value } => {
