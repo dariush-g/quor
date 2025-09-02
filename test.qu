@@ -1,10 +1,13 @@
 
+
+
 struct X {
     x: int;
+    y: int;
 }
 
 def main() :: int {
-    let x: X* = X::(x: 5);
+    let x: X = X::(x: 1, y: 5);
     print_int(x.x);
     return 0;
 }

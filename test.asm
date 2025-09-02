@@ -3,22 +3,36 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-mov rcx, 5
+mov rcx, 1
+mov rdx, 5
 mov rdi, rcx
-call X.new
+mov rsi, rdx
+; ----- Inline stack struct: X -----
+%define X_size 8
+%define X.x 0
+%define X.y 4
+
+sub rsp, 16
+mov dword [rbp + 0], edi
+mov dword [rbp + 4], esi
+; struct X is now at [rsp..rsp+16]
+
+mov rbx, rbp
+add rbx, 0
 sub rsp, 8
-xor rbx, rbx
-mov rbx, qword [rbp - 8]
-mov edx, dword [rbx + 0]
-mov rdi, rdx
+mov qword [rbp - 8], rbx
+xor r9, r9
+mov r9, qword [rbp - 8]
+mov r8d, dword [r9 + 0]
+mov rdi, r8
 call print_int
-mov r8, rax
+mov r10, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov r9, 0
+mov r11, 0
 xor rax, rax
-mov rax, r9
+mov rax, r11
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp

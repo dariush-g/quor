@@ -967,13 +967,13 @@ impl TypeChecker {
                     }
                 }
 
-                Ok(Type::Pointer(Box::new(Type::Struct {
+                Ok(Type::Struct {
                     name: name.clone(),
                     instances: decl_order
                         .iter()
                         .map(|(name, ty)| (name.to_string(), ty.clone()))
                         .collect(),
-                })))
+                })
             }
             // Expr::InstanceVar(class_name, instance_name) => {
             //     let ty = self
