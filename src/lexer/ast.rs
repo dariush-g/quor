@@ -50,6 +50,7 @@ impl Type {
             Type::Pointer(_) => 8,
             Type::Array(elem, len) => elem.size() * len.unwrap_or(0),
             Type::Struct { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
+            Type::Long => 8,
             _ => 0,
         }
     }
@@ -64,6 +65,11 @@ pub enum Expr {
     StringLiteral(String),
     // name of class
     CharLiteral(char),
+
+    // UnionInit {
+    //     name: String,
+    //     param: (String, Box<Expr>),
+    // },
 
     StructInit {
         name: String,

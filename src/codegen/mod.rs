@@ -22,7 +22,7 @@ pub struct CodeGen {
     locals: HashMap<String, (Option<String>, i32, Type)>,
     stack_size: i32,
     externs: HashSet<String>,
-    structures: HashMap<String, (StructLayout, Stmt)>,
+    structures: HashMap<String, (StructLayout, Stmt, String)>,
 }
 
 #[inline]
@@ -524,7 +524,7 @@ impl CodeGen {
                     if struct_info.is_none() {
                         panic!("Struct {} not found", cls);
                     }
-                    let (struct_layout, _) = struct_info.unwrap();
+                    let (struct_layout, _, _) = struct_info.unwrap();
 
                     // Clone the field names and positions to avoid borrowing issues
                     let field_positions: HashMap<String, usize> = struct_layout
@@ -571,23 +571,25 @@ impl CodeGen {
                         self.regs.push_back(r);
                     }
 
-                    let ctor = format!("{cls}.new");
-                    self.call_with_alignment(&ctor);
+                    // let ctor = format!("{cls}.new");
+                    // self.call_with_alignment(&ctor);
 
-                    let struc = &Type::Pointer(Box::new(Type::Struct {
+                    self.output.push_str(&self.structures.get(name).unwrap().2);
+
+                    let struc = Type::Struct {
                         name: cls.to_string(),
                         instances: params
                             .iter()
                             .map(|(name, expr)| (name.clone(), expr.get_type()))
                             .collect(),
-                    }));
+                    };
 
-                    let off = self.alloc_local(name, struc);
+                    let _ = self.alloc_local(name, &struc);
 
                     // println!("allocated {struct:?}");
 
-                    self.output
-                        .push_str(&format!("mov qword [rbp - {off}], rax\n"));
+                    // self.output
+                    //     .push_str(&format!("mov qword [rbp - {off}], rax\n"));
                 }
                 Expr::AddressOf(inside) => {
                     if let Type::Struct { .. } = base_type(var_type) {
@@ -955,220 +957,330 @@ impl CodeGen {
         self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
     }
 
-    fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
-        if !union {
-            let struct_layout = layout_fields(&instances);
-            self.output
-                .push_str(&format!("; ----- Layout: {name} -----\n"));
-            self.output
-                .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
-            for fld in &struct_layout.fields {
-                self.output
-                    .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
-            }
-            self.output.push('\n');
+    // fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
+    //     if !union {
+    //         let struct_layout = layout_fields(&instances);
+    //         self.output
+    //             .push_str(&format!("; ----- Layout: {name} -----\n"));
+    //         self.output
+    //             .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
+    //         for fld in &struct_layout.fields {
+    //             self.output
+    //                 .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
+    //         }
+    //         self.output.push('\n');
 
-            let ctor_sym = format!("{name}.new");
-            self.output
-                .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
-            self.output.push_str("push rbp\nmov rbp, rsp\n");
+    //         let ctor_sym = format!("{name}.new");
+    //         self.output
+    //             .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
+    //         self.output.push_str("push rbp\nmov rbp, rsp\n");
 
-            // save incoming args we will need after call to _malloc
-            let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-            let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+    //         // save incoming args we will need after call to _malloc
+    //         let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+    //         let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
 
-            let mut fpc = 0;
+    //         let mut fpc = 0;
 
-            let n_fields = instances.len().min(save_regs.len());
+    //         let n_fields = instances.len().min(save_regs.len());
 
-            // Ensure 16-byte stack alignment for malloc call
-            // let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
-            // if stack_adjust > 0 {
-            //     self.output
-            //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
-            // }
+    //         // Ensure 16-byte stack alignment for malloc call
+    //         // let stack_adjust = if (n_fields & 1) == 1 { 8 } else { 0 };
+    //         // if stack_adjust > 0 {
+    //         //     self.output
+    //         //         .push_str(&format!("sub rsp, {}\n", stack_adjust));
+    //         // }
 
-            let mut stack_adj = vec![];
-            for instance in instances.clone() {
-                match instance.1 {
-                    Type::int => stack_adj.push(4),
-                    Type::float => stack_adj.push(4),
-                    Type::Char => stack_adj.push(1),
-                    Type::Bool => stack_adj.push(1),
-                    _ => stack_adj.push(8),
-                }
-            }
+    //         let mut stack_adj = vec![];
+    //         for instance in instances.clone() {
+    //             match instance.1 {
+    //                 Type::int => stack_adj.push(4),
+    //                 Type::float => stack_adj.push(4),
+    //                 Type::Char => stack_adj.push(1),
+    //                 Type::Bool => stack_adj.push(1),
+    //                 _ => stack_adj.push(8),
+    //             }
+    //         }
 
-            let sum = stack_adj.iter().sum::<i32>();
+    //         let sum = stack_adj.iter().sum::<i32>();
 
-            let sum = sum + (sum % 8);
+    //         let sum = sum + (sum % 8);
 
-            self.output.push_str(&format!("sub rsp, {sum}\n"));
+    //         self.output.push_str(&format!("sub rsp, {sum}\n"));
 
-            // stack_adj += 16 - (stack_adj % 16);
+    //         // stack_adj += 16 - (stack_adj % 16);
 
-            // #[allow(clippy::needless_range_loop)]
-            // for i in 0..n_fields {
-            //     self.output.push_str(&format!(
-            //         "mov qword [rbp - {}], {}\n",
-            //         8 * (1 + i),
-            //         save_regs[i]
-            //     ));
-            // }
+    //         // #[allow(clippy::needless_range_loop)]
+    //         // for i in 0..n_fields {
+    //         //     self.output.push_str(&format!(
+    //         //         "mov qword [rbp - {}], {}\n",
+    //         //         8 * (1 + i),
+    //         //         save_regs[i]
+    //         //     ));
+    //         // }
 
-            for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
-                let mut slot_off = 0;
-                for n in 0..i + 1 {
-                    slot_off += stack_adj[n];
-                }
-                match ty {
-                    Type::int => {
-                        self.output.push_str(&format!(
-                            "mov dword [rbp - {}], {}\n",
-                            slot_off,
-                            Self::reg32(save_regs[i])
-                        ));
-                    }
-                    Type::Char | Type::Bool => {
-                        self.output.push_str(&format!(
-                            "mov byte [rbp - {}], {}\n",
-                            slot_off,
-                            Self::reg8(save_regs[i])
-                        ));
-                    }
-                    Type::float => {
-                        self.output
-                            .push_str(&format!("movss [rbp - {}], {}\n", slot_off, save_fp[fpc]));
-                        fpc += 1;
-                    }
-                    _ => {
-                        self.output.push_str(&format!(
-                            "mov qword [rbp - {}], {}\n",
-                            slot_off, save_regs[i]
-                        ));
-                    }
-                }
-            }
+    //         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
+    //             let mut slot_off = 0;
+    //             for n in 0..i + 1 {
+    //                 slot_off += stack_adj[n];
+    //             }
+    //             match ty {
+    //                 Type::int => {
+    //                     self.output.push_str(&format!(
+    //                         "mov dword [rbp - {}], {}\n",
+    //                         slot_off,
+    //                         Self::reg32(save_regs[i])
+    //                     ));
+    //                 }
+    //                 Type::Char | Type::Bool => {
+    //                     self.output.push_str(&format!(
+    //                         "mov byte [rbp - {}], {}\n",
+    //                         slot_off,
+    //                         Self::reg8(save_regs[i])
+    //                     ));
+    //                 }
+    //                 Type::float => {
+    //                     self.output
+    //                         .push_str(&format!("movss [rbp - {}], {}\n", slot_off, save_fp[fpc]));
+    //                     fpc += 1;
+    //                 }
+    //                 _ => {
+    //                     self.output.push_str(&format!(
+    //                         "mov qword [rbp - {}], {}\n",
+    //                         slot_off, save_regs[i]
+    //                     ));
+    //                 }
+    //             }
+    //         }
 
-            self.output.push_str(&format!("mov rdi, {name}_size\n"));
+    //         self.output.push_str(&format!("mov rdi, {name}_size\n"));
 
-            #[cfg(target_arch = "aarch64")]
-            self.output.push_str("call _malloc\n");
+    //         #[cfg(target_arch = "aarch64")]
+    //         self.output.push_str("call _malloc\n");
 
-            #[cfg(target_arch = "x86_64")]
-            self.output.push_str("call malloc\n");
+    //         #[cfg(target_arch = "x86_64")]
+    //         self.output.push_str("call malloc\n");
 
-            // if stack_adj > 0 {
-            //     self.output.push_str(&format!("add rsp, {}\n", stack_adj));
-            // }
+    //         // if stack_adj > 0 {
+    //         //     self.output.push_str(&format!("add rsp, {}\n", stack_adj));
+    //         // }
 
-            self.output.push_str("mov rcx, rax\n");
+    //         self.output.push_str("mov rcx, rax\n");
 
-            for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
-                let off_in_obj = struct_layout.fields[i].offset;
-                let mut slot_off = 0;
-                for n in 0..i + 1 {
-                    slot_off += stack_adj[n];
-                }
-                match ty {
-                    Type::Array(_, _) => {
-                        self.output
-                            .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
-                        self.output
-                            .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
-                    }
-                    Type::int => {
-                        self.output
-                            .push_str(&format!("mov eax, dword [rbp - {slot_off}]\n"));
-                        self.output
-                            .push_str(&format!("mov dword [rcx + {off_in_obj}], eax\n"));
-                    }
-                    Type::Char | Type::Bool => {
-                        self.output
-                            .push_str(&format!("mov al, byte [rbp - {slot_off}]\n"));
-                        self.output
-                            .push_str(&format!("mov byte [rcx + {off_in_obj}], al\n"));
-                    }
-                    Type::Pointer(_) | Type::Long => {
-                        self.output
-                            .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
-                        self.output
-                            .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
-                    }
-                    _ => {
-                        self.output
-                            .push_str("; TODO: unsupported field type in ctor\n");
-                    }
-                }
-            }
+    //         for (i, (_, ty)) in instances.iter().enumerate().take(n_fields) {
+    //             let off_in_obj = struct_layout.fields[i].offset;
+    //             let mut slot_off = 0;
+    //             for n in 0..i + 1 {
+    //                 slot_off += stack_adj[n];
+    //             }
+    //             match ty {
+    //                 Type::Array(_, _) => {
+    //                     self.output
+    //                         .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
+    //                     self.output
+    //                         .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
+    //                 }
+    //                 Type::int => {
+    //                     self.output
+    //                         .push_str(&format!("mov eax, dword [rbp - {slot_off}]\n"));
+    //                     self.output
+    //                         .push_str(&format!("mov dword [rcx + {off_in_obj}], eax\n"));
+    //                 }
+    //                 Type::Char | Type::Bool => {
+    //                     self.output
+    //                         .push_str(&format!("mov al, byte [rbp - {slot_off}]\n"));
+    //                     self.output
+    //                         .push_str(&format!("mov byte [rcx + {off_in_obj}], al\n"));
+    //                 }
+    //                 Type::Pointer(_) | Type::Long => {
+    //                     self.output
+    //                         .push_str(&format!("mov rax, qword [rbp - {slot_off}]\n"));
+    //                     self.output
+    //                         .push_str(&format!("mov qword [rcx + {off_in_obj}], rax\n"));
+    //                 }
+    //                 _ => {
+    //                     self.output
+    //                         .push_str("; TODO: unsupported field type in ctor\n");
+    //                 }
+    //             }
+    //         }
 
-            self.output.push_str("mov rax, rcx\n");
+    //         self.output.push_str("mov rax, rcx\n");
 
-            if n_fields > 0 {
-                self.output.push_str(&format!("add rsp, {sum}\n"));
-            }
+    //         if n_fields > 0 {
+    //             self.output.push_str(&format!("add rsp, {sum}\n"));
+    //         }
 
-            self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
+    //         self.output.push_str("mov rsp, rbp\npop rbp\nret\n\n");
 
-            // for func in funcs.clone() {
-            //     if let Stmt::FunDecl {
-            //         name: mname,
-            //         params,
-            //         body,
-            //         ..
-            //     } = func
-            //     {
-            //         let sym = format!("{name}.{mname}");
-            //         // self.generate_function(&sym, params.clone(), &body);
-            //         self.functions.push((sym, params.clone(), body.clone()));
-            //     }
-            // }
+    //         // for func in funcs.clone() {
+    //         //     if let Stmt::FunDecl {
+    //         //         name: mname,
+    //         //         params,
+    //         //         body,
+    //         //         ..
+    //         //     } = func
+    //         //     {
+    //         //         let sym = format!("{name}.{mname}");
+    //         //         // self.generate_function(&sym, params.clone(), &body);
+    //         //         self.functions.push((sym, params.clone(), body.clone()));
+    //         //     }
+    //         // }
 
-            self.structures.insert(
-                name.to_string(),
-                (
-                    struct_layout,
-                    Stmt::StructDecl {
-                        name: name.to_string(),
-                        instances: instances.to_vec(),
-                        union: union,
-                    },
-                ),
-            );
-        } else {
-            let struct_layout = layout_fields(&instances);
-            self.output
-                .push_str(&format!("; ----- Layout: Union {name} -----\n"));
-            self.output
-                .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
-            for fld in &struct_layout.fields {
-                self.output
-                    .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
-            }
-            self.output.push('\n');
+    //         self.structures.insert(
+    //             name.to_string(),
+    //             (
+    //                 struct_layout,
+    //                 Stmt::StructDecl {
+    //                     name: name.to_string(),
+    //                     instances: instances.to_vec(),
+    //                     union: union,
+    //                 },
+    //             ),
+    //         );
+    //     } else {
+    //         for instance in instances.clone() {
+    //             let struct_layout = layout_fields(&instances);
+    //             self.output
+    //                 .push_str(&format!("; ----- Layout: Union {name} -----\n"));
+    //             self.output
+    //                 .push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
+    //             for fld in &struct_layout.fields {
+    //                 self.output
+    //                     .push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
+    //             }
+    //             self.output.push('\n');
 
-            let ctor_sym = format!("{name}.new");
-            self.output
-                .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
-            self.output.push_str("push rbp\nmov rbp, rsp\n");
+    //             let ctor_sym = format!("{name}.new");
+    //             self.output
+    //                 .push_str(&format!("global {ctor_sym}\n{ctor_sym}:\n"));
+    //             self.output.push_str("push rbp\nmov rbp, rsp\n");
 
-            let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-            let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+    //             // let save_reg = "rdi";
+    //             // let save_fp = "xmm0";
 
-            let sizes = instances
-                .iter()
-                .map(|instance| instance.1.size())
-                .collect::<Vec<usize>>();
-            let max = sizes.iter().max();
+    //             let sizes = instances
+    //                 .iter()
+    //                 .map(|instance| instance.1.size())
+    //                 .collect::<Vec<usize>>();
+    //             let max = sizes.iter().max();
 
-            let alignment = 16;
-            let size = max.unwrap();
+    //             let alignment = 16;
+    //             let size = max.unwrap();
 
-            self.output.push_str(&format!(
-                "malloc {}\n",
-                (size + alignment - 1) / alignment * alignment
-            ));
+    //             self.output.push_str(&format!(
+    //                 "malloc {}\n",
+    //                 (size + alignment - 1) / alignment * alignment
+    //             ));
+
+    //             self.output.push_str(&format!("mov rdi, [rax]\n"));
+
+    //             self.structures.insert(
+    //                 name.to_string(),
+    //                 (
+    //                     struct_layout,
+    //                     Stmt::StructDecl {
+    //                         name: name.to_string(),
+    //                         instances: instances.to_vec(),
+    //                         union: union,
+    //                     },
+    //                 ),
+    //             );
+    //         }
+    //     }
+    // }
+
+    fn generate_stack_struct_inline(name: &str, instances: Vec<(String, Type)>) -> String {
+        let struct_layout = layout_fields(&instances);
+        let mut output = String::new();
+
+        // Comment & layout info
+        output.push_str(&format!("; ----- Inline stack struct: {} -----\n", name));
+        output.push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
+        for fld in &struct_layout.fields {
+            output.push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
         }
+        output.push('\n');
+
+        // Compute stack size
+        let mut stack_offset = 0;
+        let mut field_offsets = Vec::new();
+        for instance in &instances {
+            let size = instance.1.size();
+            let align = match size {
+                1 => 1,
+                4 => 4,
+                8 => 8,
+                _ => 8,
+            };
+            if stack_offset % align != 0 {
+                stack_offset += align - (stack_offset % align);
+            }
+            field_offsets.push(stack_offset);
+            stack_offset += size;
+        }
+        let aligned_size = (stack_offset + 15) & !15;
+        output.push_str(&format!("sub rsp, {}\n", aligned_size));
+
+        // Registers for arguments
+        let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+        let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+        let mut fp_index = 0;
+
+        // Initialize fields
+        for (i, (_, ty)) in instances.iter().enumerate() {
+            let offset = field_offsets[i];
+            match ty {
+                Type::int => {
+                    output.push_str(&format!(
+                        "mov dword [rsp + {}], {}\n",
+                        offset,
+                        Self::reg32(save_regs[i])
+                    ));
+                }
+                Type::Char | Type::Bool => {
+                    output.push_str(&format!(
+                        "mov byte [rsp + {}], {}\n",
+                        offset,
+                        Self::reg8(save_regs[i])
+                    ));
+                }
+                Type::float => {
+                    output.push_str(&format!(
+                        "movss [rsp + {}], {}\n",
+                        offset, save_fp[fp_index]
+                    ));
+                    fp_index += 1;
+                }
+                _ => {
+                    output.push_str(&format!("mov qword [rsp + {}], {}\n", offset, save_regs[i]));
+                }
+            }
+        }
+
+        // Optional: leave comment for the pointer to this struct
+        output.push_str(&format!(
+            "; struct {} is now at [rsp..rsp+{}]\n\n",
+            name, aligned_size
+        ));
+
+        output
+    }
+
+    fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
+        let struct_layout = layout_fields(&instances);
+
+        self.structures.insert(
+            name.to_string(),
+            (
+                struct_layout,
+                Stmt::StructDecl {
+                    name: name.to_string(),
+                    instances: instances.to_vec(),
+                    union,
+                },
+                Self::generate_stack_struct_inline(name, instances),
+            ),
+        );
     }
 
     fn reg32(r: &str) -> &'static str {
@@ -1718,7 +1830,7 @@ impl CodeGen {
                     if &field.name == instance_name {
                         field_offset = Some(field.offset as i32);
                         // Get the field type from the struct definition
-                        if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim()) {
+                        if let Some((_, struct_stmt, _)) = self.structures.get(struct_type.trim()) {
                             if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                 for (fname, ftype) in instances {
                                     if fname == instance_name {
@@ -1871,7 +1983,7 @@ impl CodeGen {
                     panic!("Struct {} not found", name);
                 }
 
-                let (struct_layout, _) = struct_info.unwrap();
+                let (struct_layout, _, _) = struct_info.unwrap();
 
                 // Clone the field names and positions to avoid borrowing issues
                 let field_positions: HashMap<String, usize> = struct_layout
@@ -1914,29 +2026,35 @@ impl CodeGen {
                             .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
                     }
                 }
+
                 for r in arg_vals {
                     self.regs.push_back(r);
                 }
 
-                let ctor = format!("{name}.new");
+                self.output.push_str(&self.structures.get(name).unwrap().2);
 
-                self.call_with_alignment(&ctor);
+                // let ctor = format!("{name}.new");
 
-                let _struct = &Type::Pointer(Box::new(Type::Struct {
+                // self.call_with_alignment(&ctor);
+
+                let _struct = 
+                //Type::Pointer(Box::new(
+                    Type::Struct {
                     name: name.to_string(),
                     instances: params
                         .iter()
                         .map(|(name, expr)| (name.clone(), expr.get_type()))
                         .collect(),
-                }));
+                };
+            //));
 
                 // println!("allocated {struct:?}");
 
-                let reg = self.regs.pop_front().expect("No regs");
+                // let reg = self.regs.pop_front().expect("No regs");
 
-                self.output.push_str(&format!("mov {reg}, rax\n"));
+                // self.output.push_str(&format!("mov {reg}, rax\n"));
 
-                Some(reg)
+                None
             }
 
             Expr::Assign { name, value } => {
@@ -2188,7 +2306,7 @@ impl CodeGen {
                         panic!("Struct {} not found", name);
                     }
 
-                    let (struct_layout, _) = struct_info.unwrap();
+                    let (struct_layout, _, _) = struct_info.unwrap();
 
                     // Clone the field names and positions to avoid borrowing issues
                     let field_positions: HashMap<String, usize> = struct_layout
@@ -2396,7 +2514,7 @@ impl CodeGen {
                         if &field.name == instance_name {
                             field_offset = Some(field.offset as i32);
                             // Get the field type from the struct definition
-                            if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim())
+                            if let Some((_, struct_stmt, _)) = self.structures.get(struct_type.trim())
                             {
                                 if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                     for (fname, ftype) in instances {

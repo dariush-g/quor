@@ -14,7 +14,7 @@ use std::{
 pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
     functions: HashMap<String, (Vec<Type>, Type)>,
-    classes: Vec<String>,
+    classes: HashMap<String, bool>,
     globals: HashMap<String, Type>,
     //                  class name, instances
     class_fields: HashMap<String, Vec<(String, Type)>>,
@@ -28,7 +28,7 @@ impl Default for TypeChecker {
             globals: HashMap::new(),
             variables: vec![HashMap::new()],
             functions: HashMap::new(),
-            classes: Vec::new(),
+            classes: HashMap::new(),
             class_fields: HashMap::new(),
             current_return_type: None,
             in_loop: false,
@@ -167,15 +167,13 @@ impl TypeChecker {
                 }
                 if decl.as_str() == "union" {
                     if let Stmt::StructDecl {
-                        name,
-                        instances,
-                        union,
+                        name, instances, ..
                     } = program.get(i + 1).unwrap()
                     {
                         program[i + 1] = Stmt::StructDecl {
                             name: name.to_string(),
                             instances: instances.to_vec(),
-                            union: *union,
+                            union: true,
                         }
                     } else {
                         return Err("expected struct after union declaration".to_string());
@@ -431,10 +429,13 @@ impl TypeChecker {
                     .map_err(|e| format!("Global scope error: {e}"))?;
             }
             if let Stmt::StructDecl {
-                name, instances, ..
+                name,
+                instances,
+                union,
+                ..
             } = stmt
             {
-                type_checker.classes.push(name.clone());
+                type_checker.classes.insert(name.clone(), *union);
                 type_checker
                     .class_fields
                     .insert(name.clone(), instances.clone());
@@ -887,6 +888,32 @@ impl TypeChecker {
                     .get(name)
                     .ok_or_else(|| format!("Undefined class: '{name}'"))?
                     .clone();
+
+                if *self.classes.get(name).unwrap() {
+                    if params.len() != 1 {
+                        return Err(format!("Expected one parameter for union init"));
+                    }
+
+                    let found = class_fields.iter().find_map(|field| {
+                        if field.0 == params[0].0 && field.1 == params[0].1.get_type() {
+                            Some(Ok(Type::Pointer(Box::new(Type::Struct {
+                                name: name.clone(),
+                                instances: vec![(params[0].0.clone(), params[0].1.get_type())],
+                            }))))
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some(result) = found {
+                        return result;
+                    } else {
+                        return Err(format!(
+                            "Unexpected parameter for union init: {:?}",
+                            params[0]
+                        ));
+                    }
+                }
 
                 let mut decl_map: HashMap<&str, Type> = HashMap::new();
                 let mut decl_order: Vec<(&str, Type)> = Vec::new();
