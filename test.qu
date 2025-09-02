@@ -1,7 +1,10 @@
 
-@union
 struct X {
     x: int;
 }
 
-def main() :: void {}
+def main() :: int {
+    let x: X* = X::(x: 5);
+    print_int(x.x);
+    return 0;
+}

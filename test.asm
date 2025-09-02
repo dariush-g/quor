@@ -1,29 +1,25 @@
-; ----- Layout: X -----
-%define X_size 4
-%define X.x 0
-
-global X.new
-X.new:
-push rbp
-mov rbp, rsp
-sub rsp, 8
-mov dword [rbp - 4], edi
-mov rdi, X_size
-call malloc
-mov rcx, rax
-mov eax, dword [rbp - 4]
-mov dword [rcx + 0], eax
-mov rax, rcx
-add rsp, 8
-mov rsp, rbp
-pop rbp
-ret
-
 global main
 main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
+mov rcx, 5
+mov rdi, rcx
+call X.new
+sub rsp, 8
+xor rbx, rbx
+mov rbx, qword [rbp - 8]
+mov edx, dword [rbx + 0]
+mov rdi, rdx
+call print_int
+mov r8, rax
+mov rdi, 10
+call print_char
+mov rdi, rbx
+mov r9, 0
+xor rax, rax
+mov rax, r9
+jmp .Lret_main
 .Lret_main:
 mov rsp, rbp
 pop rbp
