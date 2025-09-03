@@ -5,7 +5,7 @@ use crate::{
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    fs,
+    fs
 };
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
@@ -22,7 +22,7 @@ pub struct CodeGen {
     locals: HashMap<String, (Option<String>, i32, Type)>,
     stack_size: i32,
     externs: HashSet<String>,
-    structures: HashMap<String, (StructLayout, Stmt, String)>,
+    structures: HashMap<String, (StructLayout, Stmt)>,
 }
 
 #[inline]
@@ -1194,7 +1194,60 @@ impl CodeGen {
     //     }
     // }
 
-    fn generate_stack_struct_inline(&mut self, name: &str, instances: Vec<(String, Type)>) -> String {
+
+    fn generate_stack_union_inline(&mut self, name: &str, instances: Vec<(String, Type)>, i: usize, off: usize) -> String {
+
+
+        let mut size = 0;
+        let mut output = String::new();
+
+        for instance in &instances {
+            size = instance.1.size().max(size);
+        }
+
+        output.push_str(&format!("; ----- Inline stack struct: {} -----\n", name));
+        output.push_str(&format!("%define {}_size {}\n", name, size));
+        
+        output.push('\n');
+
+        // Compute stack size
+        let stack_offset = size;
+       
+        let aligned_size = (stack_offset + 7) & !7;
+        output.push_str(&format!("sub rsp, {}\n", aligned_size));
+
+        self.stack_size += aligned_size as i32;
+
+        let ty = instances.get(i).unwrap().1.clone();
+            match ty {
+                Type::int => {
+                    output.push_str(&format!(
+                        "mov dword [rbp + {}], {}\n",
+                        off,
+                        Self::reg32("rdi")
+                    ));
+                }
+                Type::Char | Type::Bool => {
+                    output.push_str(&format!(
+                        "mov byte [rbp + {}], {}\n",
+                        off,
+                        Self::reg8("rdi")
+                    ));
+                }
+                Type::float => {
+                    output.push_str(&format!(
+                        "movss [rbp + {}], {}\n",
+                        off, "xmm0"
+                    ));
+                }
+                _ => {
+                    output.push_str(&format!("mov qword [rsp + {}], {}\n", off, "rdi"));
+                }
+            }
+        output    
+    }
+
+    fn generate_stack_struct_inline(&mut self, name: &str, instances: Vec<(String, Type)>, off: usize) -> String {
         let struct_layout = layout_fields(&instances);
         let mut output = String::new();
 
@@ -1235,7 +1288,7 @@ impl CodeGen {
 
         // Initialize fields
         for (i, (_, ty)) in instances.iter().enumerate() {
-            let offset = field_offsets[i];
+            let offset = field_offsets[i] + off;
             match ty {
                 Type::int => {
                     output.push_str(&format!(
@@ -1275,7 +1328,6 @@ impl CodeGen {
 
     fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
         let struct_layout = layout_fields(&instances);
-        let inline = self.generate_stack_struct_inline(name, instances.clone());
 
         self.structures.insert(
             name.to_string(),
@@ -1286,7 +1338,6 @@ impl CodeGen {
                     instances: instances.to_vec(),
                     union,
                 },
-                inline
             ),
         );
     }
@@ -1803,6 +1854,21 @@ impl CodeGen {
 
                 // Some(obj_ptr_reg)
 
+                let cls = self.locals.get(struct_name).unwrap().0.clone().unwrap();
+                let stmt = self.structures.get(&cls).unwrap().1.clone();
+                if let Stmt::StructDecl { name, instances, union } = stmt {
+                    if union {
+                        let off = self.locals.get(struct_name).unwrap().1;
+                        for (name1, ty) in instances {
+                            if name1 == name {
+                                match ty {
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let val_reg = self.regs.pop_front().expect("No registers available");
 
                 // println!("{:?}", self.locals);
@@ -1838,7 +1904,7 @@ impl CodeGen {
                     if &field.name == instance_name {
                         field_offset = Some(field.offset as i32);
                         // Get the field type from the struct definition
-                        if let Some((_, struct_stmt, _)) = self.structures.get(struct_type.trim()) {
+                        if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim()) {
                             if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                 for (fname, ftype) in instances {
                                     if fname == instance_name {
@@ -1991,7 +2057,7 @@ impl CodeGen {
                     panic!("Struct {} not found", name);
                 }
 
-                let (struct_layout, _, _) = struct_info.unwrap();
+                let (struct_layout, _) = struct_info.unwrap();
 
                 // Clone the field names and positions to avoid borrowing issues
                 let field_positions: HashMap<String, usize> = struct_layout
@@ -2041,7 +2107,14 @@ impl CodeGen {
 
                 let off = self.stack_size;
 
-                self.output.push_str(&self.structures.get(name).unwrap().2);
+                // self.output.push_str(&self.structures.get(name).unwrap().2);
+
+                let op = &self.generate_stack_struct_inline(name, params
+                        .iter()
+                        .map(|(name, expr)| (name.clone(), expr.get_type()))
+                        .collect(), off.try_into().unwrap());
+
+                self.output.push_str(op);
 
                 // let ctor = format!("{name}.new");
 
@@ -2213,6 +2286,7 @@ impl CodeGen {
                     //     }
                     // }
                     Expr::InstanceVar(struct_name, field_name) => {
+
                         // Get struct pointer from local variable
                         let struct_ptr_off = self
                             .local_offset(&struct_name)
@@ -2223,6 +2297,9 @@ impl CodeGen {
                         ));
 
                         // Get struct layout and field information
+
+                        // self.locals.get(&struct_name).unwrap().;
+
                         let struct_type = self.locals.get(&struct_name).unwrap().0.clone().unwrap();
                         let struct_layout = &self.structures.get(&struct_type).unwrap().0;
 
@@ -2321,7 +2398,7 @@ impl CodeGen {
                         panic!("Struct {} not found", name);
                     }
 
-                    let (struct_layout, _, _) = struct_info.unwrap();
+                    let (struct_layout, _) = struct_info.unwrap();
 
                     // Clone the field names and positions to avoid borrowing issues
                     let field_positions: HashMap<String, usize> = struct_layout
@@ -2529,7 +2606,7 @@ impl CodeGen {
                         if &field.name == instance_name {
                             field_offset = Some(field.offset as i32);
                             // Get the field type from the struct definition
-                            if let Some((_, struct_stmt, _)) = self.structures.get(struct_type.trim())
+                            if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim())
                             {
                                 if let Stmt::StructDecl { instances, .. } = struct_stmt {
                                     for (fname, ftype) in instances {

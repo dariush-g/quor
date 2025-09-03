@@ -1,13 +1,13 @@
 
 
-
+@union
 struct X {
     x: int;
     y: int;
 }
 
 def main() :: int {
-    let x: X = X::(x: 1, y: 5);
-    print_int(x.x);
+    let x: X = X::(x: 1);
+    print_int(x.y);
     return 0;
 }
