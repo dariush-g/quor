@@ -896,10 +896,10 @@ impl TypeChecker {
 
                     let found = class_fields.iter().find_map(|field| {
                         if field.0 == params[0].0 && field.1 == params[0].1.get_type() {
-                            Some(Ok(Type::Pointer(Box::new(Type::Struct {
+                            Some(Ok(Type::Struct {
                                 name: name.clone(),
                                 instances: vec![(params[0].0.clone(), params[0].1.get_type())],
-                            }))))
+                            }))
                         } else {
                             None
                         }

@@ -4,35 +4,31 @@ push rbp
 mov rbp, rsp
 sub rsp, 0
 mov rcx, 1
-mov rdx, 5
 mov rdi, rcx
-mov rsi, rdx
 ; ----- Inline stack struct: X -----
-%define X_size 8
+%define X_size 4
 %define X.x 0
-%define X.y 4
 
 sub rsp, 16
 mov dword [rbp + 0], edi
-mov dword [rbp + 4], esi
 ; struct X is now at [rsp..rsp+16]
 
-mov rbx, rbp
-add rbx, 0
+mov rdx, rbp
+add rdx, 0
 sub rsp, 8
-mov qword [rbp - 8], rbx
-xor r9, r9
-mov r9, qword [rbp - 8]
-mov r8d, dword [r9 + 0]
-mov rdi, r8
+mov qword [rbp - 24], rdx
+xor r8, r8
+mov r8, qword [rbp - 24]
+mov ebx, dword [r8 + 4]
+mov rdi, rbx
 call print_int
-mov r10, rax
+mov r9, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov r11, 0
+mov r10, 0
 xor rax, rax
-mov rax, r11
+mov rax, r10
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp
