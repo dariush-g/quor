@@ -6,6 +6,13 @@ def char_at(str: char*, index: int) :: char {
     return *ret;
 }
 
+def is_alphabetical(c_lit: char) :: bool {
+    let c: int = c_lit as int;
+    if ((c <= 'z' as int && c >= 'a' as int) || (c <= 'Z' as int && c >= 'A' as int)) {
+        return true;
+    }
+    return false;
+}
 
 def concat(str: char*, str1: char*) :: char* {
     let len: int = strlen(str);

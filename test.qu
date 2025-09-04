@@ -1,13 +1,13 @@
-
+@import::<string.qu>;
 
 @union
 struct X {
     x: int;
-    y: int;
+    y: char;
 }
 
 def main() :: int {
-    let x: X = X::(x: 1);
-    print_int(x.y);
+    let x: X = X::(x: 73);
+    print_char(x.y);
     return 0;
 }

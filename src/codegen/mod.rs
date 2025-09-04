@@ -5,7 +5,7 @@ use crate::{
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    fs
+    fs,
 };
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
@@ -584,10 +584,26 @@ impl CodeGen {
                     //         .collect(),
                     // };
 
+                    let reg = self
+                        .handle_expr(
+                            &Expr::StructInit {
+                                name: cls.to_string(),
+                                params: params.to_vec(),
+                            },
+                            None,
+                        )
+                        .unwrap();
 
-                    let reg = self.handle_expr(&Expr::StructInit { name: cls.to_string(), params: params.to_vec() }, None).unwrap();
-
-                    let off = self.alloc_local(name, &Type::Struct { name: cls.to_string(), instances: params.iter().map(|(i, j)| {(i.clone(), j.get_type())}).collect() });
+                    let off = self.alloc_local(
+                        name,
+                        &Type::Struct {
+                            name: cls.to_string(),
+                            instances: params
+                                .iter()
+                                .map(|(i, j)| (i.clone(), j.get_type()))
+                                .collect(),
+                        },
+                    );
 
                     // println!("allocated {struct:?}");
 
@@ -734,7 +750,7 @@ impl CodeGen {
                         .0;
 
                     // Find field offset
-                    let field_offset = struct_layout
+                    let mut field_offset = struct_layout
                         .fields
                         .iter()
                         .find(|f| f.name == *field_name)
@@ -745,6 +761,18 @@ impl CodeGen {
                             )
                         })
                         .offset;
+
+                    let struct_stmt = &self
+                        .structures
+                        .get(struct_type.trim())
+                        .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
+                        .1;
+
+                    if let Stmt::StructDecl { union, .. } = struct_stmt {
+                        if *union {
+                            field_offset = 0;
+                        }
+                    }
 
                     // Allocate space for the variable if not already allocated
                     let offset = if self.local_offset(name).is_none() {
@@ -1194,10 +1222,13 @@ impl CodeGen {
     //     }
     // }
 
-
-    fn generate_stack_union_inline(&mut self, name: &str, instances: Vec<(String, Type)>, i: usize, off: usize) -> String {
-
-
+    fn generate_stack_union_inline(
+        &mut self,
+        name: &str,
+        instances: Vec<(String, Type)>,
+        i: usize,
+        off: usize,
+    ) -> String {
         let mut size = 0;
         let mut output = String::new();
 
@@ -1207,47 +1238,49 @@ impl CodeGen {
 
         output.push_str(&format!("; ----- Inline stack struct: {} -----\n", name));
         output.push_str(&format!("%define {}_size {}\n", name, size));
-        
+
         output.push('\n');
 
         // Compute stack size
         let stack_offset = size;
-       
+
         let aligned_size = (stack_offset + 7) & !7;
         output.push_str(&format!("sub rsp, {}\n", aligned_size));
 
         self.stack_size += aligned_size as i32;
 
         let ty = instances.get(i).unwrap().1.clone();
-            match ty {
-                Type::int => {
-                    output.push_str(&format!(
-                        "mov dword [rbp + {}], {}\n",
-                        off,
-                        Self::reg32("rdi")
-                    ));
-                }
-                Type::Char | Type::Bool => {
-                    output.push_str(&format!(
-                        "mov byte [rbp + {}], {}\n",
-                        off,
-                        Self::reg8("rdi")
-                    ));
-                }
-                Type::float => {
-                    output.push_str(&format!(
-                        "movss [rbp + {}], {}\n",
-                        off, "xmm0"
-                    ));
-                }
-                _ => {
-                    output.push_str(&format!("mov qword [rsp + {}], {}\n", off, "rdi"));
-                }
+        match ty {
+            Type::int => {
+                output.push_str(&format!(
+                    "mov dword [rbp + {}], {}\n",
+                    off,
+                    Self::reg32("rdi")
+                ));
             }
-        output    
+            Type::Char | Type::Bool => {
+                output.push_str(&format!(
+                    "mov byte [rbp + {}], {}\n",
+                    off,
+                    Self::reg8("rdi")
+                ));
+            }
+            Type::float => {
+                output.push_str(&format!("movss [rbp + {}], {}\n", off, "xmm0"));
+            }
+            _ => {
+                output.push_str(&format!("mov qword [rsp + {}], {}\n", off, "rdi"));
+            }
+        }
+        output
     }
 
-    fn generate_stack_struct_inline(&mut self, name: &str, instances: Vec<(String, Type)>, off: usize) -> String {
+    fn generate_stack_struct_inline(
+        &mut self,
+        name: &str,
+        instances: Vec<(String, Type)>,
+        off: usize,
+    ) -> String {
         let struct_layout = layout_fields(&instances);
         let mut output = String::new();
 
@@ -1546,7 +1579,7 @@ impl CodeGen {
                     .0;
 
                 // Find field in struct layout
-                let field_offset = struct_layout
+                let mut field_offset = struct_layout
                     .fields
                     .iter()
                     .find(|f| f.name == *field)
@@ -1558,7 +1591,14 @@ impl CodeGen {
                 // Get field type from struct declaration
                 let field_type = {
                     let struct_decl_stmt = &self.structures.get(&struct_type).unwrap().1;
-                    if let Stmt::StructDecl { instances, .. } = struct_decl_stmt {
+                    if let Stmt::StructDecl {
+                        instances, union, ..
+                    } = struct_decl_stmt
+                    {
+                        if *union {
+                            field_offset = 0;
+                        }
+
                         instances
                             .iter()
                             .find(|(fname, _)| fname == field)
@@ -1856,7 +1896,12 @@ impl CodeGen {
 
                 let cls = self.locals.get(struct_name).unwrap().0.clone().unwrap();
                 let stmt = self.structures.get(&cls).unwrap().1.clone();
-                if let Stmt::StructDecl { name, instances, union } = stmt {
+                if let Stmt::StructDecl {
+                    name,
+                    instances,
+                    union,
+                } = stmt
+                {
                     if union {
                         let off = self.locals.get(struct_name).unwrap().1;
                         for (name1, ty) in instances {
@@ -1918,7 +1963,7 @@ impl CodeGen {
                     }
                 }
 
-                let field_offset = field_offset.expect(&format!(
+                let mut field_offset = field_offset.expect(&format!(
                     "Field '{}' not found in struct '{}'",
                     instance_name, struct_type
                 ));
@@ -1927,6 +1972,18 @@ impl CodeGen {
                     "Field type for '{}' not found in struct '{}'",
                     instance_name, struct_type
                 ));
+
+                let struct_stmt = &self
+                    .structures
+                    .get(struct_type.trim())
+                    .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
+                    .1;
+
+                if let Stmt::StructDecl { union, .. } = struct_stmt {
+                    if *union {
+                        field_offset = 0;
+                    }
+                }
 
                 match field_type {
                     Type::int => {
@@ -2109,10 +2166,14 @@ impl CodeGen {
 
                 // self.output.push_str(&self.structures.get(name).unwrap().2);
 
-                let op = &self.generate_stack_struct_inline(name, params
+                let op = &self.generate_stack_struct_inline(
+                    name,
+                    params
                         .iter()
                         .map(|(name, expr)| (name.clone(), expr.get_type()))
-                        .collect(), off.try_into().unwrap());
+                        .collect(),
+                    off.try_into().unwrap(),
+                );
 
                 self.output.push_str(op);
 
@@ -2129,7 +2190,7 @@ impl CodeGen {
                         .map(|(name, expr)| (name.clone(), expr.get_type()))
                         .collect(),
                 };
-            //));
+                //));
 
                 // println!("allocated {struct:?}");
 
@@ -2141,8 +2202,8 @@ impl CodeGen {
 
                 self.output.push_str(&format!("mov {reg}, rbp\n"));
                 self.output.push_str(&format!("add {reg}, {off}\n"));
-                    
-                Some(reg)            
+
+                Some(reg)
             }
 
             Expr::Assign { name, value } => {
@@ -2286,7 +2347,6 @@ impl CodeGen {
                     //     }
                     // }
                     Expr::InstanceVar(struct_name, field_name) => {
-
                         // Get struct pointer from local variable
                         let struct_ptr_off = self
                             .local_offset(&struct_name)
@@ -2303,7 +2363,7 @@ impl CodeGen {
                         let struct_type = self.locals.get(&struct_name).unwrap().0.clone().unwrap();
                         let struct_layout = &self.structures.get(&struct_type).unwrap().0;
 
-                        let field_offset = struct_layout
+                        let mut field_offset = struct_layout
                             .fields
                             .iter()
                             .find(|f| f.name == *field_name)
@@ -2312,6 +2372,20 @@ impl CodeGen {
 
                         // Get value to store
                         let val_reg = self.handle_expr(value, None).expect("No value register");
+
+                        let struct_stmt = &self
+                            .structures
+                            .get(struct_type.trim())
+                            .unwrap_or_else(|| {
+                                panic!("Struct layout not found for '{struct_type}'")
+                            })
+                            .1;
+
+                        if let Stmt::StructDecl { union, .. } = struct_stmt {
+                            if *union {
+                                field_offset = 0;
+                            }
+                        }
 
                         // Store to struct field based on type
                         match value.get_type() {
@@ -2483,7 +2557,7 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Struct layout not found for '{}'", struct_type))
                         .0;
 
-                    let field_offset = struct_layout
+                    let mut field_offset = struct_layout
                         .fields
                         .iter()
                         .find(|f| &f.name == field_name)
@@ -2494,6 +2568,18 @@ impl CodeGen {
                             )
                         })
                         .offset;
+
+                    let struct_stmt = &self
+                        .structures
+                        .get(struct_type.trim())
+                        .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
+                        .1;
+
+                    if let Stmt::StructDecl { union, .. } = struct_stmt {
+                        if *union {
+                            field_offset = 0;
+                        }
+                    }
 
                     // Get a register for the address
                     let addr_reg = self.regs.pop_front().expect("No registers available");
@@ -2621,7 +2707,7 @@ impl CodeGen {
                         }
                     }
 
-                    let field_offset = field_offset.expect(&format!(
+                    let mut field_offset = field_offset.expect(&format!(
                         "Field '{}' not found in struct '{}'",
                         instance_name, struct_type
                     ));
@@ -2630,6 +2716,18 @@ impl CodeGen {
                         "Field type for '{}' not found in struct '{}'",
                         instance_name, struct_type
                     ));
+
+                    let struct_stmt = &self
+                        .structures
+                        .get(struct_type.trim())
+                        .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
+                        .1;
+
+                    if let Stmt::StructDecl { union, .. } = struct_stmt {
+                        if *union {
+                            field_offset = 0;
+                        }
+                    }
 
                     match field_type {
                         Type::int => {
