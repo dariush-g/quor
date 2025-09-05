@@ -1222,7 +1222,7 @@ impl CodeGen {
     //     }
     // }
 
-    fn generate_stack_union_inline(
+    fn _generate_stack_union_inline(
         &mut self,
         name: &str,
         instances: Vec<(String, Type)>,
@@ -1269,7 +1269,7 @@ impl CodeGen {
                 output.push_str(&format!("movss [rbp + {}], {}\n", off, "xmm0"));
             }
             _ => {
-                output.push_str(&format!("mov qword [rsp + {}], {}\n", off, "rdi"));
+                output.push_str(&format!("mov qword [rbp + {}], {}\n", off, "rdi"));
             }
         }
         output
@@ -1285,7 +1285,6 @@ impl CodeGen {
         let mut output = String::new();
 
         // Comment & layout info
-        output.push_str(&format!("; ----- Inline stack struct: {} -----\n", name));
         output.push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
         for fld in &struct_layout.fields {
             output.push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
@@ -1325,37 +1324,31 @@ impl CodeGen {
             match ty {
                 Type::int => {
                     output.push_str(&format!(
-                        "mov dword [rbp + {}], {}\n",
+                        "mov dword [rbp - {}], {}\n",
                         offset,
                         Self::reg32(save_regs[i])
                     ));
                 }
                 Type::Char | Type::Bool => {
                     output.push_str(&format!(
-                        "mov byte [rbp + {}], {}\n",
+                        "mov byte [rbp - {}], {}\n",
                         offset,
                         Self::reg8(save_regs[i])
                     ));
                 }
                 Type::float => {
                     output.push_str(&format!(
-                        "movss [rbp + {}], {}\n",
+                        "movss [rbp - {}], {}\n",
                         offset, save_fp[fp_index]
                     ));
                     fp_index += 1;
                 }
                 _ => {
-                    output.push_str(&format!("mov qword [rsp + {}], {}\n", offset, save_regs[i]));
+                    output.push_str(&format!("mov qword [rbp + {}], {}\n", offset, save_regs[i]));
                 }
             }
         }
-
-        // Optional: leave comment for the pointer to this struct
-        output.push_str(&format!(
-            "; struct {} is now at [rsp..rsp+{}]\n\n",
-            name, aligned_size
-        ));
-
+      
         output
     }
 
@@ -1894,25 +1887,25 @@ impl CodeGen {
 
                 // Some(obj_ptr_reg)
 
-                let cls = self.locals.get(struct_name).unwrap().0.clone().unwrap();
-                let stmt = self.structures.get(&cls).unwrap().1.clone();
-                if let Stmt::StructDecl {
-                    name,
-                    instances,
-                    union,
-                } = stmt
-                {
-                    if union {
-                        let off = self.locals.get(struct_name).unwrap().1;
-                        for (name1, ty) in instances {
-                            if name1 == name {
-                                match ty {
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
+                // let cls = self.locals.get(struct_name).unwrap().0.clone().unwrap();
+                // let stmt = self.structures.get(&cls).unwrap().1.clone();
+                // if let Stmt::StructDecl {
+                //     name,
+                //     instances,
+                //     union,
+                // } = stmt
+                // {
+                //     if union {
+                //         let off = self.locals.get(struct_name).unwrap().1;
+                //         for (name1, ty) in instances {
+                //             if name1 == name {
+                //                 match ty {
+                //                     _ => {}
+                //                 }
+                //             }
+                //         }
+                //     }
+                // }
 
                 let val_reg = self.regs.pop_front().expect("No registers available");
 
@@ -2162,7 +2155,7 @@ impl CodeGen {
                     self.regs.push_back(r);
                 }
 
-                let off = self.stack_size;
+                let off = self.stack_size.max(8);
 
                 // self.output.push_str(&self.structures.get(name).unwrap().2);
 
