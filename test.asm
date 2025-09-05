@@ -4,354 +4,50 @@ push rbp
 mov rbp, rsp
 sub rsp, 0
 mov rcx, 73
-mov rdi, rcx
-; ----- Inline stack struct: X -----
-%define X_size 4
-%define X.x 0
+mov rdx, 'h'
+mov rbx, 5
+mov rdi, rbx
+%define Example_size 4
+%define Example.x 0
 
 sub rsp, 16
-mov dword [rbp + 0], edi
-; struct X is now at [rsp..rsp+16]
+mov dword [rbp - 8], edi
+mov r8, rbp
+add r8, 8
+mov rdi, rcx
+mov rsi, rdx
+mov rdx, r8
+%define X_size 12
+%define X.x 0
+%define X.y 4
+%define X.z 8
 
-mov rdx, rbp
-add rdx, 0
+sub rsp, 16
+mov dword [rbp - 16], edi
+mov byte [rbp - 20], sil
+mov qword [rbp + 24], rdx
+mov r9, rbp
+add r9, 16
 sub rsp, 8
-mov qword [rbp - 24], rdx
-xor r8, r8
-mov r8, qword [rbp - 24]
-mov bl, byte [r8 + 0]
-mov rdi, rbx
-call print_char
-mov r9, rax
+mov qword [rbp - 40], r9
+sub rsp, 8
+mov r10, qword [rbp - 40]
+mov rax, qword [r10 + 5]
+mov qword [rbp - 48], rax
+xor r12, r12
+mov r12, qword [rbp - 48]
+mov r11d, dword [r12 + 0]
+mov rdi, r11
+call print_int
+mov r13, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov r10, 0
-xor rax, rax
-mov rax, r10
-jmp .Lret_main
-.Lret_main:
-mov rsp, rbp
-pop rbp
-ret
-global char_at
-char_at:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-mov dword [rbp - 12], esi
-sub rsp, 8
-xor r11, r11
-mov r11, qword [rbp - 8]
-xor r12, r12
-mov r12, qword [rbp - 8]
-xor r13, r13
-mov r13d, dword [rbp - 12]
-add r12, r13
-mov qword [rbp - 24], r12
-xor r14, r14
-mov r14, qword [rbp - 24]
-mov r15b, byte [r14]
-xor rax, rax
-mov rax, r15
-jmp .Lret_char_at
-.Lret_char_at:
-mov rsp, rbp
-pop rbp
-ret
-global is_alphabetical
-is_alphabetical:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov byte [rbp - 1], dil
-xor rcx, rcx
-mov cl, byte [rbp - 1]
-sub rsp, 8
-mov dword [rbp - 24], ecx
-xor rdx, rdx
-mov edx, dword [rbp - 24]
-mov r8, 'z'
-cmp rdx, r8
-setle al
-movzx rax, al
-mov rbx, rax
-xor r9, r9
-mov r9d, dword [rbp - 24]
-mov r10, 'a'
-cmp r9, r10
-setge al
-movzx rax, al
-mov r13, rax
-cmp rbx, 1
-jne .and_end_0
-cmp r13, 1
-jne .and_end_0
-mov rax, 1
-jmp .and_done_1
-.and_end_0:
-mov rax, 0
-.and_done_1:
-mov r12, rax
-xor r14, r14
-mov r14d, dword [rbp - 24]
-mov r15, 'Z'
-cmp r14, r15
-setle al
-movzx rax, al
-mov rcx, rax
-xor rdx, rdx
-mov edx, dword [rbp - 24]
-mov r8, 'A'
-cmp rdx, r8
-setge al
-movzx rax, al
-mov r9, rax
-cmp rcx, 1
-jne .and_end_1
-cmp r9, 1
-jne .and_end_1
-mov rax, 1
-jmp .and_done_2
-.and_end_1:
-mov rax, 0
-.and_done_2:
-mov r10, rax
-cmp r12, 1
-je .or_end_2
-cmp r10, 1
-je .or_end_2
-mov rax, 0
-jmp .or_done_3
-.or_end_2:
-mov rax, 1
-.or_done_3:
-mov rbx, rax
-cmp rbx, 0
-je .else3
-mov r13, 1
-.else3:
 mov r14, 0
 xor rax, rax
 mov rax, r14
-jmp .Lret_is_alphabetical
-.Lret_is_alphabetical:
-mov rsp, rbp
-pop rbp
-ret
-global concat
-concat:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-mov qword [rbp - 16], rsi
-sub rsp, 8
-xor r15, r15
-mov r15, qword [rbp - 8]
-mov rdi, r15
-call strlen
-mov rdx, rax
-mov qword [rbp - 24], rdx
-sub rsp, 8
-xor r8, r8
-mov r8, qword [rbp - 16]
-mov rdi, r8
-call strlen
-mov rcx, rax
-mov qword [rbp - 32], rcx
-xor r9, r9
-mov r9d, dword [rbp - 24]
-xor r12, r12
-mov r12d, dword [rbp - 32]
-add r9, r12
-mov r10, 1
-add r9, r10
-mov rdi, r9
-call malloc
-mov rbx, rax
-sub rsp, 8
-mov qword [rbp - 40], rbx
-sub rsp, 8
-xor r14, r14
-mov r14, qword [rbp - 40]
-mov qword [rbp - 48], r14
-sub rsp, 8
-mov r15, 0
-mov dword [rbp - 56], r15d
-.while_start_4:
-xor rdx, rdx
-mov edx, dword [rbp - 56]
-xor r8, r8
-mov r8d, dword [rbp - 24]
-cmp rdx, r8
-setl al
-movzx rax, al
-mov rcx, rax
-cmp rcx, 1
-jne .while_end_4
-xor r12, r12
-mov r12, qword [rbp - 40]
-xor r10, r10
-mov r10, qword [rbp - 8]
-mov r9b, byte [r10]
-mov byte [r12], r9b
-xor rbx, rbx
-mov rbx, qword [rbp - 40]
-mov r14d, 1
-add rbx, r14
-mov qword [rbp - 40], rbx
-xor r15, r15
-mov r15, qword [rbp - 8]
-mov edx, 1
-add r15, rdx
-mov qword [rbp - 8], r15
-xor r8, r8
-mov r8d, dword [rbp - 56]
-mov rcx, 1
-add r8, rcx
-mov qword [rbp - 56], r8
-add rsp, 56
-jmp .while_start_4
-.while_end_4:
-mov dword [rbp - 56], 0
-.while_start_5:
-xor r10, r10
-mov r10d, dword [rbp - 56]
-xor r12, r12
-mov r12d, dword [rbp - 32]
-cmp r10, r12
-setl al
-movzx rax, al
-mov r9, rax
-cmp r9, 1
-jne .while_end_5
-xor r14, r14
-mov r14, qword [rbp - 40]
-xor rbx, rbx
-mov rbx, qword [rbp - 16]
-mov dl, byte [rbx]
-mov byte [r14], dl
-xor r15, r15
-mov r15, qword [rbp - 40]
-mov ecx, 1
-add r15, rcx
-mov qword [rbp - 40], r15
-xor r8, r8
-mov r8, qword [rbp - 16]
-mov r10d, 1
-add r8, r10
-mov qword [rbp - 16], r8
-xor r12, r12
-mov r12d, dword [rbp - 56]
-mov r9, 1
-add r12, r9
-mov qword [rbp - 56], r12
-add rsp, 56
-jmp .while_start_5
-.while_end_5:
-xor rbx, rbx
-mov rbx, qword [rbp - 40]
-mov r14, 0
-mov byte [rbx], r14b
-xor rdx, rdx
-mov rdx, qword [rbp - 48]
-xor rax, rax
-mov rax, rdx
-jmp .Lret_concat
-.Lret_concat:
-mov rsp, rbp
-pop rbp
-ret
-global substring
-substring:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-mov dword [rbp - 12], esi
-mov dword [rbp - 16], edx
-xor rcx, rcx
-mov rcx, qword [rbp - 8]
-mov rdi, rcx
-call strlen
-mov r15, rax
-mov r10, 1
-add r15, r10
-mov rdi, r15
-call malloc
-mov r8, rax
-sub rsp, 8
-mov qword [rbp - 24], r8
-xor r9, r9
-mov r9, qword [rbp - 24]
-xor rax, rax
-mov rax, r9
-jmp .Lret_substring
-.Lret_substring:
-mov rsp, rbp
-pop rbp
-ret
-global contains_char
-contains_char:
-push rbp
-mov rbp, rsp
-sub rsp, 16
-mov qword [rbp - 8], rdi
-mov byte [rbp - 9], sil
-sub rsp, 8
-xor r12, r12
-mov r12, qword [rbp - 8]
-mov rdi, r12
-call strlen
-mov rbx, rax
-mov qword [rbp - 24], rbx
-sub rsp, 8
-mov r14, 0
-mov dword [rbp - 32], r14d
-.while_start_6:
-xor rdx, rdx
-mov edx, dword [rbp - 32]
-xor rcx, rcx
-mov ecx, dword [rbp - 24]
-cmp rdx, rcx
-setl al
-movzx rax, al
-mov r10, rax
-cmp r10, 1
-jne .while_end_6
-xor r15, r15
-mov r15, qword [rbp - 8]
-xor r8, r8
-mov r8d, dword [rbp - 32]
-mov rdi, r15
-mov rsi, r8
-call char_at
-mov r9, rax
-xor r12, r12
-mov r12b, byte [rbp - 9]
-cmp r9, r12
-sete al
-movzx rax, al
-mov rbx, rax
-cmp rbx, 0
-je .else7
-mov r14, 1
-.else7:
-xor rdx, rdx
-mov edx, dword [rbp - 32]
-mov rcx, 1
-add rdx, rcx
-mov qword [rbp - 32], rdx
-add rsp, 32
-jmp .while_start_6
-.while_end_6:
-mov r10, 0
-xor rax, rax
-mov rax, r10
-jmp .Lret_contains_char
-.Lret_contains_char:
+jmp .Lret_main
+.Lret_main:
 mov rsp, rbp
 pop rbp
 ret
