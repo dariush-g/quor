@@ -5,15 +5,17 @@ struct Example {
 struct X {
     x: int;
     y: char;
-    z: Example;
+    z: Example*;
 }
 
 def main() :: int {
-    let x: X = X::(x: 73, y: 'h', z: Example::(x: 5));
+    let example: Example = Example::(x: 5);
+    
+    let x: X = X::(x: 73, y: 'h', z: &example);
 
-    let example: Example = x.z;
+    let e: Example = x.z;
 
-    print_int(example.x);
+    print_int(e.x);
 
     return 0;
 }

@@ -948,13 +948,28 @@ impl TypeChecker {
                         _ => got,
                     };
 
-                    match got {
-                        Type::Array(_, _) => {}
-                        _ => {
-                            if &got != expected {
-                                return Err(format!(
-                                    "Type mismatch for field '{fname}': expected {expected:?}, got {got:?}"
-                                ));
+                    if let Type::Struct { .. } = base_type(&got) {
+                    } else {
+                        match got {
+
+                            Type::Array(_, _) => {}
+                            _ => {
+                                let ty1 = base_type(&got);
+                                let ty2 = base_type(expected);
+
+                                // Only compare struct names, not their fields
+                                match (&ty1, &ty2) {
+                                    (
+                                        Type::Struct { name: n1, .. },
+                                        Type::Struct { name: n2, .. },
+                                    ) if n1 == n2 => {}
+                                    _ if &got == expected => {}
+                                    _ => {
+                                        return Err(format!(
+                                            "Type mismatch for field '{fname}': expected {expected:?}, got {got:?}"
+                                        ));
+                                    }
+                                }
                             }
                         }
                     }
@@ -1411,7 +1426,7 @@ pub fn base_type(ty: &Type) -> Type {
             name: name.clone(),
             instances: Vec::new(),
         },
-        Type::Pointer(inside) => Type::Pointer(Box::new(base_type(inside))),
+        Type::Pointer(inside) => base_type(inside),
         _ => ty.clone(),
     }
 }
