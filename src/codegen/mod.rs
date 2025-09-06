@@ -789,20 +789,20 @@ impl CodeGen {
                     match var_type {
                         Type::int => {
                             self.output.push_str(&format!(
-                                "mov eax, dword [{ptr_reg} + {field_offset}]\n"
+                                "mov eax, dword [{ptr_reg} - {field_offset}]\n"
                             ));
                             self.output
                                 .push_str(&format!("mov dword [rbp - {offset}], eax\n"));
                         }
                         Type::Char | Type::Bool => {
                             self.output
-                                .push_str(&format!("mov al, byte [{ptr_reg} + {field_offset}]\n"));
+                                .push_str(&format!("mov al, byte [{ptr_reg} - {field_offset}]\n"));
                             self.output
                                 .push_str(&format!("mov byte [rbp - {offset}], al\n"));
                         }
                         _ => {
                             self.output.push_str(&format!(
-                                "mov rax, qword [{ptr_reg} + {field_offset}]\n"
+                                "mov rax, qword [{ptr_reg} - {field_offset}]\n"
                             ));
                             self.output
                                 .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
@@ -1253,104 +1253,708 @@ impl CodeGen {
         match ty {
             Type::int => {
                 output.push_str(&format!(
-                    "mov dword [rbp + {}], {}\n",
+                    "mov dword [rbp - {}], {}\n",
                     off,
                     Self::reg32("rdi")
                 ));
             }
             Type::Char | Type::Bool => {
                 output.push_str(&format!(
-                    "mov byte [rbp + {}], {}\n",
+                    "mov byte [rbp - {}], {}\n",
                     off,
                     Self::reg8("rdi")
                 ));
             }
             Type::float => {
-                output.push_str(&format!("movss [rbp + {}], {}\n", off, "xmm0"));
+                output.push_str(&format!("movss [rbp - {}], {}\n", off, "xmm0"));
             }
             _ => {
-                output.push_str(&format!("mov qword [rbp + {}], {}\n", off, "rdi"));
+                output.push_str(&format!("mov qword [rbp - {}], {}\n", off, "rdi"));
             }
         }
         output
     }
 
     fn generate_stack_struct_inline(
-        &mut self,
-        name: &str,
-        instances: Vec<(String, Type)>,
-        off: usize,
-    ) -> String {
-        let struct_layout = layout_fields(&instances);
-        let mut output = String::new();
+    &mut self,
+    name: &str,
+    instances: Vec<(String, Type)>,
+    off: usize,
+) -> String {
+    let mut output = String::new();
+    output.push_str(&format!("; defining {}\n", name));
 
-        // Comment & layout info
-        output.push_str(&format!("%define {}_size {}\n", name, struct_layout.size));
-        for fld in &struct_layout.fields {
-            output.push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
+    // Compute field offsets with alignment
+    let mut stack_offset = 0;
+    let mut field_offsets = Vec::new();
+    for (_, ty) in &instances {
+        let size = ty.size();
+        let align = match size {
+            1 => 1,
+            4 => 4,
+            8 => 8,
+            _ => 8,
+        };
+        if stack_offset % align != 0 {
+            stack_offset += align - (stack_offset % align);
         }
-        output.push('\n');
-
-        // Compute stack size
-        let mut stack_offset = 0;
-        let mut field_offsets = Vec::new();
-        for instance in &instances {
-            let size = instance.1.size();
-            let align = match size {
-                1 => 1,
-                4 => 4,
-                8 => 8,
-                _ => 8,
-            };
-            if stack_offset % align != 0 {
-                stack_offset += align - (stack_offset % align);
-            }
-            field_offsets.push(stack_offset);
-            stack_offset += size;
-        }
-        let aligned_size = (stack_offset + 15) & !15;
-        output.push_str(&format!("sub rsp, {}\n", aligned_size));
-
-        self.stack_size += aligned_size as i32;
-
-        // Registers for arguments
-        let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
-        let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
-        let mut fp_index = 0;
-
-        // Initialize fields
-        for (i, (_, ty)) in instances.iter().enumerate() {
-            let offset = field_offsets[i] + off;
-            match ty {
-                Type::int => {
-                    output.push_str(&format!(
-                        "mov dword [rbp - {}], {}\n",
-                        offset,
-                        Self::reg32(save_regs[i])
-                    ));
-                }
-                Type::Char | Type::Bool => {
-                    output.push_str(&format!(
-                        "mov byte [rbp - {}], {}\n",
-                        offset,
-                        Self::reg8(save_regs[i])
-                    ));
-                }
-                Type::float => {
-                    output.push_str(&format!(
-                        "movss [rbp - {}], {}\n",
-                        offset, save_fp[fp_index]
-                    ));
-                    fp_index += 1;
-                }
-                _ => {
-                    output.push_str(&format!("mov qword [rbp + {}], {}\n", offset, save_regs[i]));
-                }
-            }
-        }
-      
-        output
+        field_offsets.push(stack_offset);
+        stack_offset += size;
     }
+    let aligned_size = (stack_offset + 15) & !15;
+    output.push_str(&format!("sub rsp, {}\n", aligned_size));
+    self.stack_size += aligned_size as i32;
+
+    // Registers for arguments
+    let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+    let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+    let mut gp_index = 0;
+    let mut fp_index = 0;
+
+    // Initialize fields
+    for (i, (fname, ty)) in instances.iter().enumerate() {
+        let offset = field_offsets[i] + off;
+        match ty {
+            Type::int => {
+                output.push_str(&format!(
+                    "mov dword [rbp - {}], {}\n",
+                    offset,
+                    Self::reg32(save_regs[gp_index])
+                ));
+                gp_index += 1;
+            }
+            Type::Char | Type::Bool => {
+                output.push_str(&format!(
+                    "mov byte [rbp - {}], {}\n",
+                    offset,
+                    Self::reg8(save_regs[gp_index])
+                ));
+                gp_index += 1;
+            }
+            Type::float => {
+                output.push_str(&format!(
+                    "movss [rbp - {}], {}\n",
+                    offset,
+                    save_fp[fp_index]
+                ));
+                fp_index += 1;
+            }
+            Type::Struct { name: sname, instances: subfields } => {
+                // recursively generate the nested struct
+                let nested_code =
+                    self.generate_stack_struct_inline(sname, subfields.clone(), offset);
+                output.push_str(&nested_code);
+            }
+            _ => {
+                output.push_str(&format!(
+                    "mov qword [rbp - {}], {}\n",
+                    offset,
+                    save_regs[gp_index]
+                ));
+                gp_index += 1;
+            }
+        }
+    }
+
+    output.push_str(&format!("; end {}\n", name));
+    output
+}
+
+
+    // fn generate_stack_struct_inline(
+    //     &mut self,
+    //     _name: &str,
+    //     instances: Vec<(String, Type)>,
+    //     off: usize,
+    // ) -> String {
+    //     // let struct_layout = layout_fields(&instances);
+    //     let mut output = String::new();
+
+    //     output.push_str(&format!("; defining {}\n", _name));
+    //     // for fld in &struct_layout.fields {
+    //     //     output.push_str(&format!("%define {}.{} {}\n", name, fld.name, fld.offset));
+    //     // }
+
+    //     // Compute stack size
+    //     let mut stack_offset = 0;
+    //     let mut field_offsets = Vec::new();
+    //     for instance in &instances {
+    //         let size = instance.1.size();
+    //         let align = match size {
+    //             1 => 1,
+    //             4 => 4,
+    //             8 => 8,
+    //             _ => 8,
+    //         };
+    //         if stack_offset % align != 0 {
+    //             stack_offset += align - (stack_offset % align);
+    //         }
+    //         field_offsets.push(stack_offset);
+    //         stack_offset += size;
+    //     }
+    //     let aligned_size = (stack_offset + 15) & !15;
+    //     output.push_str(&format!("sub rsp, {}\n", aligned_size));
+
+    //     self.stack_size += aligned_size as i32;
+
+    //     // Registers for arguments
+    //     let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+    //     let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+    //     let mut fp_index = 0;
+
+    //     // Initialize fields
+    //     for (i, (_, ty)) in instances.iter().enumerate() {
+    //         let offset = field_offsets[i] + off;
+    //         match ty {
+    //             Type::int => {
+    //                 output.push_str(&format!(
+    //                     "mov dword [rbp - {}], {}\n",
+    //                     offset,
+    //                     Self::reg32(save_regs[i])
+    //                 ));
+    //             }
+    //             Type::Char | Type::Bool => {
+    //                 output.push_str(&format!(
+    //                     "mov byte [rbp - {}], {}\n",
+    //                     offset,
+    //                     Self::reg8(save_regs[i])
+    //                 ));
+    //             }
+    //             Type::float => {
+    //                 output.push_str(&format!(
+    //                     "movss [rbp - {}], {}\n",
+    //                     offset, save_fp[fp_index]
+    //                 ));
+    //                 fp_index += 1;
+    //             }
+    //             Type::Struct { name, instances } => {
+    //                 // copy struct into parent struct
+    //                 // self.generate_stack_struct_inline(name, instances.to_vec(), offset);
+    //                 output.push_str("; nested struct\n");
+    //             }
+    //             _ => {
+    //                 output.push_str(&format!("mov qword [rbp - {}], {}\n", offset, save_regs[i]));
+    //             }
+    //         }
+    //     }
+
+    //     output.push_str(&format!("; end {}\n", _name));
+
+    //     output
+    // }
+
+//  fn handle_struct_struct(&self, save_reg: String, struct_: &Type, base_offset: usize) -> String {
+//     let mut output = String::new();
+    
+//     match struct_ {
+//         Type::Struct { name, instances } => {
+//             output.push_str(&format!("; copying struct {} from {}\n", name, save_reg));
+            
+//             let mut src_field_offset = 0;
+//             let mut dest_field_offset = 0;
+            
+//             for (field_name, field_type) in instances {
+//                 let size = field_type.size();
+//                 let align = match size {
+//                     1 => 1,
+//                     2 => 2,
+//                     4 => 4,
+//                     8 => 8,
+//                     _ => 8,
+//                 };
+                
+//                 // Align both source and destination offsets
+//                 if src_field_offset % align != 0 {
+//                     src_field_offset += align - (src_field_offset % align);
+//                 }
+//                 if dest_field_offset % align != 0 {
+//                     dest_field_offset += align - (dest_field_offset % align);
+//                 }
+                
+//                 let src_addr = format!("[{} + {}]", save_reg, src_field_offset);
+//                 let dest_addr = format!("[rbp - {}]", base_offset + dest_field_offset);
+                
+//                 match field_type {
+//                     Type::int => {
+//                         output.push_str(&format!(
+//                             "mov {}, dword {}\n",
+//                             Self::reg32("rax"), src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "mov dword {}, {}\n",
+//                             dest_addr, Self::reg32("rax")
+//                         ));
+//                     }
+//                     Type::Char | Type::Bool => {
+//                         output.push_str(&format!(
+//                             "mov {}, byte {}\n",
+//                             Self::reg8("rax"), src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "mov byte {}, {}\n",
+//                             dest_addr, Self::reg8("rax")
+//                         ));
+//                     }
+//                     Type::float => {
+//                         output.push_str(&format!(
+//                             "movss xmm0, dword {}\n", src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "movss dword {}, xmm0\n", dest_addr
+//                         ));
+//                     }
+//                     Type::Struct { .. } => {
+//                         // For nested structs, get the address of the source nested struct
+//                         output.push_str(&format!(
+//                             "lea rax, {}\n", src_addr
+//                         ));
+//                         output.push_str(&self.handle_struct_struct(
+//                             "rax".to_string(),
+//                             field_type,
+//                             base_offset + dest_field_offset,
+//                         ));
+//                     }
+//                     _ => {
+//                         // For pointers and other 8-byte types
+//                         output.push_str(&format!(
+//                             "mov rax, qword {}\n", src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "mov qword {}, rax\n", dest_addr
+//                         ));
+//                     }
+//                 }
+                
+//                 src_field_offset += size;
+//                 dest_field_offset += size;
+//             }
+//         }
+//         _ => {
+//             // Not a struct - this shouldn't happen in this context
+//             output.push_str(&format!("; Warning: {} is not a struct type\n", save_reg));
+//         }
+//     }
+    
+//     output
+// }
+
+// fn handle_struct_copy_with_layout(&self, save_reg: String, struct_: &Type, base_offset: usize) -> String {
+//     let mut output = String::new();
+    
+//     match struct_ {
+//         Type::Struct { name, instances } => {
+//             output.push_str(&format!("; copying struct {} from {} to [rbp - {}]\n", 
+//                 name, save_reg, base_offset));
+            
+//             // Calculate field layout
+//             let field_layout = self._calculate_struct_layout(instances);
+            
+//             for (field_name, field_type, src_offset, dest_offset) in field_layout {
+//                 let src_addr = if src_offset == 0 {
+//                     format!("[{}]", save_reg)
+//                 } else {
+//                     format!("[{} + {}]", save_reg, src_offset)
+//                 };
+//                 let dest_addr = format!("[rbp - {}]", base_offset + dest_offset);
+                
+//                 match field_type {
+//                     Type::int => {
+//                         output.push_str(&format!(
+//                             "mov eax, dword {}\n", src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "mov dword {}, eax\n", dest_addr
+//                         ));
+//                     }
+//                     Type::Char | Type::Bool => {
+//                         output.push_str(&format!(
+//                             "mov al, byte {}\n", src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "mov byte {}, al\n", dest_addr
+//                         ));
+//                     }
+//                     Type::float => {
+//                         output.push_str(&format!(
+//                             "movss xmm0, dword {}\n", src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "movss dword {}, xmm0\n", dest_addr
+//                         ));
+//                     }
+//                     Type::Struct { .. } => {
+//                         // For nested structs, recursively copy
+//                         if src_offset == 0 {
+//                             output.push_str(&format!("mov rax, {}\n", save_reg));
+//                         } else {
+//                             output.push_str(&format!("lea rax, [{}+ {}]\n", save_reg, src_offset));
+//                         }
+//                         output.push_str(&self.handle_struct_copy_with_layout(
+//                             "rax".to_string(),
+//                             &field_type,
+//                             base_offset + dest_offset,
+//                         ));
+//                     }
+//                     _ => {
+//                         output.push_str(&format!(
+//                             "mov rax, qword {}\n", src_addr
+//                         ));
+//                         output.push_str(&format!(
+//                             "mov qword {}, rax\n", dest_addr
+//                         ));
+//                     }
+//                 }
+//             }
+//         }
+//         _ => {}
+//     }
+    
+//     output
+// }
+
+// fn _calculate_struct_layout<'a>(&self, instances: &'a [(String, Type)]) -> Vec<(String, &'a Type, usize, usize)> {
+//     let mut layout = Vec::new();
+//     let mut offset = 0;
+    
+//     for (field_name, field_type) in instances {
+//         let size = field_type.size();
+//         let align = match size {
+//             1 => 1,
+//             2 => 2,
+//             4 => 4,
+//             8 => 8,
+//             _ => 8,
+//         };
+        
+//         // Align offset
+//         if offset % align != 0 {
+//             offset += align - (offset % align);
+//         }
+        
+//         layout.push((field_name.clone(), field_type, offset, offset));
+//         offset += size;
+//     }
+    
+//     layout
+// }
+
+    //     fn generate_stack_struct_inline(
+    //     &mut self,
+    //     _name: &str,
+    //     instances: Vec<(String, Type)>,
+    //     base_offset: usize,
+    // ) -> (String, usize) { // Return both code and total size
+    //     let mut output = String::new();
+    //     output.push_str(&format!("; defining {} at offset {}\n", _name, base_offset));
+
+    //     // Compute field layout within this struct
+    //     let mut current_offset = 0;
+    //     let mut field_info = Vec::new();
+
+    //     for (field_name, field_type) in &instances {
+    //         let size = field_type.size();
+    //         let align = match size {
+    //             1 => 1,
+    //             2 => 2,
+    //             4 => 4,
+    //             8 => 8,
+    //             _ => 8,
+    //         };
+
+    //         // Align current offset
+    //         if current_offset % align != 0 {
+    //             current_offset += align - (current_offset % align);
+    //         }
+
+    //         field_info.push((field_name.clone(), field_type.clone(), current_offset));
+    //         current_offset += size;
+    //     }
+
+    //     // Align total struct size
+    //     let struct_size = (current_offset + 7) & !7; // 8-byte align structs
+
+    //     // Generate field definitions
+    //     for (field_name, _, field_offset) in &field_info {
+    //         output.push_str(&format!(
+    //             "%define {}.{} {}\n",
+    //             _name,
+    //             field_name,
+    //             field_offset
+    //         ));
+    //     }
+
+    //     output.push_str(&format!("; {} size: {}\n", _name, struct_size));
+    //     (output, struct_size)
+    // }
+
+    // fn handle_struct_copy_from_register(
+    //     &mut self,
+    //     save_reg: &str,
+    //     src_struct_type: &Type,
+    //     dest_offset: usize,
+    // ) -> String {
+    //     let mut output = String::new();
+
+    //     match src_struct_type {
+    //         Type::Struct { name, instances } => {
+    //             output.push_str(&format!(
+    //                 "; copying struct {} from {} to [rbp - {}]\n",
+    //                 name, save_reg, dest_offset
+    //             ));
+
+    //             let mut field_offset = 0;
+    //             for (field_name, field_type) in instances {
+    //                 let size = field_type.size();
+    //                 let align = match size {
+    //                     1 => 1,
+    //                     2 => 2,
+    //                     4 => 4,
+    //                     8 => 8,
+    //                     _ => 8,
+    //                 };
+
+    //                 // Align field offset
+    //                 if field_offset % align != 0 {
+    //                     field_offset += align - (field_offset % align);
+    //                 }
+
+    //                 match field_type {
+    //                     Type::int => {
+    //                         output.push_str(&format!(
+    //                             "mov eax, dword [{} + {}]\n",
+    //                             save_reg, field_offset
+    //                         ));
+    //                         output.push_str(&format!(
+    //                             "mov dword [rbp - {}], eax\n",
+    //                             dest_offset + field_offset
+    //                         ));
+    //                     }
+    //                     Type::Char | Type::Bool => {
+    //                         output.push_str(&format!(
+    //                             "mov al, byte [{} + {}]\n",
+    //                             save_reg, field_offset
+    //                         ));
+    //                         output.push_str(&format!(
+    //                             "mov byte [rbp - {}], al\n",
+    //                             dest_offset + field_offset
+    //                         ));
+    //                     }
+    //                     Type::float => {
+    //                         output.push_str(&format!(
+    //                             "movss xmm0, dword [{} + {}]\n",
+    //                             save_reg, field_offset
+    //                         ));
+    //                         output.push_str(&format!(
+    //                             "movss dword [rbp - {}], xmm0\n",
+    //                             dest_offset + field_offset
+    //                         ));
+    //                     }
+    //                     Type::Struct { name: nested_name, instances: nested_instances } => {
+    //                         // For nested structs, recursively copy
+    //                         output.push_str(&format!(
+    //                             "lea rax, [{} + {}]\n",
+    //                             save_reg, field_offset
+    //                         ));
+    //                         output.push_str(&self.handle_struct_copy_from_register(
+    //                             "rax",
+    //                             field_type,
+    //                             dest_offset + field_offset,
+    //                         ));
+    //                     }
+    //                     _ => {
+    //                         output.push_str(&format!(
+    //                             "mov rax, qword [{} + {}]\n",
+    //                             save_reg, field_offset
+    //                         ));
+    //                         output.push_str(&format!(
+    //                             "mov qword [rbp - {}], rax\n",
+    //                             dest_offset + field_offset
+    //                         ));
+    //                     }
+    //                 }
+
+    //                 field_offset += size;
+    //             }
+    //         }
+    //         _ => {
+    //             // Not a struct, shouldn't happen
+    //         }
+    //     }
+
+    //     output
+    // }
+
+    // fn generate_stack_struct_with_args(
+    //     &mut self,
+    //     _name: &str,
+    //     instances: Vec<(String, Type)>,
+    //     base_offset: usize,
+    // ) -> String {
+    //     let mut output = String::new();
+
+    //     // First pass: calculate layout and total size
+    //     let mut current_offset = 0;
+    //     let mut field_info = Vec::new();
+
+    //     for (field_name, field_type) in &instances {
+    //         let size = field_type.size();
+    //         let align = match size {
+    //             1 => 1,
+    //             2 => 2,
+    //             4 => 4,
+    //             8 => 8,
+    //             _ => 8,
+    //         };
+
+    //         // Align current offset
+    //         if current_offset % align != 0 {
+    //             current_offset += align - (current_offset % align);
+    //         }
+
+    //         field_info.push((field_name.clone(), field_type.clone(), current_offset));
+    //         current_offset += size;
+    //     }
+
+    //     let struct_size = (current_offset + 15) & !15; // 16-byte align for stack
+
+    //     // Allocate stack space
+    //     output.push_str(&format!("sub rsp, {}\n", struct_size));
+    //     self.stack_size += struct_size as i32;
+
+    //     // Generate field offset defines
+    //     for (field_name, _, field_offset) in &field_info {
+    //         output.push_str(&format!(
+    //             "%define {}.{} {}\n",
+    //             _name,
+    //             field_name,
+    //             field_offset
+    //         ));
+    //     }
+
+    //     // Argument registers
+    //     let int_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+    //     let float_regs = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5"];
+
+    //     let mut int_reg_idx = 0;
+    //     let mut float_reg_idx = 0;
+
+    //     // Initialize fields from arguments
+    //     for (field_name, field_type, field_offset) in field_info {
+    //         let dest_offset = base_offset + field_offset;
+
+    //         match field_type {
+    //             Type::int => {
+    //                 if int_reg_idx < int_regs.len() {
+    //                     output.push_str(&format!(
+    //                         "mov dword [rbp - {}], {}\n",
+    //                         dest_offset,
+    //                         Self::reg32(int_regs[int_reg_idx])
+    //                     ));
+    //                     int_reg_idx += 1;
+    //                 }
+    //             }
+    //             Type::Char | Type::Bool => {
+    //                 if int_reg_idx < int_regs.len() {
+    //                     output.push_str(&format!(
+    //                         "mov byte [rbp - {}], {}\n",
+    //                         dest_offset,
+    //                         Self::reg8(int_regs[int_reg_idx])
+    //                     ));
+    //                     int_reg_idx += 1;
+    //                 }
+    //             }
+    //             Type::float => {
+    //                 if float_reg_idx < float_regs.len() {
+    //                     output.push_str(&format!(
+    //                         "movss dword [rbp - {}], {}\n",
+    //                         dest_offset,
+    //                         float_regs[float_reg_idx]
+    //                     ));
+    //                     float_reg_idx += 1;
+    //                 }
+    //             }
+    //             Type::Struct { .. } => {
+    //                 // For struct arguments, the struct is passed by pointer
+    //                 if int_reg_idx < int_regs.len() {
+    //                     output.push_str(&self.handle_struct_copy_from_register(
+    //                         int_regs[int_reg_idx],
+    //                         &field_type,
+    //                         dest_offset,
+    //                     ));
+    //                     int_reg_idx += 1;
+    //                 }
+    //             }
+    //             _ => {
+    //                 if int_reg_idx < int_regs.len() {
+    //                     output.push_str(&format!(
+    //                         "mov qword [rbp - {}], {}\n",
+    //                         dest_offset,
+    //                         int_regs[int_reg_idx]
+    //                     ));
+    //                     int_reg_idx += 1;
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     output.push_str(&format!("; end {} initialization\n", _name));
+    //     output
+    // }
+
+    // // Helper function to access nested struct fields
+    // fn generate_struct_field_access(
+    //     struct_base_reg: &str,
+    //     struct_type: &Type,
+    //     field_path: &[String],
+    // ) -> String {
+    //     if field_path.is_empty() {
+    //         return struct_base_reg.to_string();
+    //     }
+
+    //     match struct_type {
+    //         Type::Struct { name, instances } => {
+    //             let field_name = &field_path[0];
+    //             let mut field_offset = 0;
+
+    //             for (fname, ftype) in instances {
+    //                 let size = ftype.size();
+    //                 let align = match size {
+    //                     1 => 1,
+    //                     2 => 2,
+    //                     4 => 4,
+    //                     8 => 8,
+    //                     _ => 8,
+    //                 };
+
+    //                 // Align field offset
+    //                 if field_offset % align != 0 {
+    //                     field_offset += align - (field_offset % align);
+    //                 }
+
+    //                 if fname == field_name {
+    //                     if field_path.len() == 1 {
+    //                         // Final field
+    //                         return format!("[{} + {}]", struct_base_reg, field_offset);
+    //                     } else {
+    //                         // Nested struct access
+    //                         let remaining_path = &field_path[1..];
+    //                         // Load address of nested struct
+    //                         return format!("lea rax, [{} + {}]\n{}",
+    //                             struct_base_reg,
+    //                             field_offset,
+    //                             Self::generate_struct_field_access("rax", ftype, remaining_path)
+    //                         );
+    //                     }
+    //                 }
+
+    //                 field_offset += size;
+    //             }
+    //         }
+    //         _ => {}
+    //     }
+
+    //     "".to_string()
+    // }
 
     fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
         let struct_layout = layout_fields(&instances);
@@ -1981,19 +2585,19 @@ impl CodeGen {
                 match field_type {
                     Type::int => {
                         self.output.push_str(&format!(
-                            "mov {}, dword [{ptr_reg} + {field_offset}]\n",
+                            "mov {}, dword [{ptr_reg} - {field_offset}]\n",
                             Self::reg32(&val_reg)
                         ));
                     }
                     Type::Char | Type::Bool => {
                         self.output.push_str(&format!(
-                            "mov {}, byte [{ptr_reg} + {field_offset}]\n",
+                            "mov {}, byte [{ptr_reg} - {field_offset}]\n",
                             Self::reg8(&val_reg)
                         ));
                     }
                     _ => {
                         self.output.push_str(&format!(
-                            "mov {val_reg}, qword [{ptr_reg} + {field_offset}]\n"
+                            "mov {val_reg}, qword [{ptr_reg} - {field_offset}]\n"
                         ));
                     }
                 }
@@ -2194,7 +2798,7 @@ impl CodeGen {
                 let reg = self.regs.pop_front().unwrap();
 
                 self.output.push_str(&format!("mov {reg}, rbp\n"));
-                self.output.push_str(&format!("add {reg}, {off}\n"));
+                self.output.push_str(&format!("sub {reg}, {off}\n"));
 
                 Some(reg)
             }
@@ -2384,19 +2988,19 @@ impl CodeGen {
                         match value.get_type() {
                             Type::int => {
                                 self.output.push_str(&format!(
-                                    "mov dword [{struct_ptr_reg} + {field_offset}], {}\n",
+                                    "mov dword [{struct_ptr_reg} - {field_offset}], {}\n",
                                     Self::reg32(&val_reg)
                                 ));
                             }
                             Type::Char | Type::Bool => {
                                 self.output.push_str(&format!(
-                                    "mov byte [{struct_ptr_reg} + {field_offset}], {}\n",
+                                    "mov byte [{struct_ptr_reg} - {field_offset}], {}\n",
                                     Self::reg8(&val_reg)
                                 ));
                             }
                             _ => {
                                 self.output.push_str(&format!(
-                                    "mov qword [{struct_ptr_reg} + {field_offset}], {val_reg}\n"
+                                    "mov qword [{struct_ptr_reg} - {field_offset}], {val_reg}\n"
                                 ));
                             }
                         }
@@ -2725,19 +3329,19 @@ impl CodeGen {
                     match field_type {
                         Type::int => {
                             self.output.push_str(&format!(
-                                "mov {}, dword [{ptr_reg} + {field_offset}]\n",
+                                "mov {}, dword [{ptr_reg} - {field_offset}]\n",
                                 Self::reg32(&val_reg)
                             ));
                         }
                         Type::Char | Type::Bool => {
                             self.output.push_str(&format!(
-                                "mov {}, byte [{ptr_reg} + {field_offset}]\n",
+                                "mov {}, byte [{ptr_reg} - {field_offset}]\n",
                                 Self::reg8(&val_reg)
                             ));
                         }
                         _ => {
                             self.output.push_str(&format!(
-                                "mov {val_reg}, qword [{ptr_reg} + {field_offset}]\n"
+                                "mov {val_reg}, qword [{ptr_reg} - {field_offset}]\n"
                             ));
                         }
                     }

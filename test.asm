@@ -3,49 +3,51 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-mov rcx, 73
-mov rdx, 'h'
-mov rbx, 5
-mov rdi, rbx
-%define Example_size 4
-%define Example.x 0
-
+mov rcx, 5
+mov rdi, rcx
+; defining Example
 sub rsp, 16
 mov dword [rbp - 8], edi
-mov r8, rbp
-add r8, 8
-mov rdi, rcx
-mov rsi, rdx
-mov rdx, r8
-%define X_size 12
-%define X.x 0
-%define X.y 4
-%define X.z 8
-
+; end Example
+mov rdx, rbp
+sub rdx, 8
+sub rsp, 8
+mov qword [rbp - 24], rdx
+mov rbx, 73
+mov r8, 'h'
+lea r9, [rbp - 24]
+mov rdi, rbx
+mov rsi, r8
+mov rdx, r9
+; defining X
 sub rsp, 16
-mov dword [rbp - 16], edi
-mov byte [rbp - 20], sil
-mov qword [rbp + 24], rdx
-mov r9, rbp
-add r9, 16
+mov dword [rbp - 24], edi
+mov byte [rbp - 28], sil
+; defining Example
+sub rsp, 16
+mov dword [rbp - 32], edi
+; end Example
+; end X
+mov r10, rbp
+sub r10, 24
 sub rsp, 8
-mov qword [rbp - 40], r9
+mov qword [rbp - 64], r10
 sub rsp, 8
-mov r10, qword [rbp - 40]
-mov rax, qword [r10 + 5]
-mov qword [rbp - 48], rax
-xor r12, r12
-mov r12, qword [rbp - 48]
-mov r11d, dword [r12 + 0]
-mov rdi, r11
+mov r11, qword [rbp - 64]
+mov rax, qword [r11 - 8]
+mov qword [rbp - 72], rax
+xor r13, r13
+mov r13, qword [rbp - 72]
+mov r12d, dword [r13 - 0]
+mov rdi, r12
 call print_int
-mov r13, rax
+mov r14, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov r14, 0
+mov r15, 0
 xor rax, rax
-mov rax, r14
+mov rax, r15
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp
