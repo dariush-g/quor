@@ -610,6 +610,8 @@ impl CodeGen {
                     self.output
                         .push_str(&format!("mov qword [rbp - {off}], {reg}\n"));
 
+
+
                     self.regs.push_back(reg);
                 }
                 Expr::AddressOf(inside) => {
@@ -1280,6 +1282,7 @@ impl CodeGen {
     name: &str,
     instances: Vec<(String, Type)>,
     off: usize,
+    ofst: Option<usize>,
 ) -> String {
     let mut output = String::new();
     output.push_str(&format!("; defining {}\n", name));
@@ -1308,11 +1311,11 @@ impl CodeGen {
     // Registers for arguments
     let save_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
     let save_fp = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
-    let mut gp_index = 0;
+    let mut gp_index = ofst.unwrap_or(0);
     let mut fp_index = 0;
 
     // Initialize fields
-    for (i, (fname, ty)) in instances.iter().enumerate() {
+    for (i, (_fname, ty)) in instances.iter().enumerate() {
         let offset = field_offsets[i] + off;
         match ty {
             Type::int => {
@@ -1342,7 +1345,7 @@ impl CodeGen {
             Type::Struct { name: sname, instances: subfields } => {
                 // recursively generate the nested struct
                 let nested_code =
-                    self.generate_stack_struct_inline(sname, subfields.clone(), offset);
+                    self.generate_stack_struct_inline(sname, subfields.clone(), offset, Some(i));
                 output.push_str(&nested_code);
             }
             _ => {
@@ -2770,6 +2773,7 @@ impl CodeGen {
                         .map(|(name, expr)| (name.clone(), expr.get_type()))
                         .collect(),
                     off.try_into().unwrap(),
+                    None
                 );
 
                 self.output.push_str(op);
@@ -3036,6 +3040,7 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Unknown var '{var_name}'"));
                     let reg = self.regs.pop_front().expect("No registers");
                     self.output.push_str(&format!("lea {reg}, [rbp - {off}]\n"));
+                    self.stack_size += 8;
                     Some(reg)
                 }
                 Expr::ArrayAccess { array, index, .. } => {
