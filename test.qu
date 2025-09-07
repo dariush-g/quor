@@ -11,7 +11,7 @@ struct X {
 def main() :: int {
     let example: Example = Example::(i: 5, n: 'h');
     
-    let x: X = X::(f: 0, z: example);
+    let x: X = X::(f: 5, z: example);
 
     let e: Example = x.z;
 
