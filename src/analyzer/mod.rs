@@ -951,7 +951,6 @@ impl TypeChecker {
                     if let Type::Struct { .. } = base_type(&got) {
                     } else {
                         match got {
-
                             Type::Array(_, _) => {}
                             _ => {
                                 let ty1 = base_type(&got);
