@@ -1425,7 +1425,7 @@ pub fn base_type(ty: &Type) -> Type {
             name: name.clone(),
             instances: Vec::new(),
         },
-        Type::Pointer(inside) => base_type(inside),
+        Type::Pointer(inside) => Type::Pointer(Box::new(base_type(inside))),
         _ => ty.clone(),
     }
 }

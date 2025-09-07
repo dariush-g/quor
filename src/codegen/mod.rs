@@ -2699,7 +2699,7 @@ impl CodeGen {
                     _ => {
                         let idx = self.handle_expr(index, None).expect("index reg");
                         self.output
-                            .push_str(&format!("mov {dst}, qword [rbp + {idx}*8 - {base_off}]\n"));
+                            .push_str(&format!("mov {dst}, qword [rbp - {idx}*8 - {base_off}]\n"));
                         self.regs.push_back(idx);
                         Some(dst)
                     }
@@ -3021,7 +3021,7 @@ impl CodeGen {
                     _ => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
                             self.output
-                                .push_str(&format!("mov qword [rbp + {offset}], {val_reg}\n"));
+                                .push_str(&format!("mov qword [rbp - {offset}], {val_reg}\n"));
                             self.regs.push_back(val_reg);
                         }
                     }
@@ -3068,7 +3068,7 @@ impl CodeGen {
                     };
                     let addr = self.regs.pop_front().expect("No registers");
                     self.output
-                        .push_str(&format!("lea {addr}, [rbp + {idx_reg}*8 - {base_off}]\n"));
+                        .push_str(&format!("lea {addr}, [rbp - {idx_reg}*8 - {base_off}]\n"));
                     self.regs.push_back(idx_reg);
                     Some(addr)
                 }
