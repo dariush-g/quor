@@ -1,21 +1,23 @@
 struct Example {
-    x: int;
+    i: int;
+    n: char;
 }
 
 struct X {
-    x: int;
-    y: char;
-    z: Example*;
+    f: int;
+    z: Example;
 }
 
 def main() :: int {
-    let example: Example = Example::(x: 5);
+    let example: Example = Example::(i: 5, n: 'h');
     
-    let x: X = X::(x: 73, y: 'h', z: &example);
+    let x: X = X::(f: 0, z: example);
 
     let e: Example = x.z;
 
-    print_int(e.x);
+    let ptr: char = e.n;
+
+    print_char(ptr);
 
     return 0;
 }

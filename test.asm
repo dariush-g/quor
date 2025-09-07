@@ -4,28 +4,29 @@ push rbp
 mov rbp, rsp
 sub rsp, 0
 mov rcx, 5
+mov rdx, 'h'
 mov rdi, rcx
+mov rsi, rdx
 ; defining Example
 sub rsp, 16
 mov dword [rbp - 8], edi
+mov byte [rbp - 12], sil
 ; end Example
-mov rdx, rbp
-sub rdx, 8
+mov rbx, rbp
+sub rbx, 8
 sub rsp, 8
-mov qword [rbp - 24], rdx
-mov rbx, 73
-mov r8, 'h'
-lea r9, [rbp - 24]
-mov rdi, rbx
-mov rsi, r8
-mov rdx, r9
+mov qword [rbp - 24], rbx
+mov r8, 0
+xor r9, r9
+mov r9, qword [rbp - 24]
+mov rdi, r8
+mov rsi, r9
 ; defining X
 sub rsp, 16
 mov dword [rbp - 24], edi
-mov byte [rbp - 28], sil
 ; defining Example
-sub rsp, 16
-mov dword [rbp - 32], edi
+mov dword [rbp - 32], esi
+mov byte [rbp - 36], dl
 ; end Example
 ; end X
 mov r10, rbp
@@ -34,13 +35,16 @@ sub rsp, 8
 mov qword [rbp - 64], r10
 sub rsp, 8
 mov r11, qword [rbp - 64]
-mov rax, qword [r11 - 8]
+mov rax, qword [r11 - 4]
 mov qword [rbp - 72], rax
+sub rsp, 8
+mov r12, qword [rbp - 72]
+mov al, byte [r12 - 4]
+mov byte [rbp - 80], al
 xor r13, r13
-mov r13, qword [rbp - 72]
-mov r12d, dword [r13 - 0]
-mov rdi, r12
-call print_int
+mov r13b, byte [rbp - 80]
+mov rdi, r13
+call print_char
 mov r14, rax
 mov rdi, 10
 call print_char
