@@ -1,24 +1,18 @@
-struct Example {
-    i: int;
-    n: char;
-}
-
-struct X {
-    f: int;
-    z: Example;
-}
-
 def main() :: int {
-    let example: Example = Example::(i: 5, n: 'h');
+
+    let arr: int* = malloc(sizeof(0) * 5) as int*;
+
+    let i: int = 0;
+
+    while (i < 5) {
+
+        *arr = 15;
+        arr = arr + 1;
+
+        i = i + 1;
+    }
+
     
-    let x: X = X::(f: 5, z: example);
-
-    let e: Example = x.z;
-
-    let ptr: char = e.n;
-
-    print_char(ptr);
 
     return 0;
-    
 }

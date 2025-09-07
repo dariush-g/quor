@@ -3,50 +3,52 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-mov rcx, 5
-mov rdx, 'h'
+mov rax, 4
+mov rcx, rax
+mov rdx, 5
+imul rcx, rdx
 mov rdi, rcx
-mov rsi, rdx
-; defining Example
-sub rsp, 16
-mov dword [rsp + 0], edi
-mov byte [rsp + 4], sil
-; end Example
-lea rbx, [rsp]
+call malloc
+mov rbx, rax
 sub rsp, 8
-mov qword [rbp - 24], rbx
-mov r8, 5
+mov qword [rbp - 8], rbx
+sub rsp, 8
+mov r8, 0
+mov dword [rbp - 16], r8d
+.while_start_0:
 xor r9, r9
-mov r9, qword [rbp - 24]
-mov rdi, r8
-mov rsi, r9
-; defining X
-sub rsp, 32
-mov dword [rsp + 0], edi
-mov qword [rsp + 4], rsi
-; end X
-lea r10, [rsp]
-sub rsp, 8
-mov qword [rbp - 64], r10
-sub rsp, 8
-mov r11, qword [rbp - 64]
-mov rax, qword [r11 + 4]
-mov qword [rbp - 72], rax
-sub rsp, 8
-mov r12, qword [rbp - 72]
-mov al, byte [r12 + 4]
-mov byte [rbp - 80], al
-xor r13, r13
-mov r13b, byte [rbp - 80]
-mov rdi, r13
-call print_char
-mov r14, rax
+mov r9d, dword [rbp - 16]
+mov r10, 5
+cmp r9, r10
+setl al
+movzx rax, al
+mov r11, rax
+cmp r11, 1
+jne .while_end_0
+xor r12, r12
+mov r12, qword [rbp - 8]
+mov r13, 15
+mov dword [r12], r13d
+xor r14, r14
+mov r14, qword [rbp - 8]
+mov r15d, 1
+imul r15, 4
+add r14, r15
+mov qword [rbp - 8], r14
+xor rdx, rdx
+mov edx, dword [rbp - 16]
+mov rcx, 1
+add rdx, rcx
+mov qword [rbp - 16], rdx
+add rsp, 16
+jmp .while_start_0
+.while_end_0:
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov r15, 0
+mov rbx, 0
 xor rax, rax
-mov rax, r15
+mov rax, rbx
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp
