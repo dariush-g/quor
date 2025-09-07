@@ -795,7 +795,7 @@ impl CodeGen {
                         }
                         Type::Char | Type::Bool => {
                             self.output
-                                .push_str(&format!("mov al, byte [{ptr_reg} - {field_offset}]\n"));
+                                .push_str(&format!("mov al, byte [{ptr_reg} + {field_offset}]\n"));
                             self.output
                                 .push_str(&format!("mov byte [rbp - {offset}], al\n"));
                         }
@@ -804,11 +804,16 @@ impl CodeGen {
                         //     let struct_name = name.clone();
                         //     let struct_instances = instances.to_vec();
                         //     let stack_size = self.stack_size.try_into().unwrap();
-                        //     self.generate_stack_struct_inline(&struct_name, struct_instances, stack_size, None);
+                        //     self.generate_stack_struct_inline(
+                        //         &struct_name,
+                        //         struct_instances,
+                        //         stack_size,
+                        //         None,
+                        //     );
                         // }
                         _ => {
                             self.output.push_str(&format!(
-                                "mov rax, qword [{ptr_reg} - {field_offset}]\n"
+                                "mov rax, qword [{ptr_reg} + {field_offset}]\n"
                             ));
                             self.output
                                 .push_str(&format!("mov qword [rbp - {offset}], rax\n"));
@@ -1890,7 +1895,11 @@ impl CodeGen {
         let mut stack_offset = 0;
         let mut field_offsets = Vec::new();
         for (_, ty) in &instances {
-            let size = ty.size();
+            let mut size = ty.size();
+
+            if let Type::Struct { .. } = ty {
+                size = 8;
+            }
 
             stack_offset += size;
             field_offsets.push(stack_offset);
@@ -1906,7 +1915,7 @@ impl CodeGen {
         let mut gp_index = ofst.unwrap_or(0);
         let mut fp_index = 0;
 
-                    let mut offset = 0;
+        let mut offset = 0;
 
         // Initialize fields
         for (i, (_fname, ty)) in instances.iter().enumerate() {
@@ -1933,19 +1942,6 @@ impl CodeGen {
                         offset, save_fp[fp_index]
                     ));
                     fp_index += 1;
-                }
-                Type::Struct {
-                    name: sname,
-                    instances: subfields,
-                } => {
-                    // recursively generate the nested struct
-                    let nested_code = self.generate_stack_struct_inline(
-                        sname,
-                        subfields.clone(),
-                        offset,
-                        Some(i),
-                    );
-                    output.push_str(&nested_code);
                 }
                 _ => {
                     output.push_str(&format!(
@@ -2608,7 +2604,6 @@ impl CodeGen {
                         ));
                     }
                 }
-
                 let _field_type = {
                     let struct_decl_stmt = &self.structures.get(&struct_type).unwrap().1;
                     if let Stmt::StructDecl { instances, .. } = struct_decl_stmt {
@@ -2805,7 +2800,7 @@ impl CodeGen {
 
                 let reg = self.regs.pop_front().unwrap();
 
-                self.output.push_str(&format!("mov {reg}, rsp\n"));
+                self.output.push_str(&format!("lea {reg}, [rsp]\n"));
 
                 Some(reg)
             }
@@ -3145,9 +3140,9 @@ impl CodeGen {
 
                     // println!("allocated {struct:?}");
 
-                    let reg = self.regs.pop_front().expect("No regs");
+                    let reg = self.regs.pop_front().unwrap();
 
-                    self.output.push_str(&format!("mov {reg}, rax\n"));
+                    self.output.push_str(&format!("lea {reg}, [rsp]\n"));
 
                     Some(reg)
                 }
@@ -3355,18 +3350,18 @@ impl CodeGen {
                                 Self::reg8(&val_reg)
                             ));
                         }
-                        Type::Struct { name, instances } => {
-                            // Clone the data needed before calling the mutating method
-                            let struct_name = name.clone();
-                            let struct_instances = instances.to_vec();
-                            let stack_size = self.stack_size.try_into().unwrap();
-                            self.generate_stack_struct_inline(
-                                &struct_name,
-                                struct_instances,
-                                stack_size,
-                                None,
-                            );
-                        }
+                        // Type::Struct { name, instances } => {
+                        //     // Clone the data needed before calling the mutating method
+                        //     let struct_name = name.clone();
+                        //     let struct_instances = instances.to_vec();
+                        //     let stack_size = self.stack_size.try_into().unwrap();
+                        //     self.generate_stack_struct_inline(
+                        //         &struct_name,
+                        //         struct_instances,
+                        //         stack_size,
+                        //         None,
+                        //     );
+                        // }
                         _ => {
                             self.output.push_str(&format!(
                                 "mov {val_reg}, qword [{ptr_reg} + {field_offset}]\n"
