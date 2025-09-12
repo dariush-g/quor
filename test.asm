@@ -3,52 +3,20 @@ main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-mov rax, 4
-mov rcx, rax
-mov rdx, 5
-imul rcx, rdx
-mov rdi, rcx
+mov rdi, 2
 call malloc
+mov byte [rax + 0], 'x'
+mov byte [rax + 1], 0
 mov rbx, rax
-sub rsp, 8
-mov qword [rbp - 8], rbx
-sub rsp, 8
-mov r8, 0
-mov dword [rbp - 16], r8d
-.while_start_0:
-xor r9, r9
-mov r9d, dword [rbp - 16]
-mov r10, 5
-cmp r9, r10
-setl al
-movzx rax, al
-mov r11, rax
-cmp r11, 1
-jne .while_end_0
-xor r12, r12
-mov r12, qword [rbp - 8]
-mov r13, 15
-mov dword [r12], r13d
-xor r14, r14
-mov r14, qword [rbp - 8]
-mov r15d, 1
-imul r15, 4
-add r14, r15
-mov qword [rbp - 8], r14
-xor rdx, rdx
-mov edx, dword [rbp - 16]
-mov rcx, 1
-add rdx, rcx
-mov qword [rbp - 16], rdx
-add rsp, 16
-jmp .while_start_0
-.while_end_0:
+mov rdi, rbx
+call print_str
+mov rcx, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov rbx, 0
+mov rdx, 0
 xor rax, rax
-mov rax, rbx
+mov rax, rdx
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp

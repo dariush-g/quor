@@ -1,5 +1,6 @@
-# ℺
-# Quor
+# Quor ℺
+
+## Quor is a small (not completely debugged) programming language that compiles directly to x86_64 assembly.
 
 ## Current Features
 
