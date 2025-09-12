@@ -1,18 +1,7 @@
 def main() :: int {
-
-    let arr: int* = malloc(sizeof(0) * 5) as int*;
-
-    let i: int = 0;
-
-    while (i < 5) {
-
-        *arr = 15;
-        arr = arr + 1;
-
-        i = i + 1;
-    }
-
     
+    print_str("x");
+
 
     return 0;
 }
