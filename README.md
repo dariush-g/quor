@@ -2,16 +2,17 @@
 
 ## Quor is a small (not completely debugged) programming language that compiles directly to x86_64 assembly.
 
-## Current Features
+### Current Features
 
 - Integers, chars, strings, booleans
 - Pointers (`&` for address-of, `*` for dereference)
 - Arrays
-- Basic structs (heap-allocated)
+- Basic structs (stack-allocated)
 - Variables (stack-allocated for now, 8 bytes each)
 - Functions and function calls
 - `if` / `while`
 - imports to a standard lib and to local files
+- Basic memory management using C's `malloc()` and `free()`
 
 ## Example
 
