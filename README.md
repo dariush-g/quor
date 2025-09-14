@@ -5,10 +5,11 @@
 ### Current Features
 
 - Integers, chars, strings, booleans
-- Pointers (`&` for address-of, `*` for dereference)
-- Arrays
-- Basic structs (stack-allocated)
-- Variables (stack-allocated for now, 8 bytes each)
+- Pointers (`&` for address, `*` for dereference)
+- Arrays with indexing (No indexing for pointers yet)
+- Basic structs (stack-allocated with heap option)
+- Basic unions (stack-allocated with heap option)
+- Variables 
 - Functions and function calls
 - `if` / `while`
 - imports to a standard lib and to local files
@@ -39,6 +40,23 @@ struct Person {
 
 def get_name(self: Person*) :: string {
     return self.name;
+}
+
+```
+
+```quor
+struct Example {
+    x: int;
+}
+
+def main() :: int {
+    let example: Example* = malloc(sizeof(Example)) as Example*;
+    
+    example.x = 42;
+
+    print_int(example.x);
+
+    return 0;
 }
 
 ```
