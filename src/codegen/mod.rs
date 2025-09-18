@@ -2746,6 +2746,7 @@ impl CodeGen {
                     ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
 
                 let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
+                let f_regs = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
                 if arg_vals.len() > abi_regs.len() {
                     panic!("More than 5 constructor args not supported yet");
                 }
