@@ -107,7 +107,7 @@ struct FieldLayout {
 }
 
 struct StructLayout {
-    size: usize,
+    _size: usize,
     _align: usize,
     fields: Vec<FieldLayout>,
 }
@@ -132,7 +132,7 @@ fn layout_fields(fields: &[(String, Type)]) -> StructLayout {
     let size = align_up(off, max_a);
 
     StructLayout {
-        size,
+        _size: size,
         _align: max_a,
         fields: out,
     }
@@ -394,8 +394,8 @@ impl CodeGen {
 
                 // loop back
 
-                self.output
-                    .push_str(&format!("add rsp, {}\n", self.stack_size));
+                // self.output
+                //     .push_str(&format!("add rsp, {}\n", self.stack_size));
 
                 self.output.push_str(&format!("jmp {loop_start}\n"));
 
@@ -2746,7 +2746,7 @@ impl CodeGen {
                     ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
 
                 let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-                let f_regs = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+                let _f_regs = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
                 if arg_vals.len() > abi_regs.len() {
                     panic!("More than 5 constructor args not supported yet");
                 }
