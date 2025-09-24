@@ -680,15 +680,15 @@ impl TypeChecker {
                     }
                     BinaryOp::Equal | BinaryOp::NotEqual => {}
                     BinaryOp::Less
-                    | BinaryOp::LessEqual
-                    | BinaryOp::Greater
-                    | BinaryOp::GreaterEqual => {
-                        if !matches!(left_type, Type::int | Type::float) {
-                            return Err(format!(
-                                "Comparison operations require numeric types, found {left_type:?}"
-                            ));
+                        | BinaryOp::LessEqual
+                        | BinaryOp::Greater
+                        | BinaryOp::GreaterEqual => {
+                            if !matches!(left_type, Type::int | Type::float | Type::Char) {
+                                return Err(format!(
+                                    "Comparison operations require numeric types, found {left_type:?}"
+                                ));
+                            }
                         }
-                    }
                     BinaryOp::And | BinaryOp::Or => {
                         if left_type != Type::Bool {
                             return Err("Logical operations require boolean operands".to_string());

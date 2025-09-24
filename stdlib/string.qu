@@ -6,9 +6,18 @@ def char_at(str: char*, index: int) :: char {
     return *ret;
 }
 
-def is_alphabetical(c_lit: char) :: bool {
-    let c: int = c_lit as int;
-    if ((c <= 'z' as int && c >= 'a' as int) || (c <= 'Z' as int && c >= 'A' as int)) {
+def is_alphabetic(c: char) :: bool {
+    if (c >= 'a' && c <= 'z') {
+        return true;
+    }
+    if (c >= 'A' && c <= 'Z') {
+        return true;
+    }
+    return false;
+}
+
+def is_alphanumeric(c: char) :: bool {
+    if (is_alphabetic(c) || (c > '0' && c < '9')) {
         return true;
     }
     return false;

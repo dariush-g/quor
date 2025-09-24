@@ -2038,6 +2038,56 @@ impl CodeGen {
 
                 self.output.push_str(&format!("jmp {epilogue}\n"));
             }
+            Stmt::If {
+                condition,
+                then_stmt,
+                else_stmt,
+            } => {
+                let cond_reg = self.handle_expr(condition, None).expect("if cond reg");
+                let jmp_id = self._jmp_count;
+                self._jmp_count += 1;
+
+                self.output
+                    .push_str(&format!("cmp {cond_reg}, 0\nje .else{jmp_id}\n"));
+                self.regs.push_back(cond_reg);
+
+                self.handle_stmt_with_epilogue(then_stmt, epilogue);
+                if else_stmt.is_some() {
+                    self.output.push_str(&format!("jmp .endif{jmp_id}\n"));
+                }
+
+                self.output.push_str(&format!(".else{jmp_id}:\n"));
+                if let Some(else_s) = else_stmt {
+                    self.handle_stmt_with_epilogue(else_s, epilogue);
+                    self.output.push_str(&format!(".endif{jmp_id}:\n"));
+                }
+            }
+            Stmt::While { condition, body } => {
+                let jmp_id = self._jmp_count;
+                self._jmp_count += 1;
+
+                let loop_start = format!(".while_start_{}", jmp_id);
+                let loop_end = format!(".while_end_{}", jmp_id);
+
+                self.output.push_str(&format!("{loop_start}:\n"));
+
+                let condition_reg = self
+                    .handle_expr(condition, None)
+                    .expect("Error handling condition");
+                self.output.push_str(&format!("cmp {condition_reg}, 1\n"));
+                self.output.push_str(&format!("jne {loop_end}\n"));
+                self.regs.push_back(condition_reg);
+
+                self.handle_stmt_with_epilogue(body, epilogue);
+
+                self.output.push_str(&format!("jmp {loop_start}\n"));
+                self.output.push_str(&format!("{loop_end}:\n"));
+            }
+            Stmt::Block(stmts) => {
+                for s in stmts {
+                    self.handle_stmt_with_epilogue(s, epilogue);
+                }
+            }
             _ => self.handle_stmt(stmt),
         }
     }
