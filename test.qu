@@ -1,37 +1,10 @@
-
-struct y {
-    num: char;
-    num1: char;
-}
-
-struct example {
-    x: int;
-    why: y;
-}
+@import::<mem.qu>;
 
 def main() :: int {
     
-    let x: example = example {
-        x: 5,
-        why: y {
-            num: 'h',
-            num1: 'i'
-        }
-    };
-
-    let y: y = x.why;
-
-    print_char(y.num1);
-
-    let ptr: y* = malloc(sizeof(y)) as y*;
-
-    ptr.num1 = 'n';
-
-    print_char(ptr.num1);
-
-    while (true) {
-        print_str("hello\n");
-    }
+    let size: int = HEAP_SIZE;
+    print_int(size);
+    
 
     return 0;
 }

@@ -204,7 +204,7 @@ impl CodeGen {
 
         for stmt in stmts {
             if let Stmt::AtDecl(decl, param, val) = stmt {
-                if decl.as_str() == "define" {
+                if decl.as_str() == "define" || decl.as_str() == "defines" {
                     let param = param.clone().unwrap();
                     code.output.push_str("section .data\n");
                     if let Some(val) = val {

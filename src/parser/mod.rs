@@ -330,9 +330,9 @@ impl Parser {
         let condition = self.expression()?;
         self.consume(TokenType::RightParen, "Expected ')' after condition")?;
 
-        let then_branch = Box::new(self.statement(false)?);
+        let then_branch = Box::new(self.statement(true)?);
         let else_branch = if self.match_token(&[TokenType::Else]) {
-            Some(Box::new(self.statement(false)?))
+            Some(Box::new(self.statement(true)?))
         } else {
             None
         };
@@ -348,7 +348,7 @@ impl Parser {
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'")?;
         let condition = self.expression()?;
         self.consume(TokenType::RightParen, "Expected ')' after while condition")?;
-        let body = Box::new(self.statement(false)?);
+        let body = Box::new(self.statement(true)?);
 
         Ok(Stmt::While { condition, body })
     }
