@@ -299,6 +299,35 @@ impl TypeChecker {
 
         let mut program = process_program(&mut program, path);
 
+        // After import expansion, register global defines and handle union directives from all files
+        for (i, stmt) in program.clone().iter().enumerate() {
+            if let Stmt::AtDecl(decl, param, val) = stmt {
+                if decl.as_str() == "define" || decl.as_str() == "defines" {
+                    let param = param
+                        .clone()
+                        .unwrap_or_else(|| panic!("Unable to locate define name"));
+
+                    // Re-infer type after imports with full context
+                    let ty = type_checker
+                        .type_check_expr(&val.clone().unwrap())
+                        .unwrap_or_else(|e| panic!("Invalid define '{param}': {e}"));
+                    type_checker.globals.insert(param, ty);
+                }
+                if decl.as_str() == "union" {
+                    if let Stmt::StructDecl { name, instances, .. } = program.get(i + 1).unwrap()
+                    {
+                        program[i + 1] = Stmt::StructDecl {
+                            name: name.to_string(),
+                            instances: instances.to_vec(),
+                            union: true,
+                        }
+                    } else {
+                        return Err("expected struct after union declaration".to_string());
+                    }
+                }
+            }
+        }
+
         type_checker
             .declare_fn("print_int", vec![Type::int], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;

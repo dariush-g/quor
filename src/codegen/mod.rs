@@ -139,6 +139,28 @@ fn layout_fields(fields: &[(String, Type)]) -> StructLayout {
 }
 
 impl CodeGen {
+    fn const_eval_int(expr: &Expr) -> Option<i64> {
+        match expr {
+            Expr::IntLiteral(n) => Some(*n as i64),
+            Expr::LongLiteral(n) => Some(*n),
+            Expr::Unary { op: UnaryOp::Negate, expr, .. } => {
+                Self::const_eval_int(expr).map(|v| -v)
+            }
+            Expr::Binary { left, op, right, .. } => {
+                let l = Self::const_eval_int(left)?;
+                let r = Self::const_eval_int(right)?;
+                match op {
+                    BinaryOp::Add => Some(l + r),
+                    BinaryOp::Sub => Some(l - r),
+                    BinaryOp::Mul => Some(l * r),
+                    BinaryOp::Div => Some(l / r),
+                    BinaryOp::Mod => Some(l % r),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
     // asm      import paths
     pub fn generate(stmts: &Vec<Stmt>) -> String {
         let mut code = CodeGen {
@@ -210,25 +232,41 @@ impl CodeGen {
                     if let Some(val) = val {
                         match val {
                             Expr::IntLiteral(n) => {
-                                code.output.push_str(&format!("{param}: dd {n}\n"))
+                                code.output.push_str(&format!("{param}: dd {n}\n"));
+                                code.globals.insert(param.clone(), Type::int);
+                            }
+                            Expr::LongLiteral(n) => {
+                                code.output.push_str(&format!("{param}: dq {n}\n"));
+                                code.globals.insert(param.clone(), Type::Long);
                             }
                             Expr::FloatLiteral(n) => {
-                                code.output.push_str(&format!("{param}: dd {n}\n"))
+                                code.output.push_str(&format!("{param}: dd {n}\n"));
+                                code.globals.insert(param.clone(), Type::float);
                             }
                             Expr::BoolLiteral(n) => {
-                                code.output.push_str(&format!("{param}: db {}\n", *n as u8))
+                                code.output.push_str(&format!("{param}: db {}\n", *n as u8));
+                                code.globals.insert(param.clone(), Type::Bool);
                             }
                             Expr::CharLiteral(n) => {
-                                code.output.push_str(&format!("{param}: db {n}\n"))
+                                code.output.push_str(&format!("{param}: db {n}\n"));
+                                code.globals.insert(param.clone(), Type::Char);
                             }
                             Expr::StringLiteral(n) => {
-                                code.output.push_str(&format!("{param}: db \"{n}\",0\n"))
+                                code.output.push_str(&format!("{param}: db \"{n}\",0\n"));
+                                code.globals.insert(param.clone(), Type::Pointer(Box::new(Type::Char)));
                             }
-                            _ => {}
+                            other => {
+                                if let Some(v) = CodeGen::const_eval_int(other) {
+                                    code.output.push_str(&format!("{param}: dd {v}\n"));
+                                    code.globals.insert(param.clone(), Type::int);
+                                } else {
+                                    // Fallback: reserve 4 bytes and mark as int
+                                    code.output.push_str(&format!("{param}: dd 0\n"));
+                                    code.globals.insert(param.clone(), Type::int);
+                                }
+                            }
                         }
                     }
-                    code.globals
-                        .insert(param.clone(), val.clone().unwrap().get_type());
                     code.output.push_str("section .text\n");
                 }
             }
@@ -420,6 +458,10 @@ impl CodeGen {
                         Type::Bool | Type::Char => self
                             .output
                             .push_str(&format!("mov byte [rbp - {off}], {}\n", Self::reg8(&reg))),
+
+                        Type::float => self
+                            .output
+                            .push_str(&format!("movss [rbp - {off}], {reg}\n")),
 
                         _ => self
                             .output
@@ -2124,7 +2166,34 @@ impl CodeGen {
 
     fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
         match expr {
-            Expr::Cast { expr, .. } => self.handle_expr(expr, None),
+            Expr::Cast { expr, target_type } => {
+                let src = self.handle_expr(expr, None)?;
+                match target_type {
+                    Type::int => {
+                        if src.starts_with("xmm") {
+                            let dst = self.regs.pop_front().expect("No gp reg");
+                            self.output
+                                .push_str(&format!("cvttss2si {}, {}\n", Self::reg32(&dst), src));
+                            self.fp_regs.push_back(src);
+                            Some(dst)
+                        } else {
+                            Some(src)
+                        }
+                    }
+                    Type::float => {
+                        if src.starts_with("xmm") {
+                            Some(src)
+                        } else {
+                            let dst = self.fp_regs.pop_front().expect("No fp reg");
+                            self.output
+                                .push_str(&format!("cvtsi2ss {dst}, {}\n", Self::reg32(&src)));
+                            self.regs.push_back(src);
+                            Some(dst)
+                        }
+                    }
+                    _ => Some(src),
+                }
+            },
             Expr::IndexAssign {
                 array,
                 index,
@@ -2286,6 +2355,15 @@ impl CodeGen {
                             "mov byte [{reg} + {field_offset}], {}\n",
                             Self::reg8(&val_reg)
                         ));
+                    }
+                    Type::float => {
+                        self.output
+                            .push_str(&format!("movss [{reg} + {field_offset}], {val_reg}\n"));
+                        // return fp reg to pool
+                        self.fp_regs.push_back(val_reg.to_string());
+                        // also keep reg for address below
+                        self.regs.push_back(reg.clone());
+                        return None;
                     }
                     _ => {
                         self.output.push_str(&format!(
@@ -2648,6 +2726,16 @@ impl CodeGen {
                             Self::reg8(&val_reg)
                         ));
                     }
+                    Type::float => {
+                        let xmm = self.fp_regs.pop_front().expect("No fp reg");
+                        self.output
+                            .push_str(&format!("movss {xmm}, [{ptr_reg} + {field_offset}]\n"));
+                        // return the gp val_reg we borrowed
+                        self.regs.push_back(val_reg);
+                        // and keep ptr_reg live below
+                        self.regs.push_back(ptr_reg.clone());
+                        return Some(xmm);
+                    }
                     _ => {
                         self.output.push_str(&format!(
                             "mov {val_reg}, qword [{ptr_reg} + {field_offset}]\n"
@@ -2674,13 +2762,25 @@ impl CodeGen {
             }
             Expr::Variable(name, _) => {
                 // println!("{:?}", self.regs);
+                // Decide register class based on type
+                if let Some(t) = self.globals.get(name) {
+                    match t {
+                        Type::float => {
+                            let xmm = self.fp_regs.pop_front().expect("No fp reg");
+                            self.output.push_str(&format!("movss {xmm}, [{name}]\n"));
+                            return Some(xmm);
+                        }
+                        _ => {}
+                    }
+                }
+
                 let av_reg = self.regs.pop_front().expect("No registers");
 
                 self.output.push_str(&format!("xor {av_reg}, {av_reg}\n"));
 
                 if let Some(t) = self.globals.get(name) {
                     match t {
-                        Type::int | Type::float => {
+                        Type::int => {
                             self.output
                                 .push_str(&format!("mov {}, [{name}]\n", Self::reg32(&av_reg)));
                             return Some(av_reg);
@@ -2690,10 +2790,15 @@ impl CodeGen {
                                 .push_str(&format!("mov {}, [{name}]\n", Self::reg8(&av_reg)));
                             return Some(av_reg);
                         }
-                        _ => {
+                        Type::Pointer(_) | Type::Long | Type::Struct { .. } => {
                             self.output.push_str(&format!("mov {av_reg}, {name}\n"));
                             return Some(av_reg);
                         }
+                        Type::float => {
+                            // already handled above
+                            unreachable!()
+                        }
+                        _ => {}
                     }
                 }
 
@@ -2704,12 +2809,21 @@ impl CodeGen {
                 let t = &self.locals.get(name).unwrap().2;
 
                 match t {
-                    Type::int | Type::float => {
+                    Type::int => {
                         self.output.push_str(&format!(
                             "mov {}, dword [rbp - {off}]\n",
                             Self::reg32(&av_reg)
                         ));
                         Some(av_reg)
+                    }
+                    Type::float => {
+                        // Use XMM register
+                        let xmm = self.fp_regs.pop_front().expect("No fp reg");
+                        self.output
+                            .push_str(&format!("movss {xmm}, [rbp - {off}]\n"));
+                        // Return FP reg instead of GP
+                        self.regs.push_back(av_reg);
+                        Some(xmm)
                     }
                     Type::Char | Type::Bool => {
                         self.output.push_str(&format!(
@@ -2757,27 +2871,63 @@ impl CodeGen {
             }
 
             Expr::StructInit { name, params } => {
-                let struct_info = self.structures.get(name);
+                let (field_names, field_types_ordered): (Vec<String>, Vec<Type>) = {
+                    let (layout, stmt) = self
+                        .structures
+                        .get(name)
+                        .unwrap_or_else(|| panic!("Struct {} not found", name));
 
-                if struct_info.is_none() {
-                    panic!("Struct {} not found", name);
-                }
+                    // Build ordered names from layout
+                    let names: Vec<String> = layout.fields.iter().map(|f| f.name.clone()).collect();
 
-                let (struct_layout, _) = struct_info.unwrap();
+                    let mut map: HashMap<&str, &Type> = HashMap::new();
+                    if let Stmt::StructDecl { instances, .. } = stmt {
+                        for (fname, fty) in instances {
+                            map.insert(fname.as_str(), fty);
+                        }
+                    }
 
-                // Clone the field names and positions to avoid borrowing issues
-                let field_positions: HashMap<String, usize> = struct_layout
-                    .fields
+                    let tys: Vec<Type> = names
+                        .iter()
+                        .map(|n| map.get(n.as_str()).unwrap().clone().clone())
+                        .collect();
+
+                    (names, tys)
+                };
+
+                let field_count = field_names.len();
+                let field_positions: HashMap<String, usize> = field_names
                     .iter()
                     .enumerate()
-                    .map(|(i, field)| (field.name.clone(), i))
+                    .map(|(i, n)| (n.clone(), i))
                     .collect();
-                let field_count = struct_layout.fields.len();
 
                 // First, evaluate all expressions to get their register values
                 let mut param_values = Vec::new();
                 for (param_name, param_expr) in params {
                     let r = self.handle_expr(param_expr, None).expect("ctor arg");
+                    // Ensure float args are in XMM, ints in GP
+                    match param_expr.get_type() {
+                        Type::float => {
+                            if !r.starts_with("xmm") {
+                                let xmm = self.fp_regs.pop_front().expect("No fp reg");
+                                self.output.push_str(&format!("cvtsi2ss {xmm}, {}\n", r));
+                                self.regs.push_back(r);
+                                param_values.push((param_name, xmm));
+                                continue;
+                            }
+                        }
+                        Type::int | Type::Char | Type::Bool | Type::Pointer(_) | Type::Long => {
+                            if r.starts_with("xmm") {
+                                let gp = self.regs.pop_front().expect("No gp reg");
+                                self.output.push_str(&format!("cvttss2si {}, {}\n", Self::reg32(&gp), r));
+                                self.fp_regs.push_back(r);
+                                param_values.push((param_name, gp));
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    }
                     param_values.push((param_name, r));
                 }
 
@@ -2795,16 +2945,36 @@ impl CodeGen {
                 let arg_vals: Vec<String> =
                     ordered_args.into_iter().filter(|s| !s.is_empty()).collect();
 
-                let abi_regs = ["rdi", "rsi", "rdx", "rcx", "r8"];
-                let _f_regs = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
-                if arg_vals.len() > abi_regs.len() {
-                    panic!("More than 5 constructor args not supported yet");
-                }
+                let gp_targets = ["rdi", "rsi", "rdx", "rcx", "r8"];
+                let fp_targets = ["xmm0", "xmm1", "xmm2", "xmm3", "xmm4"];
+                let mut gp_i = 0usize;
+                let mut fp_i = 0usize;
 
-                for (i, r) in arg_vals.iter().enumerate() {
-                    if r != abi_regs[i] {
-                        self.output
-                            .push_str(&format!("mov {}, {}\n", abi_regs[i], r));
+                for (idx, _) in field_names.iter().enumerate() {
+                    let src = &arg_vals[idx];
+                    match field_types_ordered[idx] {
+                        Type::float => {
+                            let dst = fp_targets[fp_i];
+                            if src != dst {
+                                // move between XMM registers
+                                self.output.push_str(&format!("movss {dst}, {}\n", src));
+                            }
+                            fp_i += 1;
+                        }
+                        Type::int | Type::Char | Type::Bool | Type::Pointer(_) | Type::Long | Type::Struct { .. } => {
+                            let dst = gp_targets[gp_i];
+                            if src != dst {
+                                self.output.push_str(&format!("mov {}, {}\n", dst, src));
+                            }
+                            gp_i += 1;
+                        }
+                        _ => {
+                            let dst = gp_targets[gp_i];
+                            if src != dst {
+                                self.output.push_str(&format!("mov {}, {}\n", dst, src));
+                            }
+                            gp_i += 1;
+                        }
                     }
                 }
 
@@ -3401,6 +3571,13 @@ impl CodeGen {
                                 Self::reg8(&val_reg)
                             ));
                         }
+                        Type::float => {
+                            let xmm = self.fp_regs.pop_front().expect("No fp reg");
+                            self.output
+                                .push_str(&format!("movss {xmm}, [{ptr_reg} + {field_offset}]\n"));
+                            self.regs.push_back(val_reg);
+                            return Some(xmm);
+                        }
                         // Type::Struct { name, instances } => {
                         //     // Clone the data needed before calling the mutating method
                         //     let struct_name = name.clone();
@@ -3434,7 +3611,7 @@ impl CodeGen {
                 let ptr_reg = self.handle_expr(target, None).expect("ptr reg");
 
                 match value.get_type() {
-                    Type::int | Type::float => {
+                    Type::int => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
                             self.output.push_str(&format!(
                                 "mov dword [{ptr_reg}], {}\n",
@@ -3442,6 +3619,16 @@ impl CodeGen {
                             ));
                             self.regs.push_back(ptr_reg);
                             self.regs.push_back(val_reg);
+                        } else {
+                            self.regs.push_back(ptr_reg);
+                        }
+                    }
+                    Type::float => {
+                        if let Some(val_reg) = self.handle_expr(value, None) {
+                            self.output
+                                .push_str(&format!("movss [{ptr_reg}], {val_reg}\n"));
+                            self.regs.push_back(ptr_reg);
+                            self.fp_regs.push_back(val_reg);
                         } else {
                             self.regs.push_back(ptr_reg);
                         }
@@ -3459,7 +3646,7 @@ impl CodeGen {
                         }
                     }
                     Type::Pointer(inside) => match *inside {
-                        Type::int | Type::float => {
+                        Type::int => {
                             if let Some(val_reg) = self.handle_expr(value, None) {
                                 self.output.push_str(&format!(
                                     "mov dword [{ptr_reg}], {}\n",
@@ -3467,6 +3654,16 @@ impl CodeGen {
                                 ));
                                 self.regs.push_back(ptr_reg);
                                 self.regs.push_back(val_reg);
+                            } else {
+                                self.regs.push_back(ptr_reg);
+                            }
+                        }
+                        Type::float => {
+                            if let Some(val_reg) = self.handle_expr(value, None) {
+                                self.output
+                                    .push_str(&format!("movss [{ptr_reg}], {val_reg}\n"));
+                                self.regs.push_back(ptr_reg);
+                                self.fp_regs.push_back(val_reg);
                             } else {
                                 self.regs.push_back(ptr_reg);
                             }
@@ -3598,6 +3795,96 @@ impl CodeGen {
                         _ => {}
                     },
                     _ => {}
+                }
+
+                // Float operations path
+                if left.get_type() == Type::float {
+                    let lhs = self.handle_expr(left, None).unwrap();
+                    let rhs = self.handle_expr(right, None).unwrap();
+
+                    match op {
+                        BinaryOp::Add => {
+                            self.output.push_str(&format!("addss {lhs}, {rhs}\n"));
+                            self.fp_regs.push_back(rhs);
+                            return Some(lhs);
+                        }
+                        BinaryOp::Sub => {
+                            self.output.push_str(&format!("subss {lhs}, {rhs}\n"));
+                            self.fp_regs.push_back(rhs);
+                            return Some(lhs);
+                        }
+                        BinaryOp::Mul => {
+                            self.output.push_str(&format!("mulss {lhs}, {rhs}\n"));
+                            self.fp_regs.push_back(rhs);
+                            return Some(lhs);
+                        }
+                        BinaryOp::Div => {
+                            self.output.push_str(&format!("divss {lhs}, {rhs}\n"));
+                            self.fp_regs.push_back(rhs);
+                            return Some(lhs);
+                        }
+                        BinaryOp::Equal => {
+                            self.output.push_str(&format!("ucomiss {lhs}, {rhs}\n"));
+                            self.output.push_str("sete al\n");
+                            self.output.push_str("movzx rax, al\n");
+                            self.fp_regs.push_back(lhs);
+                            self.fp_regs.push_back(rhs);
+                            let reg = self.regs.pop_front().unwrap();
+                            self.output.push_str(&format!("mov {reg}, rax\n"));
+                            return Some(reg);
+                        }
+                        BinaryOp::NotEqual => {
+                            self.output.push_str(&format!("ucomiss {lhs}, {rhs}\n"));
+                            self.output.push_str("setne al\n");
+                            self.output.push_str("movzx rax, al\n");
+                            self.fp_regs.push_back(lhs);
+                            self.fp_regs.push_back(rhs);
+                            let reg = self.regs.pop_front().unwrap();
+                            self.output.push_str(&format!("mov {reg}, rax\n"));
+                            return Some(reg);
+                        }
+                        BinaryOp::Less => {
+                            self.output.push_str(&format!("ucomiss {lhs}, {rhs}\n"));
+                            self.output.push_str("setb al\n");
+                            self.output.push_str("movzx rax, al\n");
+                            self.fp_regs.push_back(lhs);
+                            self.fp_regs.push_back(rhs);
+                            let reg = self.regs.pop_front().unwrap();
+                            self.output.push_str(&format!("mov {reg}, rax\n"));
+                            return Some(reg);
+                        }
+                        BinaryOp::LessEqual => {
+                            self.output.push_str(&format!("ucomiss {lhs}, {rhs}\n"));
+                            self.output.push_str("setbe al\n");
+                            self.output.push_str("movzx rax, al\n");
+                            self.fp_regs.push_back(lhs);
+                            self.fp_regs.push_back(rhs);
+                            let reg = self.regs.pop_front().unwrap();
+                            self.output.push_str(&format!("mov {reg}, rax\n"));
+                            return Some(reg);
+                        }
+                        BinaryOp::Greater => {
+                            self.output.push_str(&format!("ucomiss {lhs}, {rhs}\n"));
+                            self.output.push_str("seta al\n");
+                            self.output.push_str("movzx rax, al\n");
+                            self.fp_regs.push_back(lhs);
+                            self.fp_regs.push_back(rhs);
+                            let reg = self.regs.pop_front().unwrap();
+                            self.output.push_str(&format!("mov {reg}, rax\n"));
+                            return Some(reg);
+                        }
+                        BinaryOp::GreaterEqual => {
+                            self.output.push_str(&format!("ucomiss {lhs}, {rhs}\n"));
+                            self.output.push_str("setae al\n");
+                            self.output.push_str("movzx rax, al\n");
+                            self.fp_regs.push_back(lhs);
+                            self.fp_regs.push_back(rhs);
+                            let reg = self.regs.pop_front().unwrap();
+                            self.output.push_str(&format!("mov {reg}, rax\n"));
+                            return Some(reg);
+                        }
+                        BinaryOp::And | BinaryOp::Or | BinaryOp::Mod => {}
+                    }
                 }
 
                 let lhs = self.handle_expr(left, None).unwrap();
@@ -3759,13 +4046,30 @@ impl CodeGen {
                 expr,
                 ..
             } => {
-                let reg = self
-                    .handle_expr(expr, None)
-                    .expect("No reg for unary negate");
-
-                self.output.push_str(&format!("neg {reg}\n"));
-
-                Some(reg)
+                match expr.get_type() {
+                    Type::float => {
+                        // Compute 0.0 - expr
+                        let src = self.handle_expr(expr, None).expect("No reg for negate");
+                        self.output.push_str(&format!(
+                            "section .data\nfp{}: dd 0.0\nsection .text\n",
+                            self.fp_count
+                        ));
+                        let tmp = self.fp_regs.pop_front().expect("No fp reg");
+                        self.output
+                            .push_str(&format!("movss {tmp}, [fp{}]\n", self.fp_count));
+                        self.fp_count += 1;
+                        self.output.push_str(&format!("subss {tmp}, {src}\n"));
+                        self.fp_regs.push_back(src);
+                        Some(tmp)
+                    }
+                    _ => {
+                        let reg = self
+                            .handle_expr(expr, None)
+                            .expect("No reg for unary negate");
+                        self.output.push_str(&format!("neg {reg}\n"));
+                        Some(reg)
+                    }
+                }
             }
             _ => None,
         }

@@ -1,16 +1,35 @@
 section .data
+HEAP_SIZE: dd 16777216
 section .text
 global main
 main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
+section .data
+fp0: dd 5.5
+section .text
+movss xmm0, [fp0]
+; defining X
+sub rsp, 16
+movss [rsp + 0], xmm0
+; end X
+lea rcx, [rsp]
+sub rsp, 8
+mov qword [rbp - 24], rcx
+xor rbx, rbx
+mov rbx, qword [rbp - 24]
+movss xmm1, [rbx + 0]
+cvttss2si r8d, xmm1
+mov rdi, r8
+call print_int
+mov r9, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov rcx, 0
+mov r10, 0
 xor rax, rax
-mov rax, rcx
+mov rax, r10
 jmp .Lret_main
 .Lret_main:
 mov rsp, rbp
