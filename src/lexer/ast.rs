@@ -45,6 +45,7 @@ impl Type {
     pub fn size(&self) -> usize {
         match self {
             Type::int => 4,
+            Type::float => 4,
             Type::Char => 1,
             Type::Bool => 1,
             Type::Pointer(_) => 8,
