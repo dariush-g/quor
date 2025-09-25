@@ -1,0 +1,5 @@
+fn main()->int {
+    var x: int = 5;
+    var n: int = x;
+    return n;
+}

@@ -1,0 +1,36 @@
+@import::<string.qu>;
+
+def main() :: int {
+    let filename: char* = "test.qu";
+    
+    // Test the original condition with a simpler approach
+    let last_char: char = char_at(filename, 5);  // should be 'u'
+    let second_last: char = char_at(filename, 4); // should be 'q'
+    let third_last: char = char_at(filename, 3);  // should be '.'
+    let fourth_last: char = char_at(filename, 2); // should be 't'
+    
+    print_str("Last char: ");
+    print_char(last_char);
+    print_char(10 as char);
+    
+    print_str("Second last: ");
+    print_char(second_last);
+    print_char(10 as char);
+    
+    print_str("Third last: ");
+    print_char(third_last);
+    print_char(10 as char);
+    
+    print_str("Fourth last: ");
+    print_char(fourth_last);
+    print_char(10 as char);
+    
+    // Test the OR condition
+    if (last_char != 'u' || second_last != 'q' || third_last != '.' || is_alphabetic(fourth_last) != true) {
+        print_str("File extension check FAILED\n");
+    } else {
+        print_str("File extension check PASSED\n");
+    }
+
+    return 0;
+}

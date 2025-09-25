@@ -1,0 +1,1 @@
+/home/dariushg/quor/pre/target/debug/libquor.rlib: /home/dariushg/quor/pre/src/analyzer/mod.rs /home/dariushg/quor/pre/src/codegen/mod.rs /home/dariushg/quor/pre/src/lexer/ast.rs /home/dariushg/quor/pre/src/lexer/mod.rs /home/dariushg/quor/pre/src/lexer/token.rs /home/dariushg/quor/pre/src/lib.rs /home/dariushg/quor/pre/src/parser/mod.rs
