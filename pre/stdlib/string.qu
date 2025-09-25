@@ -1,6 +1,3 @@
-
-
-
 def char_at(str: char*, index: int) :: char {
     let ret: char* = str + index;
     return *ret;
