@@ -1,0 +1,107 @@
+@import::<string.qu>;
+
+
+
+@define TOKEN_TYPE_INT_LIT 0;
+@define TOKEN_TYPE_CHAR_LIT 1;
+@define TOKEN_TYPE_BOOL_LIT 2;
+@define TOKEN_TYPE_FLOAT_LIT 3;
+@define TOKEN_TYPE_STRING_LIT 4;
+@define TOKEN_TYPE_LONG_LIT 5;
+@define TOKEN_TYPE_DOUBLE_LIT 6;
+
+
+
+@define TOKEN_TYPE_STRUCT 7;
+@define TOKEN_TYPE_LET 8;
+@define TOKEN_TYPE_DEF 9;
+@define TOKEN_TYPE_WHILE 10;
+@define TOKEN_TYPE_IF 11;
+@define TOKEN_TYPE_ELSE 12;
+@define TOKEN_TYPE_RETURN 13;
+
+
+@define TOKEN_TYPE_TRUE 14;
+@define TOKEN_TYPE_FALSE 15;
+
+@define TOKEN_TYPE_FOR 16;
+
+@define TOKEN_TYPE_AT 17;
+
+@define TOKEN_TYPE_PLUS 18;
+@define TOKEN_TYPE_MINUS 19;
+@define TOKEN_TYPE_STAR 20;
+@define TOKEN_TYPE_SLASH 21;
+@define TOKEN_TYPE_PERCENT 22;
+
+@define TOKEN_TYPE_EQUAL 23;
+@define TOKEN_TYPE_EQUAL_EQUAL 24;
+@define TOKEN_TYPE_BANG 25;
+@define TOKEN_TYPE_BANG_EQUAL 26;
+@define TOKEN_TYPE_GREATER 27;
+@define TOKEN_TYPE_GREATER_EQUAL 28;
+@define TOKEN_TYPE_LESS 29;
+@define TOKEN_TYPE_LESS_EQUAL 30;
+
+@define TOKEN_TYPE_ARROW 31;
+
+@define TOKEN_TYPE_DOUBLE_COLON 32;
+
+@define TOKEN_TYPE_AMPERSAND 33;
+
+@define TOKEN_TYPE_AND 34;
+@define TOKEN_TYPE_OR 35;
+@define TOKEN_TYPE_AS 36;
+@define TOKEN_TYPE_LEFT_PAREN 37;
+@define TOKEN_TYPE_RIGHT_PAREN 38;
+@define TOKEN_TYPE_LEFT_BRACE 39;
+@define TOKEN_TYPE_RIGHT_BRACE 40;
+@define TOKEN_TYPE_LEFT_BRACKET 41;
+@define TOKEN_TYPE_RIGHT_BRACKET 42;
+@define TOKEN_TYPE_COMMA 43;
+@define TOKEN_TYPE_SEMICOLON 44;
+@define TOKEN_TYPE_PERIOD 45;
+@define TOKEN_TYPE_COLON 46;
+@define TOKEN_TYPE_SINGLE_QUOTE 47;
+@define TOKEN_TYPE_DOUBLE_QUOTE 48;
+@define TOKEN_TYPE_NEWLINE 49;
+@define TOKEN_TYPE_EOF 50;
+@define TOKEN_TYPE_IDENTIFIER 51;
+@define TOKEN_TYPE_VOID 52;
+@define TOKEN_TYPE_CHAR 53;
+@define TOKEN_TYPE_FLOAT 54;
+@define TOKEN_TYPE_INT 55;
+@define TOKEN_TYPE_LONG 56;
+
+
+
+@union 
+struct TOKEN_VALUE {
+    int_val: int;
+    float_val: float;
+    long_val: long;
+    str_val: char*;
+    char_val: char;
+}
+
+struct POSITION {
+    line: int;
+    column: int;
+    position: int;
+}
+
+struct TOKEN {
+    type: int;
+    value: TOKEN_VALUE;
+    position: POSITION;
+}
+
+def TOKEN_NEW(type: int, val: TOKEN_VALUE*, pos: POSITION*) :: TOKEN {
+    return TOKEN { 
+        type: type, 
+        value: *val, 
+        position: *pos 
+    };
+}
+
+
