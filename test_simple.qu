@@ -1,0 +1,5 @@
+def main() :: int {
+    print_str("Hello, World!");
+    print_char(10 as char);
+    return 0;
+}

@@ -1,7 +1,5 @@
 @import::<string.qu>
 
-
-
 @define TOKEN_TYPE_INT_LIT 0
 @define TOKEN_TYPE_CHAR_LIT 1
 @define TOKEN_TYPE_BOOL_LIT 2

@@ -1,1 +1,3 @@
-def main() :: void {}
+def main() :: void {
+    print_str("hello\n");
+}
