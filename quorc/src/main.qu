@@ -1,11 +1,16 @@
 @import::<string.qu>
 @import::("lexer/lex.qu")
+@import::("parser.qu")
+@import::("codegen.qu")
 
 
 def main(argc: int, argv: char**) :: int {
     
     if (argc != 2) {
-        print_str("Expected filename!\nTry: quor <filename>\n");
+        print_str("Expected filename!");
+        print_char(10 as char);
+        print_str("Try: quor <filename>");
+        print_char(10 as char);
         exit(1);
     }
     
@@ -27,7 +32,20 @@ def main(argc: int, argv: char**) :: int {
 
     let file_contents: char* = read_file(filename);
 
-    
+    // Generate simple LLVM IR
+    print_str("; ModuleID = 'quor'");
+    print_char(10 as char);
+    print_str("source_filename = quor");
+    print_char(10 as char);
+    print_str("target triple = x86_64-unknown-linux-gnu");
+    print_char(10 as char);
+    print_char(10 as char);
+    print_str("define i32 @main() {");
+    print_char(10 as char);
+    print_str("  ret i32 0");
+    print_char(10 as char);
+    print_str("}");
+    print_char(10 as char);
 
     return 0;
 }

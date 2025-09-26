@@ -1,0 +1,121 @@
+@import::("lexer/ast.qu")
+
+struct LLVM_GENERATOR {
+    output: char*;
+    output_len: int;
+    output_capacity: int;
+}
+
+def LLVM_GENERATOR_NEW() :: LLVM_GENERATOR* {
+    let gen: LLVM_GENERATOR* = malloc(sizeof(LLVM_GENERATOR));
+    gen.output = malloc(1024);
+    gen.output_len = 0;
+    gen.output_capacity = 1024;
+    return gen;
+}
+
+def append_str(gen: LLVM_GENERATOR*, str: char*) :: void {
+    let len: int = strlen(str);
+    if (gen.output_len + len >= gen.output_capacity) {
+        // Reallocate
+        gen.output_capacity = gen.output_capacity * 2;
+        gen.output = realloc(gen.output, gen.output_capacity);
+    }
+    
+    let i: int = 0;
+    while (i < len) {
+        gen.output[gen.output_len + i] = str[i];
+        i = i + 1;
+    }
+    gen.output_len = gen.output_len + len;
+    gen.output[gen.output_len] = 0; // null terminator
+}
+
+def append_char(gen: LLVM_GENERATOR*, c: char) :: void {
+    if (gen.output_len + 1 >= gen.output_capacity) {
+        gen.output_capacity = gen.output_capacity * 2;
+        gen.output = realloc(gen.output, gen.output_capacity);
+    }
+    gen.output[gen.output_len] = c;
+    gen.output_len = gen.output_len + 1;
+    gen.output[gen.output_len] = 0;
+}
+
+def generate_llvm_header(gen: LLVM_GENERATOR*) :: void {
+    append_str(gen, "; ModuleID = 'quor'\n");
+    append_str(gen, "source_filename = \"quor\"\n");
+    append_str(gen, "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n");
+    append_str(gen, "target triple = \"x86_64-unknown-linux-gnu\"\n\n");
+}
+
+def generate_llvm_main(gen: LLVM_GENERATOR*) :: void {
+    append_str(gen, "define i32 @main() {\n");
+    append_str(gen, "  ret i32 0\n");
+    append_str(gen, "}\n");
+}
+
+def generate_expression_llvm(gen: LLVM_GENERATOR*, expr: EXPR*) :: void {
+    if (expr == 0 as EXPR*) {
+        return;
+    }
+    
+    if (expr.type == TOKEN_TYPE_INT_LIT) {
+        let val: int = expr.vals[0]._int;
+        append_str(gen, "  ret i32 ");
+        // Convert int to string and append
+        let temp: char[32];
+        int_to_string(val, temp);
+        append_str(gen, temp);
+        append_str(gen, "\n");
+    }
+}
+
+def generate_llvm_ir(gen: LLVM_GENERATOR*, expr: EXPR*) :: void {
+    generate_llvm_header(gen);
+    
+    if (expr != 0 as EXPR*) {
+        append_str(gen, "define i32 @main() {\n");
+        generate_expression_llvm(gen, expr);
+        append_str(gen, "}\n");
+    } else {
+        generate_llvm_main(gen);
+    }
+}
+
+// Helper function to convert int to string
+def int_to_string(n: int, buffer: char*) :: void {
+    if (n == 0) {
+        buffer[0] = '0';
+        buffer[1] = 0;
+        return;
+    }
+    
+    let is_negative: bool = n < 0;
+    if (is_negative) {
+        n = -n;
+    }
+    
+    let i: int = 0;
+    while (n > 0) {
+        buffer[i] = (n % 10) + '0';
+        n = n / 10;
+        i = i + 1;
+    }
+    
+    if (is_negative) {
+        buffer[i] = '-';
+        i = i + 1;
+    }
+    
+    // Reverse the string
+    let j: int = 0;
+    let k: int = i - 1;
+    while (j < k) {
+        let temp: char = buffer[j];
+        buffer[j] = buffer[k];
+        buffer[k] = temp;
+        j = j + 1;
+        k = k - 1;
+    }
+    buffer[i] = 0;
+}

@@ -70,7 +70,7 @@ fn rec_import_walk(
     current_file: &Path,
 ) -> Vec<Stmt> {
     let mut ret = Vec::new();
-    println!("Analyzing {current_file:?}");
+    eprintln!("Analyzing {current_file:?}");
 
     let current_dir = current_file.parent().unwrap_or_else(|| {
         eprintln!("Cannot determine parent directory of {current_file:?}");
