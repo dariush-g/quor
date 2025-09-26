@@ -1,5 +1,5 @@
-@import::<string.qu>;
-@import::("lexer/lex.qu");
+@import::<string.qu>
+@import::("lexer/lex.qu")
 
 
 def main(argc: int, argv: char**) :: int {
@@ -15,7 +15,6 @@ def main(argc: int, argv: char**) :: int {
 
     let name_len: int = strlen(filename);
 
-    // Require ".qu" extension
     if (name_len < 3
         || char_at(filename, name_len - 1) != 'u'
         || char_at(filename, name_len - 2) != 'q'
@@ -28,9 +27,7 @@ def main(argc: int, argv: char**) :: int {
 
     let file_contents: char* = read_file(filename);
 
-    print_str(file_contents);
     
-
 
     return 0;
 }

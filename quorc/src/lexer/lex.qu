@@ -1,9 +1,10 @@
-@import::("token.qu");
-@import::("ast.qu");
+@import::("token.qu")
+@import::("ast.qu")
 
 
 struct LEXER {
     tokens: TOKEN**;
+    token_count: int;
     position: int;
     line: int;
 }
