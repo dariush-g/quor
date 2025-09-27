@@ -202,7 +202,7 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    AtDecl(String, Option<String>, Option<Expr>),
+    AtDecl(String, Option<String>, Option<Expr>, Option<Box<Stmt>>),
     VarDecl {
         name: String,
         var_type: Type,

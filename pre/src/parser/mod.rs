@@ -17,7 +17,14 @@ impl Parser {
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
-            statements.push(self.statement(true)?);
+            // Skip newlines before statements
+            while self.match_token(&[TokenType::Newline]) {
+                // Just consume the newline token
+            }
+
+            if !self.is_at_end() {
+                statements.push(self.statement(true)?);
+            }
         }
 
         Ok(statements)
@@ -128,7 +135,7 @@ impl Parser {
                     param.push('!');
 
                     self.consume(TokenType::Greater, "Expected '>'")?;
-                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None));
+                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None, None));
                 }
                 if let TokenType::LeftParen = self.peek().token_type {
                     self.advance(); // consume '('
@@ -155,7 +162,7 @@ impl Parser {
 
                     self.consume(TokenType::RightParen, "Expected ')'")?;
 
-                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None));
+                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None, None));
                 }
             }
 
@@ -168,10 +175,186 @@ impl Parser {
                     decl.to_string(),
                     Some(name.to_string()),
                     Some(expr),
+                    None,
                 ));
             }
 
-            return Ok(Stmt::AtDecl(decl.to_string(), None, None));
+            // if let TokenType::LeftBrace = &self.peek().token_type {
+            //     self.advance();
+            //     let mut lines = Vec::new();
+            //     while self.peek().token_type != TokenType::RightBrace {
+            //         if let TokenType::Identifier(str) = &self.peek().token_type {
+            //             lines.push(str.clone());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         if let TokenType::IntLiteral(str) = &self.peek().token_type {
+            //             lines.push(str.to_string());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         if let TokenType::CharLiteral(str) = &self.peek().token_type {
+            //             lines.push(str.to_string());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         if let TokenType::FloatLiteral(str) = &self.peek().token_type {
+            //             lines.push(str.to_string());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         if let TokenType::StringLiteral(str) = &self.peek().token_type {
+            //             lines.push(str.to_string());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         if let TokenType::LongLiteral(str) = &self.peek().token_type {
+            //             lines.push(str.to_string());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         if let TokenType::Comma = &self.peek().token_type {
+            //             lines.push(",".to_string());
+            //             lines.push("\n".to_owned());
+            //         }
+            //         self.advance();
+            //     }
+            //     self.advance();
+            //     #[allow(suspicious_double_ref_op)]
+            //     return Ok(Stmt::AtDecl(
+            //         decl.to_string(),
+            //         Some(lines.iter().map(|str| str.clone().clone()).collect()),
+            //         None,
+            //         None,
+            //     ));
+            // }
+
+            if let TokenType::LeftBrace = &self.peek().token_type {
+                self.advance();
+                let mut assembly_code = String::new();
+
+                while self.peek().token_type != TokenType::RightBrace {
+                    // println!("Processing token: {:?}", self.peek().token_type);
+                    let current_token = self.peek().token_type.clone();
+
+                    match &current_token {
+                        TokenType::Identifier(str) => {
+                            assembly_code.push_str(str);
+                        }
+                        TokenType::IntLiteral(num) => {
+                            assembly_code.push_str(&num.to_string());
+                        }
+                        TokenType::CharLiteral(ch) => {
+                            assembly_code.push('\'');
+                            assembly_code.push(*ch);
+                            assembly_code.push('\'');
+                        }
+                        TokenType::FloatLiteral(float) => {
+                            assembly_code.push_str(&float.to_string());
+                        }
+                        TokenType::StringLiteral(string) => {
+                            assembly_code.push_str(string);
+                        }
+                        TokenType::LongLiteral(long) => {
+                            assembly_code.push_str(&long.to_string());
+                        }
+                        TokenType::Comma => {
+                            assembly_code.push(',');
+                        }
+                        TokenType::Newline => {
+                            assembly_code.push('\n');
+                        }
+                        TokenType::Plus => {
+                            assembly_code.push('+');
+                        }
+                        TokenType::Minus => {
+                            assembly_code.push('-');
+                        }
+                        TokenType::Star => {
+                            assembly_code.push('*');
+                        }
+                        TokenType::Slash => {
+                            assembly_code.push('/');
+                        }
+                        TokenType::Equal => {
+                            assembly_code.push('=');
+                        }
+                        TokenType::LeftParen => {
+                            assembly_code.push('(');
+                        }
+                        TokenType::RightParen => {
+                            assembly_code.push(')');
+                        }
+                        TokenType::LeftBracket => {
+                            assembly_code.push('[');
+                        }
+                        TokenType::RightBracket => {
+                            assembly_code.push(']');
+                        }
+                        TokenType::Semicolon => {
+                            assembly_code.push(';');
+                        }
+                        TokenType::Colon => {
+                            assembly_code.push(':');
+                        }
+                        TokenType::Period => {
+                            assembly_code.push('.');
+                        }
+                        TokenType::Ampersand => {
+                            assembly_code.push('&');
+                        }
+                        TokenType::Bang => {
+                            assembly_code.push('!');
+                        }
+                        TokenType::Greater => {
+                            assembly_code.push('>');
+                        }
+                        TokenType::Less => {
+                            assembly_code.push('<');
+                        }
+                        TokenType::Percent => {
+                            assembly_code.push('%');
+                        }
+                        _ => {
+                            // Add a space for unknown tokens to maintain readability
+                            assembly_code.push(' ');
+                        }
+                    }
+
+                    self.advance();
+
+                    // Add a space after most tokens, but be smart about it
+                    if !self.is_at_end() && self.peek().token_type != TokenType::RightBrace {
+                        let next_token = &self.peek().token_type;
+
+                        // Don't add space after comma, newline, or closing punctuation
+                        if !matches!(
+                            current_token,
+                            TokenType::Comma
+                                | TokenType::Newline
+                                | TokenType::RightParen
+                                | TokenType::RightBracket
+                                | TokenType::Semicolon
+                        ) {
+                            // Don't add space before newline or closing punctuation
+                            if !matches!(
+                                next_token,
+                                TokenType::Newline
+                                    | TokenType::RightParen
+                                    | TokenType::RightBracket
+                                    | TokenType::Semicolon
+                                    | TokenType::RightBrace
+                            ) {
+                                assembly_code.push(' ');
+                            }
+                        }
+                    }
+                }
+                self.advance();
+
+                return Ok(Stmt::AtDecl(
+                    decl.to_string(),
+                    Some(assembly_code),
+                    None,
+                    None,
+                ));
+            }
+
+            return Ok(Stmt::AtDecl(decl.to_string(), None, None, None));
         }
 
         Err(ParseError::Expected {
@@ -182,6 +365,11 @@ impl Parser {
     }
 
     fn statement(&mut self, semi: bool) -> Result<Stmt, ParseError> {
+        // Skip newlines at the beginning of statements
+        while self.match_token(&[TokenType::Newline]) {
+            // Just consume the newline token
+        }
+
         if self.match_token(&[TokenType::If]) {
             return self.if_statement();
         }
@@ -675,6 +863,11 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         match &self.peek().token_type {
+            TokenType::Newline => {
+                self.advance();
+                while self.match_token(&[TokenType::Newline]) {}
+                self.expression()
+            }
             TokenType::StringLiteral(str) => {
                 let str = str.clone();
                 self.advance();
@@ -860,7 +1053,14 @@ impl Parser {
         let mut statements = Vec::new();
 
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
-            statements.push(self.statement(true)?);
+            // Skip newlines before statements
+            while self.match_token(&[TokenType::Newline]) {
+                // Just consume the newline token
+            }
+
+            if !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                statements.push(self.statement(true)?);
+            }
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after block")?;

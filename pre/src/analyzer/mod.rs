@@ -78,7 +78,7 @@ fn rec_import_walk(
     });
 
     for stmt in stmts {
-        if let Stmt::AtDecl(decl, param, _) = stmt {
+        if let Stmt::AtDecl(decl, param, _, _) = stmt {
             if decl.as_str() == "import" {
                 let mut param = param
                     .clone()
@@ -143,7 +143,7 @@ impl TypeChecker {
         let mut type_checker = TypeChecker::default();
 
         for (i, stmt) in program.clone().iter().enumerate() {
-            if let Stmt::AtDecl(decl, param, val) = stmt {
+            if let Stmt::AtDecl(decl, param, val, _) = stmt {
                 if decl.as_str() == "define" || decl.as_str() == "defines" {
                     let param = param
                         .clone()
@@ -301,7 +301,7 @@ impl TypeChecker {
 
         // After import expansion, register global defines and handle union directives from all files
         for (i, stmt) in program.clone().iter().enumerate() {
-            if let Stmt::AtDecl(decl, param, val) = stmt {
+            if let Stmt::AtDecl(decl, param, val, _) = stmt {
                 if decl.as_str() == "define" || decl.as_str() == "defines" {
                     let param = param
                         .clone()
@@ -314,7 +314,9 @@ impl TypeChecker {
                     type_checker.globals.insert(param, ty);
                 }
                 if decl.as_str() == "union" {
-                    if let Stmt::StructDecl { name, instances, .. } = program.get(i + 1).unwrap()
+                    if let Stmt::StructDecl {
+                        name, instances, ..
+                    } = program.get(i + 1).unwrap()
                     {
                         program[i + 1] = Stmt::StructDecl {
                             name: name.to_string(),
@@ -709,15 +711,15 @@ impl TypeChecker {
                     }
                     BinaryOp::Equal | BinaryOp::NotEqual => {}
                     BinaryOp::Less
-                        | BinaryOp::LessEqual
-                        | BinaryOp::Greater
-                        | BinaryOp::GreaterEqual => {
-                            if !matches!(left_type, Type::int | Type::float | Type::Char) {
-                                return Err(format!(
-                                    "Comparison operations require numeric types, found {left_type:?}"
-                                ));
-                            }
+                    | BinaryOp::LessEqual
+                    | BinaryOp::Greater
+                    | BinaryOp::GreaterEqual => {
+                        if !matches!(left_type, Type::int | Type::float | Type::Char) {
+                            return Err(format!(
+                                "Comparison operations require numeric types, found {left_type:?}"
+                            ));
                         }
+                    }
                     BinaryOp::And | BinaryOp::Or => {
                         if left_type != Type::Bool {
                             return Err("Logical operations require boolean operands".to_string());
@@ -1116,14 +1118,15 @@ impl TypeChecker {
 
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
-            Stmt::AtDecl(decl, _, _) => match decl.as_str() {
+            Stmt::AtDecl(decl, _, _, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
                 "define" | "defines" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
                 "keep_asm" => Ok(stmt.clone()),
+                "__asm__" | "asm" | "_asm_" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
-                _ => Err(format!("unknown declaration '{decl}'")),
+                _ => Err(format!("Unknown @ declaration: '{decl}'")),
             },
 
             Stmt::VarDecl {

@@ -180,7 +180,8 @@ fn main() {
     // 1) Build a path from the argument (relative or absolute)
     let mut src_path = PathBuf::from(&args[1]);
     if src_path.is_relative() {
-        src_path = env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        src_path = env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
             .join(&src_path);
     }
     // 2) Canonicalize when possible (if the file exists)
@@ -207,7 +208,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    
+
     let keep_asm = source.contains("@keep_asm");
 
     // Lex
