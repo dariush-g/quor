@@ -32,7 +32,6 @@ def main(argc: int, argv: char**) :: int {
 
     let file_contents: char* = read_file(filename);
 
-    // Generate simple LLVM IR
     print_str("; ModuleID = 'quor'");
     print_char(10 as char);
     print_str("source_filename = quor");
