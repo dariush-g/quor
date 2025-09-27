@@ -31,7 +31,9 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while !self.is_at_end() {
-            self.skip_whitespace();
+            if self.skip_whitespace() {
+                tokens.push(self.make_token(TokenType::Newline));
+            }
             if !self.is_at_end() {
                 self.scan_token(&mut tokens)?;
                 // println!("Token {:?}", self.peek())
@@ -42,7 +44,8 @@ impl Lexer {
         Ok(tokens)
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self) -> bool {
+        let mut found_newline = false;
         while !self.is_at_end() {
             match self.peek() {
                 ' ' | '\r' | '\t' => {
@@ -52,6 +55,7 @@ impl Lexer {
                     self.advance();
                     self.line += 1;
                     self.column = 1;
+                    found_newline = true;
                 }
                 '/' if self.peek_next() == '/' => {
                     // Skip until end of line
@@ -62,12 +66,18 @@ impl Lexer {
                 _ => break,
             }
         }
+        found_newline
     }
 
     fn scan_token(&mut self, tokens: &mut Vec<Token>) -> Result<(), LexError> {
         let c = self.advance();
 
         match c {
+            '\n' => {
+                self.line += 1;
+                self.column = 1;
+                tokens.push(self.make_token(TokenType::Newline));
+            }
             '@' => tokens.push(self.make_token(TokenType::At)),
             '\'' => tokens.push(self.scan_char()?),
             '"' => {
@@ -156,6 +166,7 @@ impl Lexer {
                     return Err(LexError::InvalidCharacter(c, self.line, self.column));
                 }
             }
+
             '/' => {
                 // We've already handled comments in skip_whitespace
                 tokens.push(self.make_token(TokenType::Slash));

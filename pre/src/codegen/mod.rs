@@ -225,7 +225,7 @@ impl CodeGen {
         let mut has_main = false;
 
         for stmt in stmts {
-            if let Stmt::AtDecl(decl, param, val) = stmt {
+            if let Stmt::AtDecl(decl, param, val, _) = stmt {
                 if decl.as_str() == "define" || decl.as_str() == "defines" {
                     let param = param.clone().unwrap();
                     code.output.push_str("section .data\n");
@@ -410,6 +410,11 @@ impl CodeGen {
 
     fn handle_stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::AtDecl(decl, params, _, _) => {
+                if decl.as_str() == "__asm__" || decl.as_str() == "_asm_" || decl.as_str() == "asm" {
+                    self.output.push_str(&params.clone().unwrap_or("".to_string()));
+                }
+            }
             Stmt::While { condition, body } => {
                 let jmp_id = self._jmp_count;
                 self._jmp_count += 1;

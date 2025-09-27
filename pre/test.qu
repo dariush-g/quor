@@ -1,0 +1,12 @@
+@keep_asm
+
+def main() :: int {
+
+    @__asm__ {
+        mov rdi, 'a'
+        call print_char
+    }
+
+
+    return 0;
+}
