@@ -405,7 +405,7 @@ impl Parser {
                     }
                 }
             }
-            
+
             if found_def {
                 // This is an attribute, let fn_dec handle it
                 self.current -= 1; // Back up to the @ token
@@ -514,7 +514,7 @@ impl Parser {
                 self.advance();
                 attributes.push(attr.clone());
                 // println!("Found attribute: {}", attr);
-                
+
                 // Skip newlines after each attribute
                 while self.match_token(&[TokenType::Newline]) {
                     // Just consume the newline token
@@ -528,7 +528,7 @@ impl Parser {
             }
         }
         // println!("Collected attributes: {:?}", attributes);
-        
+
         // Skip newlines after attributes
         while self.match_token(&[TokenType::Newline]) {
             // Just consume the newline token

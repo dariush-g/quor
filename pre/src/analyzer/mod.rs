@@ -1125,6 +1125,8 @@ impl TypeChecker {
                 "keep_asm" => Ok(stmt.clone()),
                 "trust_ret" => Ok(stmt.clone()),
                 "__asm__" | "asm" | "_asm_" => Ok(stmt.clone()),
+                "__asm_bss__" | "_asm_bss_" | "asm_bss" => Ok(stmt.clone()),
+                "__asm_ro__" | "_asm_ro_" | "asm_ro" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
                 _ => Err(format!("Unknown @ declaration: '{decl}'")),
@@ -1261,11 +1263,11 @@ impl TypeChecker {
                 for stmt in body {
                     checked_body.push(self.type_check_stmt(stmt)?);
                 }
-                
+
                 // Check if function has @trust_ret attribute
                 let has_trust_ret = attributes.contains(&"trust_ret".to_string());
                 // println!("Function '{}' attributes: {:?}, has_trust_ret: {}", name, attributes, has_trust_ret);
-                
+
                 if *return_type != Type::Void && !has_trust_ret {
                     let has_return = checked_body
                         .iter()

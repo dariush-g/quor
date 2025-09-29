@@ -6,13 +6,12 @@ use crate::{
 // add @trust_ret for inline asm functions so that it trusts that the correct type and value will
 // be returned from the function
 //
-// maybe @undef_params for functions with an undefined number of paramaters: 
+// maybe @undef_params for functions with an undefined number of paramaters:
 // @undef_params def function(argc: int, args: void*) {} or something like that
 //
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    fs,
+    collections::{HashMap, HashSet, VecDeque}, fmt::format, fs
 };
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>, Vec<String>)>;
@@ -30,6 +29,8 @@ pub struct CodeGen {
     stack_size: i32,
     externs: HashSet<String>,
     structures: HashMap<String, (StructLayout, Stmt)>,
+    rodata: String,
+    bss: String,
 }
 
 #[inline]
@@ -150,10 +151,14 @@ impl CodeGen {
         match expr {
             Expr::IntLiteral(n) => Some(*n as i64),
             Expr::LongLiteral(n) => Some(*n),
-            Expr::Unary { op: UnaryOp::Negate, expr, .. } => {
-                Self::const_eval_int(expr).map(|v| -v)
-            }
-            Expr::Binary { left, op, right, .. } => {
+            Expr::Unary {
+                op: UnaryOp::Negate,
+                expr,
+                ..
+            } => Self::const_eval_int(expr).map(|v| -v),
+            Expr::Binary {
+                left, op, right, ..
+            } => {
                 let l = Self::const_eval_int(left)?;
                 let r = Self::const_eval_int(right)?;
                 match op {
@@ -211,6 +216,8 @@ impl CodeGen {
             stack_size: 0,
             externs: HashSet::new(),
             structures: HashMap::new(),
+            bss: String::new(),
+            rodata: String::new(),
         };
 
         // #[cfg(target_arch = "aarch64")]
@@ -260,7 +267,8 @@ impl CodeGen {
                             }
                             Expr::StringLiteral(n) => {
                                 code.output.push_str(&format!("{param}: db \"{n}\",0\n"));
-                                code.globals.insert(param.clone(), Type::Pointer(Box::new(Type::Char)));
+                                code.globals
+                                    .insert(param.clone(), Type::Pointer(Box::new(Type::Char)));
                             }
                             other => {
                                 if let Some(v) = CodeGen::const_eval_int(other) {
@@ -275,10 +283,14 @@ impl CodeGen {
                         }
                     }
                     code.output.push_str("section .text\n");
-                }
+                } 
             }
             if let Stmt::FunDecl {
-                name, params, body, attributes, ..
+                name,
+                params,
+                body,
+                attributes,
+                ..
             } = stmt
             {
                 if name == "main" {
@@ -287,7 +299,12 @@ impl CodeGen {
                             if let Type::Pointer(boxed_ty) = &params[1].1 {
                                 if let Type::Pointer(inside) = *boxed_ty.clone() {
                                     if *inside == Type::Char {
-                                        code.generate_function("main", params.clone(), body, attributes);
+                                        code.generate_function(
+                                            "main",
+                                            params.clone(),
+                                            body,
+                                            attributes,
+                                        );
                                         has_main = true;
                                     }
                                 }
@@ -298,8 +315,12 @@ impl CodeGen {
                         has_main = true;
                     }
                 } else {
-                    code.functions
-                        .push((name.clone(), params.clone(), body.clone(), attributes.clone()));
+                    code.functions.push((
+                        name.clone(),
+                        params.clone(),
+                        body.clone(),
+                        attributes.clone(),
+                    ));
                 }
             }
             if let Stmt::StructDecl {
@@ -327,7 +348,11 @@ impl CodeGen {
             }
         }
 
-        let defined: HashSet<String> = code.functions.iter().map(|(n, _, _, _)| n.clone()).collect();
+        let defined: HashSet<String> = code
+            .functions
+            .iter()
+            .map(|(n, _, _, _)| n.clone())
+            .collect();
         let mut header = String::new();
 
         #[cfg(target_arch = "aarch64")]
@@ -355,6 +380,14 @@ impl CodeGen {
         mem.push('\n');
 
         code.output.push_str(&mem);
+
+        let bss = &format!("section .bss\n{}\n", &code.bss);
+        let ro = &format!("section .rodata\n{}\nsection .text\n", &code.rodata);
+
+        let hd = &format!("{bss}{ro}");
+
+        code.output.insert_str(0, hd);
+
 
         format!("{header}{}", code.output)
     }
@@ -418,8 +451,16 @@ impl CodeGen {
     fn handle_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::AtDecl(decl, params, _, _) => {
-                if decl.as_str() == "__asm__" || decl.as_str() == "_asm_" || decl.as_str() == "asm" {
-                    self.output.push_str(&params.clone().unwrap_or("".to_string()));
+                if decl.as_str() == "__asm__" || decl.as_str() == "_asm_" || decl.as_str() == "asm"
+                {
+                    self.output
+                        .push_str(&params.clone().unwrap_or("".to_string()));
+                }
+                if decl.as_str() == "__asm_ro__" || decl.as_str() == "_asm_ro_" || decl.as_str() == "asm_ro" {
+                    self.rodata.push_str(&params.clone().unwrap());
+                }
+                if decl.as_str() == "__asm_bss__" || decl.as_str() == "_asm_bss_" || decl.as_str() == "asm_bss" {
+                    self.bss.push_str(&params.clone().unwrap());
                 }
             }
             Stmt::While { condition, body } => {
@@ -975,7 +1016,13 @@ impl CodeGen {
         }
     }
 
-    fn generate_function(&mut self, name: &str, params: Vec<(String, Type)>, body: &Vec<Stmt>, attributes: &Vec<String>) {
+    fn generate_function(
+        &mut self,
+        name: &str,
+        params: Vec<(String, Type)>,
+        body: &Vec<Stmt>,
+        attributes: &Vec<String>,
+    ) {
         self.locals.clear();
         self.stack_size = 0;
 
@@ -1051,18 +1098,12 @@ impl CodeGen {
         }
 
         // Only add default return value if not @trust_ret
-        if !has_trust_ret {
-            // if name == "main" {
-            //     self.output.push_str("xor rax, rax\n");
-            // }
-        }
 
-        // If @trust_ret, don't generate the function epilogue
-        // The assembly code should handle the return
-        if !has_trust_ret {
+       
+        //if !has_trust_ret {
             self.output.push_str(&format!("{epilogue}:\n"));
             self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
-        }
+        //}
     }
 
     // fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
@@ -2194,8 +2235,11 @@ impl CodeGen {
                     Type::int => {
                         if src.starts_with("xmm") {
                             let dst = self.regs.pop_front().expect("No gp reg");
-                            self.output
-                                .push_str(&format!("cvttss2si {}, {}\n", Self::reg32(&dst), src));
+                            self.output.push_str(&format!(
+                                "cvttss2si {}, {}\n",
+                                Self::reg32(&dst),
+                                src
+                            ));
                             self.fp_regs.push_back(src);
                             Some(dst)
                         } else {
@@ -2215,7 +2259,7 @@ impl CodeGen {
                     }
                     _ => Some(src),
                 }
-            },
+            }
             Expr::IndexAssign {
                 array,
                 index,
@@ -2940,7 +2984,11 @@ impl CodeGen {
                         Type::int | Type::Char | Type::Bool | Type::Pointer(_) | Type::Long => {
                             if r.starts_with("xmm") {
                                 let gp = self.regs.pop_front().expect("No gp reg");
-                                self.output.push_str(&format!("cvttss2si {}, {}\n", Self::reg32(&gp), r));
+                                self.output.push_str(&format!(
+                                    "cvttss2si {}, {}\n",
+                                    Self::reg32(&gp),
+                                    r
+                                ));
                                 self.fp_regs.push_back(r);
                                 param_values.push((param_name, gp));
                                 continue;
@@ -2979,7 +3027,12 @@ impl CodeGen {
                             }
                             fp_i += 1;
                         }
-                        Type::int | Type::Char | Type::Bool | Type::Pointer(_) | Type::Long | Type::Struct { .. } => {
+                        Type::int
+                        | Type::Char
+                        | Type::Bool
+                        | Type::Pointer(_)
+                        | Type::Long
+                        | Type::Struct { .. } => {
                             let dst = gp_targets[gp_i];
                             if src != dst {
                                 self.output.push_str(&format!("mov {}, {}\n", dst, src));
