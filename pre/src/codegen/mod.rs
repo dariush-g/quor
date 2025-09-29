@@ -15,7 +15,7 @@ use std::{
     fs,
 };
 
-type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>)>;
+type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>, Vec<String>)>;
 
 pub struct CodeGen {
     output: String,
@@ -278,7 +278,7 @@ impl CodeGen {
                 }
             }
             if let Stmt::FunDecl {
-                name, params, body, ..
+                name, params, body, attributes, ..
             } = stmt
             {
                 if name == "main" {
@@ -287,19 +287,19 @@ impl CodeGen {
                             if let Type::Pointer(boxed_ty) = &params[1].1 {
                                 if let Type::Pointer(inside) = *boxed_ty.clone() {
                                     if *inside == Type::Char {
-                                        code.generate_function("main", params.clone(), body);
+                                        code.generate_function("main", params.clone(), body, attributes);
                                         has_main = true;
                                     }
                                 }
                             }
                         }
                     } else {
-                        code.generate_function("main", vec![], body);
+                        code.generate_function("main", vec![], body, attributes);
                         has_main = true;
                     }
                 } else {
                     code.functions
-                        .push((name.clone(), params.clone(), body.clone()));
+                        .push((name.clone(), params.clone(), body.clone(), attributes.clone()));
                 }
             }
             if let Stmt::StructDecl {
@@ -317,8 +317,8 @@ impl CodeGen {
         }
 
         let functions = &code.functions.clone();
-        for (name, params, body) in functions {
-            code.generate_function(name, params.clone(), body);
+        for (name, params, body, attributes) in functions {
+            code.generate_function(name, params.clone(), body, attributes);
         }
 
         for stmt in stmts {
@@ -327,7 +327,7 @@ impl CodeGen {
             }
         }
 
-        let defined: HashSet<String> = code.functions.iter().map(|(n, _, _)| n.clone()).collect();
+        let defined: HashSet<String> = code.functions.iter().map(|(n, _, _, _)| n.clone()).collect();
         let mut header = String::new();
 
         #[cfg(target_arch = "aarch64")]
@@ -975,7 +975,7 @@ impl CodeGen {
         }
     }
 
-    fn generate_function(&mut self, name: &str, params: Vec<(String, Type)>, body: &Vec<Stmt>) {
+    fn generate_function(&mut self, name: &str, params: Vec<(String, Type)>, body: &Vec<Stmt>, attributes: &Vec<String>) {
         self.locals.clear();
         self.stack_size = 0;
 
@@ -1042,17 +1042,27 @@ impl CodeGen {
             );
         }
 
+        // Check if function has @trust_ret attribute
+        let has_trust_ret = attributes.contains(&"trust_ret".to_string());
+
         // Generate body
         for stmt in body {
             self.handle_stmt_with_epilogue(stmt, &epilogue);
         }
 
-        // if name == "main" {
-        //     self.output.push_str("xor rax, rax\n");
-        // }
+        // Only add default return value if not @trust_ret
+        if !has_trust_ret {
+            // if name == "main" {
+            //     self.output.push_str("xor rax, rax\n");
+            // }
+        }
 
-        self.output.push_str(&format!("{epilogue}:\n"));
-        self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
+        // If @trust_ret, don't generate the function epilogue
+        // The assembly code should handle the return
+        if !has_trust_ret {
+            self.output.push_str(&format!("{epilogue}:\n"));
+            self.output.push_str("mov rsp, rbp\npop rbp\nret\n");
+        }
     }
 
     // fn generate_struct(&mut self, name: &str, instances: Vec<(String, Type)>, union: bool) {
@@ -2467,7 +2477,7 @@ impl CodeGen {
                     self.regs.push_back(t);
                 }
                 // self.externs.insert(name.clone());
-                let is_defined = self.functions.iter().any(|(n, _, _)| n == name);
+                let is_defined = self.functions.iter().any(|(n, _, _, _)| n == name);
                 let target = if is_defined {
                     name.clone()
                 } else {
