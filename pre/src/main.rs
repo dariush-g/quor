@@ -148,7 +148,7 @@ pub fn build_link_run(
         &workdir,
     )?;
     //  -nostartfiles -no-pie
-    // 3) GCC
+    // GCC
     run(
         Command::new("gcc").args([
             // "./stdlib/read_file.o",
@@ -246,7 +246,7 @@ fn main() {
 
     // println!("{typed:?}");
 
-    // Codegen → ASM
+    // Codegen -> ASM
     let codegen = CodeGen::generate(&typed);
 
     let asm = codegen;

@@ -1,19 +1,81 @@
+section .bss
+
+ts resq 2
+
+section .rodata
+
+section .text
 global main
 main:
 push rbp
 mov rbp, rsp
 sub rsp, 0
-
-mov rdi ,'a'
-call print_char
+sub rsp, 8
+call timef
+mov rcx, rax
+movss [rbp - 8], rcx
+sub rsp, 8
+mov rdx, 0
+mov dword [rbp - 16], edx
+.while_start_0:
+xor rbx, rbx
+mov ebx, dword [rbp - 16]
+mov r8, 1000000000
+cmp rbx, r8
+setl al
+movzx rax, al
+mov r9, rax
+cmp r9, 1
+jne .while_end_0
+xor r10, r10
+mov r10d, dword [rbp - 16]
+mov r11, 2
+add r10, r11
+mov qword [rbp - 16], r10
+xor r12, r12
+mov r12d, dword [rbp - 16]
+mov r13, 1
+sub r12, r13
+mov qword [rbp - 16], r12
+jmp .while_start_0
+.while_end_0:
+call timef
+mov r14, rax
+xor r15, r15
+movss xmm0, [rbp - 8]
+sub r14, xmm0
+mov rdi, r14
+call print_int
+mov rdx, rax
 mov rdi, 10
 call print_char
 mov rdi, rbx
-mov rcx, 0
+mov rbx, 0
 xor rax, rax
-mov rax, rcx
+mov rax, rbx
 jmp .Lret_main
 .Lret_main:
+mov rsp, rbp
+pop rbp
+ret
+global timef
+timef:
+push rbp
+mov rbp, rsp
+sub rsp, 0
+
+mov rdi ,1
+lea rsi ,[ ts]
+mov rax ,228
+syscall
+mov rax ,[ ts]
+cvtsi2sd xmm0 ,rax
+mov rax ,[ ts + 8]
+cvtsi2sd xmm1 ,rax
+movsd xmm2 ,qword [ rel one_billion]
+divsd xmm1 ,xmm2
+addsd xmm0 ,xmm1
+.Lret_timef:
 mov rsp, rbp
 pop rbp
 ret
