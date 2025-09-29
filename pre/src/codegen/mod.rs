@@ -3,6 +3,13 @@ use crate::{
     lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
 };
 
+// add @trust_ret for inline asm functions so that it trusts that the correct type and value will
+// be returned from the function
+//
+// maybe @undef_params for functions with an undefined number of paramaters: 
+// @undef_params def function(argc: int, args: void*) {} or something like that
+//
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
