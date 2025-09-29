@@ -213,6 +213,7 @@ pub enum Stmt {
         params: Vec<(String, Type)>,
         return_type: Type,
         body: Vec<Stmt>,
+        attributes: Vec<String>,
     },
     StructDecl {
         name: String,

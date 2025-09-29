@@ -1123,6 +1123,7 @@ impl TypeChecker {
                 "define" | "defines" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
                 "keep_asm" => Ok(stmt.clone()),
+                "trust_ret" => Ok(stmt.clone()),
                 "__asm__" | "asm" | "_asm_" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
@@ -1247,6 +1248,7 @@ impl TypeChecker {
                 params,
                 return_type,
                 body,
+                attributes,
             } => {
                 let param_types: Vec<Type> = params.iter().map(|(_, ty)| ty.clone()).collect();
                 self.declare_fn(name, param_types.clone(), return_type.clone())?;
@@ -1259,7 +1261,12 @@ impl TypeChecker {
                 for stmt in body {
                     checked_body.push(self.type_check_stmt(stmt)?);
                 }
-                if *return_type != Type::Void {
+                
+                // Check if function has @trust_ret attribute
+                let has_trust_ret = attributes.contains(&"trust_ret".to_string());
+                // println!("Function '{}' attributes: {:?}, has_trust_ret: {}", name, attributes, has_trust_ret);
+                
+                if *return_type != Type::Void && !has_trust_ret {
                     let has_return = checked_body
                         .iter()
                         .any(|stmt| matches!(stmt, Stmt::Return(_)));
@@ -1276,6 +1283,7 @@ impl TypeChecker {
                     params: params.clone(),
                     return_type: return_type.clone(),
                     body: checked_body,
+                    attributes: attributes.clone(),
                 })
             }
             Stmt::If {

@@ -374,7 +374,45 @@ impl Parser {
             return self.if_statement();
         }
         if self.match_token(&[TokenType::At]) {
-            return self.at_declaration();
+            // Check if this is an attribute before a function declaration
+            // Look ahead to see if there's a Def token after any number of @ declarations
+            let mut lookahead = self.current - 1; // Start from the @ token position
+            // println!("Looking ahead from position {}", lookahead);
+            let mut found_def = false;
+            while lookahead < self.tokens.len() {
+                // println!("Lookahead token: {:?}", self.tokens[lookahead].token_type);
+                match &self.tokens[lookahead].token_type {
+                    TokenType::At => {
+                        lookahead += 1;
+                        continue;
+                    }
+                    TokenType::Identifier(_) => {
+                        lookahead += 1;
+                        continue;
+                    }
+                    TokenType::Newline => {
+                        lookahead += 1;
+                        continue;
+                    }
+                    TokenType::Def => {
+                        // println!("Found Def token, treating as attribute");
+                        found_def = true;
+                        break;
+                    }
+                    _ => {
+                        // println!("Found non-Def token, treating as regular @ declaration");
+                        break;
+                    }
+                }
+            }
+            
+            if found_def {
+                // This is an attribute, let fn_dec handle it
+                self.current -= 1; // Back up to the @ token
+                return self.fn_dec();
+            } else {
+                return self.at_declaration();
+            }
         }
         if self.match_token(&[TokenType::While]) {
             return self.while_statement();
@@ -467,6 +505,40 @@ impl Parser {
     }
 
     fn fn_dec(&mut self) -> Result<Stmt, ParseError> {
+        // Collect attributes before the function declaration
+        let mut attributes = Vec::new();
+        // println!("fn_dec: current token: {:?}", self.peek().token_type);
+        while self.match_token(&[TokenType::At]) {
+            // println!("Found @ token, next token: {:?}", self.peek().token_type);
+            if let TokenType::Identifier(attr) = &self.peek().token_type.clone() {
+                self.advance();
+                attributes.push(attr.clone());
+                // println!("Found attribute: {}", attr);
+                
+                // Skip newlines after each attribute
+                while self.match_token(&[TokenType::Newline]) {
+                    // Just consume the newline token
+                }
+            } else {
+                return Err(ParseError::Expected {
+                    expected: TokenType::Identifier("attribute".to_string()),
+                    found: self.peek().clone(),
+                    message: "Expected attribute name after '@'".to_string(),
+                });
+            }
+        }
+        // println!("Collected attributes: {:?}", attributes);
+        
+        // Skip newlines after attributes
+        while self.match_token(&[TokenType::Newline]) {
+            // Just consume the newline token
+        }
+
+        // Consume the 'def' keyword if we have attributes (it was already consumed by the lookahead)
+        if !attributes.is_empty() {
+            self.consume(TokenType::Def, "Expected 'def' keyword")?;
+        }
+
         let name = self.consume(TokenType::Identifier("".into()), "Expected function name")?;
         let fun_name = match &name.token_type {
             TokenType::Identifier(n) => n.clone(),
@@ -506,6 +578,7 @@ impl Parser {
             params: parameters,
             return_type,
             body,
+            attributes,
         })
     }
 
