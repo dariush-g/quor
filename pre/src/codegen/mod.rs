@@ -438,14 +438,14 @@ impl CodeGen {
 
     fn call_with_alignment(&mut self, target: &str) {
         let slots = self.stack_size / 8;
-        let _need_pad = (slots & 1) != 0;
-        // if need_pad {
-        //     self.output.push_str("sub rsp, 8\n");
-        // }
+        let need_pad = (slots & 1) != 0; // odd -> needs pad
+        if need_pad {
+            self.output.push_str("sub rsp, 8\n");
+        }
         self.output.push_str(&format!("call {target}\n"));
-        // if need_pad {
-        //     self.output.push_str("add rsp, 8\n");
-        // }
+        if need_pad {
+            self.output.push_str("add rsp, 8\n");
+        }
     }
 
     fn handle_stmt(&mut self, stmt: &Stmt) {
@@ -2124,7 +2124,8 @@ impl CodeGen {
         match stmt {
             Stmt::Return(opt) => {
                 if epilogue == ".Lret_main" {
-                    self.output.push_str("mov rdi, 10\ncall print_char\n");
+                    self.output.push_str("mov rdi, 10\n");
+                    self.call_with_alignment("print_char");
 
                     self.output.push_str("mov rdi, rbx\n");
                 }
@@ -2304,7 +2305,8 @@ impl CodeGen {
                 let chs = Self::parse_escapes(str);
 
                 self.output
-                    .push_str(&format!("mov rdi, {}\ncall malloc\n", chs.len() + 1));
+                    .push_str(&format!("mov rdi, {}\n", chs.len() + 1));
+                self.call_with_alignment("malloc");
 
                 for (i, c) in chs.iter().enumerate() {
                     match c {
@@ -2455,10 +2457,10 @@ impl CodeGen {
                 ));
 
                 #[cfg(target_arch = "aarch64")]
-                self.output.push_str("call _malloc\n");
+                self.call_with_alignment("_malloc");
 
                 #[cfg(target_arch = "x86_64")]
-                self.output.push_str("call malloc\n");
+                self.call_with_alignment("malloc");
 
                 // let _ = self.regs.clone().iter().enumerate().map(|(i, _)| {
                 //     if self.regs[i] == "rax" {
@@ -3956,29 +3958,53 @@ impl CodeGen {
                     }
                 }
 
-                let lhs = self.handle_expr(left, None).unwrap();
+                // Evaluate LHS first, then spill to stack to protect across potential calls in RHS
+                let lhs_saved = self.handle_expr(left, None).unwrap();
+                self.output.push_str("sub rsp, 8\n");
+                self.stack_size += 8;
+                self.output
+                    .push_str(&format!("mov qword [rsp], {}\n", lhs_saved));
+                // release lhs reg back to pool while we compute RHS
+                self.regs.push_back(lhs_saved.clone());
+
                 let rhs = self.handle_expr(right, None).unwrap();
+
+                // Reload LHS into a working register
+                let lhs = self.regs.pop_front().unwrap();
+                self.output
+                    .push_str(&format!("mov {}, qword [rsp]\n", lhs));
+                self.output.push_str("add rsp, 8\n");
+                self.stack_size -= 8;
 
                 match op {
                     BinaryOp::Add => {
-                        self.output.push_str(&format!("add {lhs}, {rhs}\n"));
+                        let lhs32 = Self::reg32(&lhs);
+                        let rhs32 = Self::reg32(&rhs);
+                        self.output.push_str(&format!("add {lhs32}, {rhs32}\n"));
                         self.regs.push_back(rhs);
                         Some(lhs)
                     }
                     BinaryOp::Sub => {
-                        self.output.push_str(&format!("sub {lhs}, {rhs}\n"));
+                        let lhs32 = Self::reg32(&lhs);
+                        let rhs32 = Self::reg32(&rhs);
+                        self.output.push_str(&format!("sub {lhs32}, {rhs32}\n"));
                         self.regs.push_back(rhs);
                         Some(lhs)
                     }
                     BinaryOp::Mul => {
-                        self.output.push_str(&format!("imul {lhs}, {rhs}\n"));
+                        let lhs32 = Self::reg32(&lhs);
+                        let rhs32 = Self::reg32(&rhs);
+                        self.output.push_str(&format!("imul {lhs32}, {rhs32}\n"));
                         self.regs.push_back(rhs);
                         Some(lhs)
                     }
                     BinaryOp::Div => {
-                        self.output.push_str(&format!("mov rax, {lhs}\n"));
-                        self.output.push_str("xor rdx, rdx\n");
-                        self.output.push_str(&format!("div {rhs}\n"));
+                        // Signed 32-bit division: edx:eax / r/m32 -> eax
+                        let lhs32 = Self::reg32(&lhs);
+                        let rhs32 = Self::reg32(&rhs);
+                        self.output.push_str(&format!("mov eax, {lhs32}\n"));
+                        self.output.push_str("cdq\n");
+                        self.output.push_str(&format!("idiv {rhs32}\n"));
                         self.regs.push_back(lhs);
                         self.regs.push_back(rhs);
 
