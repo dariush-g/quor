@@ -1,9 +1,17 @@
-@import::<time.qu>
+@keep_asm
+@import::<stdtime.qu>
+
+def factorial(i: int) :: int {
+
+    if (i == 1 || i == 0) {
+        return 1;
+    }
+
+    return i * factorial(i - 1);
+}
+
 
 def main() :: int {
-    let start: int = timei();
-
-    print_int(timei() - start);
 
     return 0;
 }
