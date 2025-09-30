@@ -1,39 +1,9 @@
-@keep_asm
-
-@__asm_bss__ {
-    ts resq 2
-}
-
-
-@trust_ret
-def timef() :: float {
-    @__asm__ {
-        mov rdi, 1         // CLOCK_MONOTONIC
-        lea rsi, [ts]      // pointer to timespec
-        mov rax, 228       // syscall: clock_gettime
-        syscall
-
-        mov rax, [ts]      // load tv_sec
-        cvtsi2sd xmm0, rax // convert sec -> double
-        mov rax, [ts + 8]  // load tv_nsec
-        cvtsi2sd xmm1, rax
-        movsd xmm2, qword [rel one_billion]  // 1e9
-        divsd xmm1, xmm2                   // tv_nsec / 1e9
-        addsd xmm0, xmm1                   // sec + fraction
-    }
-}
+@import::<time.qu>
 
 def main() :: int {
-    let start: float = timef();
+    let start: int = timei();
 
-    let count: int = 0;
-
-    while (count < 1000000000) {
-        count = count + 2;
-        count = count - 1;
-    }
-
-    print_int((timef() - start) as int);
+    print_int(timei() - start);
 
     return 0;
 }
