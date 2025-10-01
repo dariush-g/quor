@@ -23,7 +23,7 @@ impl Parser {
             }
 
             if !self.is_at_end() {
-                statements.push(self.statement(true)?);
+                statements.push(self.statement(true, None)?);
             }
         }
 
@@ -364,23 +364,20 @@ impl Parser {
         })
     }
 
-    fn statement(&mut self, semi: bool) -> Result<Stmt, ParseError> {
-        // Skip newlines at the beginning of statements
-        while self.match_token(&[TokenType::Newline]) {
-            // Just consume the newline token
-        }
+    fn statement(
+        &mut self,
+        semi: bool,
+        final_iter_in_loop: Option<Expr>,
+    ) -> Result<Stmt, ParseError> {
+        while self.match_token(&[TokenType::Newline]) {}
 
         if self.match_token(&[TokenType::If]) {
             return self.if_statement();
         }
         if self.match_token(&[TokenType::At]) {
-            // Check if this is an attribute before a function declaration
-            // Look ahead to see if there's a Def token after any number of @ declarations
-            let mut lookahead = self.current - 1; // Start from the @ token position
-            // println!("Looking ahead from position {}", lookahead);
+            let mut lookahead = self.current - 1;
             let mut found_def = false;
             while lookahead < self.tokens.len() {
-                // println!("Lookahead token: {:?}", self.tokens[lookahead].token_type);
                 match &self.tokens[lookahead].token_type {
                     TokenType::At => {
                         lookahead += 1;
@@ -395,27 +392,27 @@ impl Parser {
                         continue;
                     }
                     TokenType::Def => {
-                        // println!("Found Def token, treating as attribute");
                         found_def = true;
                         break;
                     }
                     _ => {
-                        // println!("Found non-Def token, treating as regular @ declaration");
                         break;
                     }
                 }
             }
 
             if found_def {
-                // This is an attribute, let fn_dec handle it
-                self.current -= 1; // Back up to the @ token
+                self.current -= 1;
                 return self.fn_dec();
             } else {
                 return self.at_declaration();
             }
         }
         if self.match_token(&[TokenType::While]) {
-            return self.while_statement();
+            return self.while_statement(false);
+        }
+        if self.match_token(&[TokenType::For]) {
+            return self.while_statement(true);
         }
         if self.match_token(&[TokenType::Struct]) {
             return self.class_dec();
@@ -430,7 +427,7 @@ impl Parser {
             return self.fn_dec();
         }
         if self.match_token(&[TokenType::LeftBrace]) {
-            return Ok(Stmt::Block(self.block()?));
+            return Ok(Stmt::Block(self.block(final_iter_in_loop)?));
         }
 
         let expr = self.expression()?;
@@ -571,7 +568,7 @@ impl Parser {
         self.consume(TokenType::DoubleColon, "Expected '::' after parameters")?;
         let return_type = self.parse_type()?;
         self.consume(TokenType::LeftBrace, "Expected '{' before function body")?;
-        let body = self.block()?;
+        let body = self.block(None)?;
 
         Ok(Stmt::FunDecl {
             name: fun_name,
@@ -587,9 +584,9 @@ impl Parser {
         let condition = self.expression()?;
         self.consume(TokenType::RightParen, "Expected ')' after condition")?;
 
-        let then_branch = Box::new(self.statement(true)?);
+        let then_branch = Box::new(self.statement(true, None)?);
         let else_branch = if self.match_token(&[TokenType::Else]) {
-            Some(Box::new(self.statement(true)?))
+            Some(Box::new(self.statement(true, None)?))
         } else {
             None
         };
@@ -601,13 +598,34 @@ impl Parser {
         })
     }
 
-    fn while_statement(&mut self) -> Result<Stmt, ParseError> {
+    fn while_statement(&mut self, is_for: bool) -> Result<Stmt, ParseError> {
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'")?;
         let condition = self.expression()?;
-        self.consume(TokenType::RightParen, "Expected ')' after while condition")?;
-        let body = Box::new(self.statement(true)?);
+        if is_for {
+            if let TokenType::DoubleColon = self.peek().token_type {
+                self.advance();
+                let iter = self.expression()?;
+                match iter {
+                    Expr::Assign { .. } | Expr::DerefAssign { .. } => {
+                        self.consume(TokenType::RightParen, "Expected ')' after while condition")?;
+                        let body = Box::new(self.statement(true, Some(iter))?);
 
-        Ok(Stmt::While { condition, body })
+                        return Ok(Stmt::While { condition, body });
+                    }
+                    _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
+                }
+            }
+            return Err(ParseError::Expected {
+                expected: TokenType::DoubleColon,
+                found: self.peek().clone(),
+                message: "Expected increment".to_owned(),
+            });
+        } else {
+            self.consume(TokenType::RightParen, "Expected ')' after while condition")?;
+            let body = Box::new(self.statement(true, None)?);
+
+            Ok(Stmt::While { condition, body })
+        }
     }
 
     fn return_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -1122,7 +1140,7 @@ impl Parser {
         }
     }
 
-    fn block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+    fn block(&mut self, last_expr: Option<Expr>) -> Result<Vec<Stmt>, ParseError> {
         let mut statements = Vec::new();
 
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
@@ -1132,11 +1150,14 @@ impl Parser {
             }
 
             if !self.check(&TokenType::RightBrace) && !self.is_at_end() {
-                statements.push(self.statement(true)?);
+                statements.push(self.statement(true, None)?);
             }
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after block")?;
+        if last_expr.is_some() {
+            statements.push(Stmt::Expression(last_expr.unwrap()));
+        }
         Ok(statements)
     }
 

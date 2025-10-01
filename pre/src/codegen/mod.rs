@@ -11,7 +11,7 @@ use crate::{
 //
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque}, fmt::format, fs
+    collections::{HashMap, HashSet, VecDeque}, fs
 };
 
 type Functions = Vec<(String, Vec<(String, Type)>, Vec<Stmt>, Vec<String>)>;
@@ -1090,7 +1090,7 @@ impl CodeGen {
         }
 
         // Check if function has @trust_ret attribute
-        let has_trust_ret = attributes.contains(&"trust_ret".to_string());
+        let _has_trust_ret = attributes.contains(&"trust_ret".to_string());
 
         // Generate body
         for stmt in body {
