@@ -1,7 +1,10 @@
 
 def main() :: int {
 
-    
+    let i: int = 2;
+    i *= 100;
+
+    print_int(i);
 
     return 0;
 }
