@@ -606,7 +606,13 @@ impl Parser {
                 self.advance();
                 let iter = self.expression()?;
                 match iter {
-                    Expr::Assign { .. } | Expr::DerefAssign { .. } => {
+                    Expr::Assign { .. } 
+                    | Expr::DerefAssign { .. } 
+                    | Expr::CompoundAssign { .. }
+                    | Expr::PreIncrement { .. }
+                    | Expr::PostIncrement { .. }
+                    | Expr::PreDecrement { .. }
+                    | Expr::PostDecrement { .. } => {
                         self.consume(TokenType::RightParen, "Expected ')' after while condition")?;
                         let body = Box::new(self.statement(true, Some(iter))?);
 
@@ -646,16 +652,54 @@ impl Parser {
     fn assignment(&mut self) -> Result<Expr, ParseError> {
         let expr = self.logic_or()?;
 
-        if self.match_token(&[TokenType::Equal]) {
+        if self.match_token(&[
+            TokenType::Equal,
+            TokenType::PlusEqual,
+            TokenType::MinusEqual,
+            TokenType::StarEqual,
+            TokenType::SlashEqual,
+        ]) {
+            let op_token = self.previous().token_type.clone();
             let value = self.assignment()?;
 
             match expr {
-                Expr::Variable(name, _) => {
-                    return Ok(Expr::Assign {
-                        name,
-                        value: Box::new(value),
-                    });
-                }
+                Expr::Variable(name, _) => match op_token {
+                    TokenType::Equal => {
+                        return Ok(Expr::Assign {
+                            name,
+                            value: Box::new(value),
+                        });
+                    }
+                    TokenType::PlusEqual => {
+                        return Ok(Expr::CompoundAssign {
+                            name,
+                            op: BinaryOp::Add,
+                            value: Box::new(value),
+                        });
+                    }
+                    TokenType::MinusEqual => {
+                        return Ok(Expr::CompoundAssign {
+                            name,
+                            op: BinaryOp::Sub,
+                            value: Box::new(value),
+                        });
+                    }
+                    TokenType::StarEqual => {
+                        return Ok(Expr::CompoundAssign {
+                            name,
+                            op: BinaryOp::Mul,
+                            value: Box::new(value),
+                        });
+                    }
+                    TokenType::SlashEqual => {
+                        return Ok(Expr::CompoundAssign {
+                            name,
+                            op: BinaryOp::Div,
+                            value: Box::new(value),
+                        });
+                    }
+                    _ => unreachable!(),
+                },
 
                 Expr::Unary {
                     op: UnaryOp::Dereference,
@@ -795,7 +839,23 @@ impl Parser {
                 TokenType::Plus => BinaryOp::Add,
                 _ => unreachable!(),
             };
-
+            // if let TokenType::Plus = self.peek().token_type {
+            //     self.advance();
+            //     expr = Expr::Binary {
+            //         left: Box::new(expr),
+            //         op,
+            //         right: Box::new(Expr::IntLiteral(1)),
+            //         result_type: Type::Unknown,
+            //     };
+            // } else if let TokenType::Minus = self.peek().token_type {
+            //     self.advance();
+            //     expr = Expr::Binary {
+            //         left: Box::new(expr),
+            //         op,
+            //         right: Box::new(Expr::IntLiteral(1)),
+            //         result_type: Type::Unknown,
+            //     };
+            // } else {
             let right = self.factor()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -803,6 +863,7 @@ impl Parser {
                 right: Box::new(right),
                 result_type: Type::Unknown,
             };
+            // }
         }
 
         Ok(expr)
@@ -862,8 +923,26 @@ impl Parser {
             TokenType::Minus,
             TokenType::Star,
             TokenType::Ampersand,
+            TokenType::PlusPlus,
+            TokenType::MinusMinus,
         ]) {
-            let op = match self.previous().token_type {
+            let op_token = self.previous().token_type.clone();
+
+            // Handle prefix increment/decrement
+            if matches!(op_token, TokenType::PlusPlus | TokenType::MinusMinus) {
+                let expr = self.unary()?;
+                if let Expr::Variable(name, _) = expr {
+                    return Ok(match op_token {
+                        TokenType::PlusPlus => Expr::PreIncrement { name },
+                        TokenType::MinusMinus => Expr::PreDecrement { name },
+                        _ => unreachable!(),
+                    });
+                } else {
+                    return Err(ParseError::InvalidAssignmentTarget);
+                }
+            }
+
+            let op = match op_token {
                 TokenType::Bang => UnaryOp::Not,
                 TokenType::Minus => UnaryOp::Negate,
                 TokenType::Star => UnaryOp::Dereference,
@@ -920,8 +999,23 @@ impl Parser {
     fn call(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.primary()?;
 
-        while self.match_token(&[TokenType::LeftParen]) {
-            expr = self.finish_call(expr)?;
+        loop {
+            if self.match_token(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else if self.match_token(&[TokenType::PlusPlus, TokenType::MinusMinus]) {
+                let op_token = self.previous().token_type.clone();
+                if let Expr::Variable(name, _) = expr {
+                    expr = match op_token {
+                        TokenType::PlusPlus => Expr::PostIncrement { name },
+                        TokenType::MinusMinus => Expr::PostDecrement { name },
+                        _ => unreachable!(),
+                    };
+                } else {
+                    return Err(ParseError::InvalidAssignmentTarget);
+                }
+            } else {
+                break;
+            }
         }
 
         Ok(expr)

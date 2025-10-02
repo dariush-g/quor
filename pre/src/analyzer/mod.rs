@@ -1113,6 +1113,48 @@ impl TypeChecker {
                     _ => Err(format!("'{class_name}' is not a class instance")),
                 }
             }
+            Expr::CompoundAssign { name, op: _, value } => {
+                let var_type = self
+                    .lookup_var(name)
+                    .ok_or_else(|| format!("Unknown variable '{name}'"))?
+                    .clone();
+
+                let value_type = self.type_check_expr(value)?;
+                if var_type != value_type {
+                    return Err(format!(
+                        "Type mismatch in compound assignment: variable '{}' is {:?}, but value is {:?}",
+                        name, var_type, value_type
+                    ));
+                }
+
+                Ok(var_type)
+            }
+            Expr::PreIncrement { name } | Expr::PostIncrement { name } => {
+                let var_type = self
+                    .lookup_var(name)
+                    .ok_or_else(|| format!("Unknown variable '{name}'"))?;
+
+                match var_type {
+                    Type::int | Type::Long => Ok(var_type.clone()),
+                    _ => Err(format!(
+                        "Cannot increment non-numeric variable '{name}' of type {:?}",
+                        var_type
+                    )),
+                }
+            }
+            Expr::PreDecrement { name } | Expr::PostDecrement { name } => {
+                let var_type = self
+                    .lookup_var(name)
+                    .ok_or_else(|| format!("Unknown variable '{name}'"))?;
+
+                match var_type {
+                    Type::int | Type::Long => Ok(var_type.clone()),
+                    _ => Err(format!(
+                        "Cannot decrement non-numeric variable '{name}' of type {:?}",
+                        var_type
+                    )),
+                }
+            }
         }
     }
 

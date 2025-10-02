@@ -3777,6 +3777,103 @@ impl CodeGen {
                 None
             }
 
+            Expr::CompoundAssign { name, op, value } => {
+                let offset = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown var '{name}'"));
+                
+                // Load current value into a register
+                let current_reg = self.regs.pop_front().expect("No register available");
+                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", Self::reg32(&current_reg)));
+                
+                // Generate code for the right-hand side value
+                let value_reg = self.handle_expr(value, None).expect("No register for value");
+                
+                // Perform the compound operation
+                match op {
+                    BinaryOp::Add => {
+                        self.output.push_str(&format!("add {}, {}\n", Self::reg32(&current_reg), Self::reg32(&value_reg)));
+                    }
+                    BinaryOp::Sub => {
+                        self.output.push_str(&format!("sub {}, {}\n", Self::reg32(&current_reg), Self::reg32(&value_reg)));
+                    }
+                    BinaryOp::Mul => {
+                        self.output.push_str(&format!("imul {}, {}\n", Self::reg32(&current_reg), Self::reg32(&value_reg)));
+                    }
+                    BinaryOp::Div => {
+                        // For division, we need to use eax and edx
+                        self.output.push_str(&format!("mov eax, {}\n", Self::reg32(&current_reg)));
+                        self.output.push_str("cdq\n"); // Sign extend eax to edx:eax
+                        self.output.push_str(&format!("idiv {}\n", Self::reg32(&value_reg)));
+                        self.output.push_str(&format!("mov {}, eax\n", Self::reg32(&current_reg)));
+                    }
+                    _ => panic!("Unsupported compound assignment operator: {:?}", op),
+                }
+                
+                // Store the result back to the variable
+                self.output.push_str(&format!("mov dword [rbp - {offset}], {}\n", Self::reg32(&current_reg)));
+                
+                // Return registers to the pool
+                self.regs.push_back(current_reg);
+                self.regs.push_back(value_reg);
+                
+                None
+            }
+
+            Expr::PreIncrement { name } => {
+                let offset = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown var '{name}'"));
+                
+                // Increment the variable in place and return the new value
+                self.output.push_str(&format!("inc dword [rbp - {offset}]\n"));
+                
+                let reg = self.regs.pop_front().expect("No register available");
+                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", Self::reg32(&reg)));
+                
+                Some(reg)
+            }
+
+            Expr::PostIncrement { name } => {
+                let offset = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown var '{name}'"));
+                
+                // Load current value, then increment
+                let reg = self.regs.pop_front().expect("No register available");
+                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", Self::reg32(&reg)));
+                self.output.push_str(&format!("inc dword [rbp - {offset}]\n"));
+                
+                Some(reg)
+            }
+
+            Expr::PreDecrement { name } => {
+                let offset = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown var '{name}'"));
+                
+                // Decrement the variable in place and return the new value
+                self.output.push_str(&format!("dec dword [rbp - {offset}]\n"));
+                
+                let reg = self.regs.pop_front().expect("No register available");
+                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", Self::reg32(&reg)));
+                
+                Some(reg)
+            }
+
+            Expr::PostDecrement { name } => {
+                let offset = self
+                    .local_offset(name)
+                    .unwrap_or_else(|| panic!("Unknown var '{name}'"));
+                
+                // Load current value, then decrement
+                let reg = self.regs.pop_front().expect("No register available");
+                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", Self::reg32(&reg)));
+                self.output.push_str(&format!("dec dword [rbp - {offset}]\n"));
+                
+                Some(reg)
+            }
+
             Expr::Binary {
                 left, op, right, ..
             } => {

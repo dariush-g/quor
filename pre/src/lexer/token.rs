@@ -73,6 +73,16 @@ pub enum TokenType {
     Arrow,
     DoubleColon,
     Ampersand,
+    
+    // Compound assignment operators
+    PlusEqual,
+    MinusEqual,
+    StarEqual,
+    SlashEqual,
+    
+    // Increment/decrement operators
+    PlusPlus,
+    MinusMinus,
 
     // Punctuation
     LeftParen,
