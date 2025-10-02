@@ -3,8 +3,9 @@ use crate::{
     lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
 };
 
-// add @trust_ret for inline asm functions so that it trusts that the correct type and value will
-// be returned from the function
+//
+// add codegen for $param in inline assembly so the assembly can use local vars. 
+// > get var name from stack?
 //
 // maybe @undef_params for functions with an undefined number of paramaters:
 // @undef_params def function(argc: int, args: void*) {} or something like that

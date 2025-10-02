@@ -1,10 +1,14 @@
 
 def main() :: int {
 
-    let i: int = 2;
-    i *= 100;
+    let arr: int* = malloc(8) as int*;
 
-    print_int(i);
+    *arr = 10;
+    arr = arr + 1;
+    *arr = 20;
+    arr = arr - 1;
+
+    print_int(arr[0]);
 
     return 0;
 }

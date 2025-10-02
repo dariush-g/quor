@@ -879,6 +879,14 @@ impl TypeChecker {
                         }
                         Ok(element_type)
                     }
+                    Type::Pointer(ty) => {
+                        let element_type = *ty;
+                        if let Expr::IntLiteral(_) = **index {
+                            return Ok(element_type);
+                        }
+
+                        return Err("Array type error".to_string());
+                    }
                     _ => Err("Array type error".to_string()),
                 }
             }
