@@ -93,6 +93,28 @@ pub enum Expr {
         value: Box<Expr>,
     },
 
+    CompoundAssign {
+        name: String,
+        op: BinaryOp,
+        value: Box<Expr>,
+    },
+
+    PreIncrement {
+        name: String,
+    },
+
+    PostIncrement {
+        name: String,
+    },
+
+    PreDecrement {
+        name: String,
+    },
+
+    PostDecrement {
+        name: String,
+    },
+
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
@@ -163,6 +185,9 @@ impl Expr {
             Expr::IndexAssign { value, .. } => value.get_type(),
             // Expr::InstanceVar(_, _) => todo!(),
             Expr::Assign { value, .. } => value.get_type(),
+            Expr::CompoundAssign { value, .. } => value.get_type(),
+            Expr::PreIncrement { .. } | Expr::PostIncrement { .. } => Type::int,
+            Expr::PreDecrement { .. } | Expr::PostDecrement { .. } => Type::int,
             // Expr::ArrayAccess { array, index } => todo!(),
             // Expr::FieldAssign { class_name, field, value } => todo!(),
             _ => Type::Unknown,

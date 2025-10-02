@@ -99,8 +99,24 @@ impl Lexer {
             ']' => tokens.push(self.make_token(TokenType::RightBracket)),
             ',' => tokens.push(self.make_token(TokenType::Comma)),
             ';' => tokens.push(self.make_token(TokenType::Semicolon)),
-            '+' => tokens.push(self.make_token(TokenType::Plus)),
-            '*' => tokens.push(self.make_token(TokenType::Star)),
+            '+' => {
+                let token = if self.match_char('=') {
+                    TokenType::PlusEqual
+                } else if self.match_char('+') {
+                    TokenType::PlusPlus
+                } else {
+                    TokenType::Plus
+                };
+                tokens.push(self.make_token(token));
+            }
+            '*' => {
+                let token = if self.match_char('=') {
+                    TokenType::StarEqual
+                } else {
+                    TokenType::Star
+                };
+                tokens.push(self.make_token(token));
+            }
             '%' => tokens.push(self.make_token(TokenType::Percent)),
             '!' => {
                 let token = if self.match_char('=') {
@@ -147,6 +163,10 @@ impl Lexer {
             '-' => {
                 let token = if self.match_char('>') {
                     TokenType::Arrow
+                } else if self.match_char('=') {
+                    TokenType::MinusEqual
+                } else if self.match_char('-') {
+                    TokenType::MinusMinus
                 } else {
                     TokenType::Minus
                 };
@@ -168,8 +188,12 @@ impl Lexer {
             }
 
             '/' => {
-                // We've already handled comments in skip_whitespace
-                tokens.push(self.make_token(TokenType::Slash));
+                let token = if self.match_char('=') {
+                    TokenType::SlashEqual
+                } else {
+                    TokenType::Slash
+                };
+                tokens.push(self.make_token(token));
             }
             c if c.is_ascii_digit() => {
                 tokens.push(self.scan_number()?);
