@@ -4053,6 +4053,8 @@ impl CodeGen {
                             return Some(reg);
                         }
                         BinaryOp::And | BinaryOp::Or | BinaryOp::Mod => {}
+                        // TODO: ADD BITWISE
+                        _ => {}
                     }
                 }
 
@@ -4232,6 +4234,8 @@ impl CodeGen {
                         self.output.push_str(&format!("mov {reg}, rax\n"));
                         Some(reg)
                     }
+                    // TODO: ADD BITWISE
+                    _ => {None}
                 }
             }
             Expr::Unary {

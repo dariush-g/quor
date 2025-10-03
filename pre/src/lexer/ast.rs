@@ -212,6 +212,14 @@ pub enum BinaryOp {
     Greater,
     GreaterEqual,
 
+    AND,
+    OR,
+    XOR,
+    NOT,
+    LSHIFT,
+    RSHIFT,
+    ZFILLRSHIFT,
+
     // Logical
     And,
     Or,
