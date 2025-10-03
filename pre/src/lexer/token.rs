@@ -72,14 +72,22 @@ pub enum TokenType {
     LessEqual,
     Arrow,
     DoubleColon,
+    
+    // bitwise
     Ampersand,
+    Caret,
+
     
     // Compound assignment operators
     PlusEqual,
     MinusEqual,
     StarEqual,
     SlashEqual,
-    
+    AmpersandEqual,
+    PipeEqual,
+    CaretEqual,
+    TildeEqual,
+
     // Increment/decrement operators
     PlusPlus,
     MinusMinus,

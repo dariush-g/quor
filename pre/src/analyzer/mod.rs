@@ -725,6 +725,8 @@ impl TypeChecker {
                             return Err("Logical operations require boolean operands".to_string());
                         }
                     }
+                    // TODO: ADD BITWISE
+                    _ => {}
                 }
 
                 match op {
