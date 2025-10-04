@@ -49,10 +49,19 @@ def concat(str: char*, str1: char*) :: char* {
 }
 
 def substring(str: char*, i: int, ii: int) :: char* {
-    let new: char* = malloc(strlen(str) + 1) as char*;
+    let new: char* = malloc(ii - i + 1) as char*;
+    let ret: char* = new;
+    str = str + i;
 
+    let count: int = 0;
+    for (count < ii - i :: count++) {
+        *new = *str;
+        new = new + 1;
+        str = str + 1;
+    }
+    *new = '\0';
 
-    return new;
+    return ret;
 }
 
 def contains_char(str: char*, c: char) :: bool {

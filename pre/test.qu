@@ -1,14 +1,12 @@
+@keep_asm
+@import::<string.qu>
 
 def main() :: int {
+    let str: char* = "hello";
 
-    let arr: int* = malloc(8) as int*;
+    print_str(substring(str, 1, 3));
 
-    *arr = 10;
-    arr = arr + 1;
-    *arr = 20;
-    arr = arr - 1;
-
-    print_int(arr[0]);
+    print_str(str);
 
     return 0;
 }

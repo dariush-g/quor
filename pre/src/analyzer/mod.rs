@@ -20,6 +20,7 @@ pub struct TypeChecker {
     class_fields: HashMap<String, Vec<(String, Type)>>,
     current_return_type: Option<Type>,
     in_loop: bool,
+    called: Vec<String>,
 }
 
 impl Default for TypeChecker {
@@ -32,6 +33,7 @@ impl Default for TypeChecker {
             class_fields: HashMap::new(),
             current_return_type: None,
             in_loop: false,
+            called: Vec::new(),
         }
     }
 }
@@ -482,10 +484,23 @@ impl TypeChecker {
             type_checker.fill_stmt_types(&mut stmt);
         } // println!("{:?}", type_checker.variables);
 
+        let mut remove_indices = Vec::new();
+        for (i, stmt) in checked_program.iter().enumerate() {
+            if let Stmt::FunDecl { name, .. } = stmt.clone() {
+                if !type_checker.called.contains(&name) && name != "main" {
+                    remove_indices.push(i);
+                }
+            }
+        }
+
+        for i in remove_indices.into_iter().rev() {
+            checked_program.remove(i);
+        }
+
         Ok(checked_program)
     }
 
-    fn fill_stmt_types(&self, stmt: &mut Stmt) {
+    fn fill_stmt_types(&mut self, stmt: &mut Stmt) {
         match stmt {
             Stmt::Expression(expr) => self.fill_expr_types(expr),
             Stmt::VarDecl { value, .. } => self.fill_expr_types(value),
@@ -537,7 +552,7 @@ impl TypeChecker {
         }
     }
 
-    fn fill_expr_types(&self, expr: &mut Expr) {
+    fn fill_expr_types(&mut self, expr: &mut Expr) {
         match expr {
             Expr::Variable(name, ty) => {
                 if matches!(ty, Type::Unknown) {
@@ -552,9 +567,10 @@ impl TypeChecker {
                 self.fill_expr_types(right);
             }
             Expr::Assign { value, .. } => self.fill_expr_types(value),
-            Expr::Call { args, .. } => {
+            Expr::Call { name, args, .. } => {
                 for arg in args {
                     self.fill_expr_types(arg);
+                    self.called.push(name.to_string());
                     // println!("{name} {:?}", arg);
                 }
             }
