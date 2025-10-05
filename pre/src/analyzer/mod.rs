@@ -333,8 +333,13 @@ impl TypeChecker {
         }
 
         type_checker
-            .declare_fn("print_int", vec![Type::int], Type::Void)
+            .declare_fn(
+                "print",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::Void,
+            )
             .map_err(|e| format!("Global scope error: {e}"))?;
+
         // type_checker
         //     .declare_fn(
         //         "print_str",
@@ -349,60 +354,60 @@ impl TypeChecker {
         //     )
         //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn("print_long", vec![Type::Long], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn("print_long", vec![Type::Long], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn(
-                "write_file",
-                vec![
-                    Type::Pointer(Box::new(Type::Char)),
-                    Type::Pointer(Box::new(Type::Char)),
-                ],
-                Type::Void,
-            )
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn(
+        //         "write_file",
+        //         vec![
+        //             Type::Pointer(Box::new(Type::Char)),
+        //             Type::Pointer(Box::new(Type::Char)),
+        //         ],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn(
-                "read_file",
-                vec![Type::Pointer(Box::new(Type::Char))],
-                Type::Pointer(Box::new(Type::Char)),
-            )
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn(
+        //         "read_file",
+        //         vec![Type::Pointer(Box::new(Type::Char))],
+        //         Type::Pointer(Box::new(Type::Char)),
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn(
-                "file_size",
-                vec![Type::Pointer(Box::new(Type::Char))],
-                Type::Long,
-            )
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn(
+        //         "file_size",
+        //         vec![Type::Pointer(Box::new(Type::Char))],
+        //         Type::Long,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn(
-                "print_str",
-                vec![Type::Pointer(Box::new(Type::Char))],
-                Type::Void,
-            )
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn(
+        //         "print_str",
+        //         vec![Type::Pointer(Box::new(Type::Char))],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn("print_bool", vec![Type::Bool], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn("print_char", vec![Type::Char], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn("print_char", vec![Type::Char], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker
             .declare_fn("exit", vec![Type::int], Type::Void)
             .map_err(|e| format!("Global scope error: {e}"))?;
 
-        type_checker
-            .declare_fn("print_fp", vec![Type::float], Type::Void)
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn("print_fp", vec![Type::float], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker
             .declare_fn(
@@ -818,6 +823,10 @@ impl TypeChecker {
 
                     if name == "sizeof" {
                         return Ok(Type::int);
+                    }
+
+                    if name == "print" {
+                        return Ok(Type::Void);
                     }
 
                     if arg_type != *expected_type {

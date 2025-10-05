@@ -75,5 +75,3 @@ def contains_char(str: char*, c: char) :: bool {
     }
     return false;
 }
-
-
