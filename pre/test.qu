@@ -2,11 +2,8 @@
 @import::<string.qu>
 
 def main() :: int {
-    let str: char* = "hello";
 
-    print_str(substring(str, 1, 3));
-
-    print_str(str);
+    print("hello");
 
     return 0;
 }
