@@ -1,0 +1,11 @@
+
+def add(a: int, b: int) :: int {
+	return a + b;
+}
+
+def main() :: int {
+	let x: int = 5;
+	let y: int = 6;
+	print_int(add(x, y));
+	return 0;
+}

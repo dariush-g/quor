@@ -1,0 +1,14 @@
+
+
+@trust_ret
+def add(a: int, b: int) :: int {
+	@__asm__ {
+		add rdi, rsi
+		mov rax, rdi
+	}
+}
+
+def main() :: int {
+	print_int(add(1, 2));
+	return 0;
+}
