@@ -1,0 +1,19 @@
+
+
+struct Example {
+	x: int,
+	y: char,
+	z: char*
+}
+
+def main() :: int {
+	let example_struct: Example = Example {
+		x: 5,
+		y: 'a',
+		z: "hello!"
+	};
+
+	print_int(example_struct.x);
+
+	return 0;
+}

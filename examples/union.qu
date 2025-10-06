@@ -1,0 +1,17 @@
+
+
+@union struct ExampleUnion {
+	x: int,
+	y: char
+}
+
+def main() :: int {
+
+	let example_union: ExampleUnion = ExampleUnion {
+		y: 'h'
+	};
+
+	print_int(example_union.x);
+		
+	return 0;
+}
