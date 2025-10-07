@@ -233,7 +233,7 @@ fn main() {
         }
     };
 
-    // println!("{program:?}");
+    println!("{program:?}");
 
     // Type check
     let typed = match TypeChecker::analyze_program(program, &src_path) {
