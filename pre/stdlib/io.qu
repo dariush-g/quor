@@ -1,5 +1,7 @@
 
 @any_params
 def print(str: char*) :: void {
-    
+    @__asm__ {
+        call printf
+    }        
 }
