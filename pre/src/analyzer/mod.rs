@@ -1,7 +1,7 @@
 use crate::{
     lexer::{
-        Lexer,
         ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+        Lexer,
     },
     parser::Parser,
 };
@@ -13,7 +13,7 @@ use std::{
 
 pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
-    functions: HashMap<String, (Vec<Type>, Type)>,
+    functions: HashMap<String, (Vec<Type>, Type, Vec<String>)>,
     classes: HashMap<String, bool>,
     globals: HashMap<String, Type>,
     //                  class name, instances
@@ -332,13 +332,13 @@ impl TypeChecker {
             }
         }
 
-        type_checker
-            .declare_fn(
-                "print",
-                vec![Type::Pointer(Box::new(Type::Void))],
-                Type::Void,
-            )
-            .map_err(|e| format!("Global scope error: {e}"))?;
+        // type_checker
+        //     .declare_fn(
+        //         "print",
+        //         vec![Type::Pointer(Box::new(Type::Void))],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;c
 
         // type_checker
         //     .declare_fn(
@@ -402,7 +402,7 @@ impl TypeChecker {
         //     .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker
-            .declare_fn("exit", vec![Type::int], Type::Void)
+            .declare_fn("exit", vec![Type::int], Type::Void, Vec::new())
             .map_err(|e| format!("Global scope error: {e}"))?;
 
         // type_checker
@@ -414,6 +414,7 @@ impl TypeChecker {
                 "free",
                 vec![Type::Pointer(Box::new(Type::Void))],
                 Type::Void,
+                Vec::new(),
             )
             .map_err(|e| format!("Global scope error: {e}"))?;
         type_checker
@@ -421,6 +422,7 @@ impl TypeChecker {
                 "malloc",
                 vec![Type::int],
                 Type::Pointer(Box::new(Type::Void)),
+                Vec::new(),
             )
             .map_err(|e| format!("Global scope error: {e}"))?;
         type_checker
@@ -428,6 +430,7 @@ impl TypeChecker {
                 "sizeof",
                 vec![Type::Pointer(Box::new(Type::Void))],
                 Type::int,
+                Vec::new(),
             )
             .map_err(|e| format!("Global scope error: {e}"))?;
 
@@ -436,6 +439,7 @@ impl TypeChecker {
                 "strlen",
                 vec![Type::Pointer(Box::new(Type::Void))],
                 Type::int,
+                Vec::new(),
             )
             .map_err(|e| format!("Global scope error: {e}"))?;
 
@@ -455,6 +459,7 @@ impl TypeChecker {
                 name,
                 params,
                 return_type,
+                attributes,
                 ..
             } = stmt.clone()
             {
@@ -463,7 +468,7 @@ impl TypeChecker {
                     return Err(format!("Function already declared"));
                 }
                 type_checker
-                    .declare_fn(name.as_str(), param_types, return_type.clone())
+                    .declare_fn(name.as_str(), param_types, return_type.clone(), attributes)
                     .map_err(|e| format!("Global scope error: {e}"))?;
             }
             if let Stmt::StructDecl {
@@ -626,12 +631,19 @@ impl TypeChecker {
         self.globals.get(name)
     }
 
-    fn declare_fn(&mut self, name: &str, params: Vec<Type>, ret: Type) -> Result<(), String> {
-        self.functions.insert(name.to_string(), (params, ret));
+    fn declare_fn(
+        &mut self,
+        name: &str,
+        params: Vec<Type>,
+        ret: Type,
+        attrb: Vec<String>,
+    ) -> Result<(), String> {
+        self.functions
+            .insert(name.to_string(), (params, ret, attrb));
         Ok(())
     }
 
-    fn lookup_fn(&self, name: &str) -> Option<&(Vec<Type>, Type)> {
+    fn lookup_fn(&self, name: &str) -> Option<&(Vec<Type>, Type, Vec<String>)> {
         self.functions.get(name)
     }
 
@@ -796,12 +808,14 @@ impl TypeChecker {
                 //     _ => {}
                 // }
 
-                let (param_types, ret_type) = self
+                let (param_types, ret_type, attributes) = self
                     .lookup_fn(name)
                     .ok_or_else(|| format!("Undefined function '{name}'"))?
                     .clone();
 
-                if param_types.len() != args.len() {
+                if param_types.len() != args.len()
+                    && !attributes.contains(&"any_params".to_string())
+                {
                     return Err(format!(
                         "Function '{}' expected {} arguments, got {}",
                         name,
@@ -825,9 +839,9 @@ impl TypeChecker {
                         return Ok(Type::int);
                     }
 
-                    if name == "print" {
-                        return Ok(Type::Void);
-                    }
+                    // if name == "print" {
+                    //     return Ok(Type::Void);
+                    // }
 
                     if arg_type != *expected_type {
                         return Err(format!(
@@ -1114,23 +1128,24 @@ impl TypeChecker {
                 }
 
                 match base {
-                    Type::Pointer(ty) => {
-                        match *ty.clone() {
-                            Type::Struct { name, .. } => {
-                                let fields = self
-                                    .class_fields
-                                    .get(&name)
-                                    .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
-                                fields.iter()
-                    .find(|(field_name, _)| field_name == instance_name)
-                    .map(|(_, ty)| ty.clone())
-                    .ok_or_else(|| format!(
-                        "Unknown field '{instance_name}' in class '{class_name}'"
-                    ))
-                            }
-                            _ => Err(format!("'{class_name}' is not a class instance")),
+                    Type::Pointer(ty) => match *ty.clone() {
+                        Type::Struct { name, .. } => {
+                            let fields = self
+                                .class_fields
+                                .get(&name)
+                                .unwrap_or_else(|| panic!("Couldn't find class: '{name}'"));
+                            fields
+                                .iter()
+                                .find(|(field_name, _)| field_name == instance_name)
+                                .map(|(_, ty)| ty.clone())
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Unknown field '{instance_name}' in class '{class_name}'"
+                                    )
+                                })
                         }
-                    }
+                        _ => Err(format!("'{class_name}' is not a class instance")),
+                    },
                     Type::Struct { name, .. } => {
                         // Add direct class instance access
                         let fields = self
@@ -1204,6 +1219,7 @@ impl TypeChecker {
                 "__asm__" | "asm" | "_asm_" => Ok(stmt.clone()),
                 "__asm_bss__" | "_asm_bss_" | "asm_bss" => Ok(stmt.clone()),
                 "__asm_ro__" | "_asm_ro_" | "asm_ro" => Ok(stmt.clone()),
+                "any_params" | "ANY_PARAMS" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
                 _ => Err(format!("Unknown @ declaration: '{decl}'")),
@@ -1330,7 +1346,12 @@ impl TypeChecker {
                 attributes,
             } => {
                 let param_types: Vec<Type> = params.iter().map(|(_, ty)| ty.clone()).collect();
-                self.declare_fn(name, param_types.clone(), return_type.clone())?;
+                self.declare_fn(
+                    name,
+                    param_types.clone(),
+                    return_type.clone(),
+                    attributes.to_vec(),
+                )?;
                 self.enter_scope();
                 self.current_return_type = Some(return_type.clone());
                 for (param_name, param_type) in params {
