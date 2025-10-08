@@ -3113,8 +3113,16 @@ impl CodeGen {
                         //     _ =>
                         // }
 
+                        let reg = self.regs.pop_front().unwrap();
+
+                        
                         self.output
-                            .push_str(&format!("mov qword [rbp - {offset}], [rbp - {var_off}]"));
+                            .push_str(&format!("mov {reg}, [rbp - {var_off}]\n"));
+                        
+                        self.output
+                            .push_str(&format!("mov qword [rbp - {offset}], {reg}\n"));
+
+                        self.regs.push_back(reg);
                     }
                     Expr::FloatLiteral(f) => {
                         self.output.push_str(&format!(
