@@ -1,8 +1,7 @@
 @import::<io.qu>
 
 def main() :: int {
-
-    let d: int = 10;
-    print("hello %d", d);
+    f_write("test.qu", "hello world!");
+    
     return 0;
 }

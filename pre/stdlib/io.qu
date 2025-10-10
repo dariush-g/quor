@@ -1,12 +1,12 @@
 
 @any_params
-def print(str: char*) :: void {
+def print(_: char*) :: void {
     @__asm__ {
         call printf
     }        
 }
 
-def f_write() :: void {
+def f_write(filename: char*, content: char*) :: void {
     @__asm__ {
         sub rsp, 32
         push rbx

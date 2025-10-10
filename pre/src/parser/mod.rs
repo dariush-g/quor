@@ -606,8 +606,8 @@ impl Parser {
                 self.advance();
                 let iter = self.expression()?;
                 match iter {
-                    Expr::Assign { .. } 
-                    | Expr::DerefAssign { .. } 
+                    Expr::Assign { .. }
+                    | Expr::DerefAssign { .. }
                     | Expr::CompoundAssign { .. }
                     | Expr::PreIncrement { .. }
                     | Expr::PostIncrement { .. }
