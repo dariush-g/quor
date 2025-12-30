@@ -265,8 +265,7 @@ impl CodeGen {
                         panic!("sizeof takes 1 arg");
                     }
 
-                    let mut size = 0;
-                    size = args[0].get_type().size();
+                    let mut size = args[0].get_type().size();
 
                     if let Expr::Variable(struct_name, _) = &args[0] {
                         // println!("{:?}", self.structures.get(struct_name).unwrap().0.fields);
