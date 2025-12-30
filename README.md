@@ -19,6 +19,7 @@
 ## Examples
 
 ### Functions
+
 ```quor
 def add(a: int, b: int) :: int {
     return a + b;
@@ -33,6 +34,7 @@ def main() :: int {
 ```
 
 ### Loops
+
 ```quor
 def main() :: int {
     let i: int = 0;
@@ -40,19 +42,22 @@ def main() :: int {
     for (i < 10 :: i++) {
         // do something
     }
-    
+
     return 0;
 }
 ```
 
 ### Structs
+
 ```quor
+@import::<io.qu>
+
 struct Person {
-    name: string;
+    name: char*;
     age: int;
 }
 
-def get_name(self: Person*) :: string {
+def get_name(self: Person*) :: char* {
     return self.name;
 }
 
@@ -65,22 +70,27 @@ def main() :: int {
 
     example.x = 42;
 
-    print_int(example.x);
+    print("%d", example.x);
+
+	free(example);
+
+	let person: Person = Person { name: "bob", age: 10 };
 
     return 0;
 }
-
 ```
+
 ### Inline assembly
+
 ```quor
 @trust_ret
 def get_time_int() :: int {
     @__asm__ {
-        mov rax, 228           
-        mov rdi, 0             
+        mov rax, 228
+        mov rdi, 0
         lea rsi, [ts_sec]
         syscall
-        mov rax, [ts_sec]      
+        mov rax, [ts_sec]
     }
 }
 
