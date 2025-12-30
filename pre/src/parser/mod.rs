@@ -17,10 +17,7 @@ impl Parser {
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
-            // Skip newlines before statements
-            while self.match_token(&[TokenType::Newline]) {
-                // Just consume the newline token
-            }
+            while self.match_token(&[TokenType::Newline]) {}
 
             if !self.is_at_end() {
                 statements.push(self.statement(true, None)?);

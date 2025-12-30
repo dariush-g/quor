@@ -133,10 +133,8 @@ pub fn build_link_run(
     let obj = workdir.join(format!("{out}.o"));
 
     // let bin = workdir.join(out);
-    // 1) Write asm file
     fs::write(&asm, asm_text)?;
 
-    // 2) NASM -> object
     run(
         Command::new("nasm").args([
             "-f",
@@ -176,21 +174,17 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Resolve source path robustly to support invocation from any directory
-    // 1) Build a path from the argument (relative or absolute)
     let mut src_path = PathBuf::from(&args[1]);
     if src_path.is_relative() {
         src_path = env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(&src_path);
     }
-    // 2) Canonicalize when possible (if the file exists)
     let src_path = match fs::canonicalize(&src_path) {
         Ok(p) => p,
-        Err(_) => src_path, // fall back to the non-canonical path; error will surface on read
+        Err(_) => src_path, 
     };
 
-    // Workdir = directory of the source file; output name = file stem
     let workdir = src_path
         .parent()
         .map(Path::to_path_buf)
@@ -200,7 +194,6 @@ fn main() {
         .and_then(|s| s.to_str())
         .unwrap_or("out");
 
-    // Read source
     let source = match fs::read_to_string(&src_path) {
         Ok(s) => s,
         Err(e) => {
@@ -211,7 +204,6 @@ fn main() {
 
     let keep_asm = source.contains("@keep_asm");
 
-    // Lex
     let mut lexer = Lexer::new(source);
     let tokens = match lexer.tokenize() {
         Ok(t) => t,
@@ -223,7 +215,6 @@ fn main() {
 
     // println!("{tokens:?}");
 
-    // Parse
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {
         Ok(p) => p,
@@ -235,7 +226,6 @@ fn main() {
 
     println!("{program:?}");
 
-    // Type check
     let typed = match TypeChecker::analyze_program(program, &src_path) {
         Ok(tp) => tp,
         Err(e) => {
@@ -255,8 +245,7 @@ fn main() {
     //     gen_asm(st, asm.clone());
     // }
 
-    // Build → link → run
-    // Adjust runtime path if yours lives elsewhere:
+  
 
     if let Err(e) = build_link_run(&asm, &workdir, out_name, keep_asm) {
         eprintln!("build failed: {e}");
@@ -270,8 +259,6 @@ fn main() {
 //     if !input_path.contains("/") {
 //         src_path = PathBuf::from(format!("./{}", &input_path));
 //     }
-
-//     // Read source
 //     let source = match fs::read_to_string(&src_path) {
 //         Ok(s) => s,
 //         Err(e) => {
@@ -280,7 +267,6 @@ fn main() {
 //         }
 //     };
 
-//     // Lex
 //     let mut lexer = Lexer::new(source);
 //     let tokens = match lexer.tokenize() {
 //         Ok(t) => t,
@@ -290,7 +276,6 @@ fn main() {
 //         }
 //     };
 
-//     // Parse
 //     let mut parser = Parser::new(tokens);
 //     let program = match parser.parse() {
 //         Ok(p) => p,
@@ -302,7 +287,6 @@ fn main() {
 
 //     // println!("{program:?}");
 
-//     // Type check
 //     let typed = match TypeChecker::analyze_program(program) {
 //         Ok(tp) => tp,
 //         Err(e) => {
@@ -311,7 +295,6 @@ fn main() {
 //         }
 //     };
 
-//     // Codegen → ASM
 //     let codegen = CodeGen::generate(&typed);
 
 //     current.push_str(&codegen);

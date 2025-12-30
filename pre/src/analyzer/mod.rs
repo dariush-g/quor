@@ -89,7 +89,7 @@ fn rec_import_walk(
                     // stdlib import
                     param.pop(); // remove '!'
                     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-                    format!("{manifest_dir}/stdlib/{param}")
+                    format!("{manifest_dir}/lib/{param}")
                 } else {
                     // local import
                     param.clone()

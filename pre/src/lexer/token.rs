@@ -112,7 +112,6 @@ pub enum TokenType {
     // end of file
     Eof,
 
-    // names, etc
     Identifier(String),
 
     Void,
