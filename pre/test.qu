@@ -1,7 +1,13 @@
 @import::<io.qu>
 
+def change(x: int*) :: void {
+    *x = 10;
+}
+
 def main() :: int {
-    f_write("test.qu", "hello world!");
-    
-    return 0;
+    let x: int = 5;
+
+    change(&x);
+
+    return x;
 }
