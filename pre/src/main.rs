@@ -182,7 +182,7 @@ fn main() {
     }
     let src_path = match fs::canonicalize(&src_path) {
         Ok(p) => p,
-        Err(_) => src_path, 
+        Err(_) => src_path,
     };
 
     let workdir = src_path
@@ -224,7 +224,7 @@ fn main() {
         }
     };
 
-    println!("{program:?}");
+    // println!("{program:?}");
 
     let typed = match TypeChecker::analyze_program(program, &src_path) {
         Ok(tp) => tp,
@@ -244,8 +244,6 @@ fn main() {
     // for st in codegen.1 {
     //     gen_asm(st, asm.clone());
     // }
-
-  
 
     if let Err(e) = build_link_run(&asm, &workdir, out_name, keep_asm) {
         eprintln!("build failed: {e}");

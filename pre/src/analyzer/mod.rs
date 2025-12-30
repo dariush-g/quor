@@ -1,7 +1,7 @@
 use crate::{
     lexer::{
-        ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
         Lexer,
+        ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
     },
     parser::Parser,
 };
@@ -579,6 +579,15 @@ impl TypeChecker {
             Expr::Assign { value, .. } => self.fill_expr_types(value),
             Expr::Call { name, args, .. } => {
                 for arg in args {
+                    if name == "sizeof" {
+                        let param = &arg;
+                        if let Expr::Variable(name, _) = param {
+                            if self.classes.contains_key(name) {
+                                self.variables.last_mut().unwrap().remove(name);
+                                return;
+                            }
+                        }
+                    }
                     self.fill_expr_types(arg);
                     self.called.push(name.to_string());
                     // println!("{name} {:?}", arg);
@@ -808,6 +817,17 @@ impl TypeChecker {
                 //     _ => {}
                 // }
 
+                if name == "sizeof" {
+                    let param = &args[0];
+                    if let Expr::Variable(name1, _) = param {
+                        if self.classes.contains_key(name1) {
+                            self.variables.last_mut().unwrap().remove(name);
+                            // return Ok(Type::StructLiteral(name1.to_string()));
+                            return Ok(Type::int);
+                        }
+                    }
+                }
+
                 let (param_types, ret_type, attributes) = self
                     .lookup_fn(name)
                     .ok_or_else(|| format!("Undefined function '{name}'"))?
@@ -844,6 +864,12 @@ impl TypeChecker {
                     // }
 
                     if arg_type != *expected_type {
+                        if name == "malloc" {
+                            if let Type::StructLiteral(_) = arg_type {
+                                // return Ok(Type::StructLiteral(struname.to_string()));
+                                return Ok(Type::Pointer(Box::new(Type::Void)));
+                            }
+                        }
                         return Err(format!(
                             "Argument type mismatch in call to '{name}': expected {expected_type:?}, got {arg_type:?}"
                         ));

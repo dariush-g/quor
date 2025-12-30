@@ -19,6 +19,8 @@ pub enum Type {
         instances: Vec<(String, Type)>,
     },
 
+    StructLiteral(String),
+
     Void,
 
     Unknown,

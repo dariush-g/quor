@@ -18,6 +18,7 @@ pub fn layout_of_struct(instances: &[Type]) -> (usize, usize) {
     (size, max_a)
 }
 
+#[derive(Debug)]
 pub struct FieldLayout {
     pub name: String,
     pub offset: usize,

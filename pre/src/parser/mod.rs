@@ -474,8 +474,13 @@ impl Parser {
         let mut fields = Vec::new();
 
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            if let TokenType::Newline = self.peek().token_type {
+                self.consume(TokenType::Newline, "unexpected error parsing struct fields")?;
+                continue;
+            }
             let field_name_tok =
                 self.consume(TokenType::Identifier("".into()), "Expected field name")?;
+
             let field_name = if let TokenType::Identifier(n) = &field_name_tok.token_type {
                 n.clone()
             } else {

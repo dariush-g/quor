@@ -72,12 +72,11 @@ pub enum TokenType {
     LessEqual,
     Arrow,
     DoubleColon,
-    
+
     // bitwise
     Ampersand,
     Caret,
 
-    
     // Compound assignment operators
     PlusEqual,
     MinusEqual,

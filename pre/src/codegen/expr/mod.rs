@@ -1,6 +1,13 @@
 use std::collections::HashMap;
 
-use crate::{codegen::{CodeGen, align_up, regs::{reg8, reg32}, size_align_of}, lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp}};
+use crate::{
+    codegen::{
+        CodeGen, align_up,
+        regs::{reg8, reg32},
+        size_align_of,
+    },
+    lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+};
 
 impl CodeGen {
     pub fn handle_expr(&mut self, expr: &Expr, _ident: Option<String>) -> Option<String> {
@@ -11,11 +18,8 @@ impl CodeGen {
                     Type::int => {
                         if src.starts_with("xmm") {
                             let dst = self.regs.pop_front().expect("No gp reg");
-                            self.output.push_str(&format!(
-                                "cvttss2si {}, {}\n",
-                                reg32(&dst),
-                                src
-                            ));
+                            self.output
+                                .push_str(&format!("cvttss2si {}, {}\n", reg32(&dst), src));
                             self.fp_regs.push_back(src);
                             Some(dst)
                         } else {
@@ -261,9 +265,16 @@ impl CodeGen {
                         panic!("sizeof takes 1 arg");
                     }
 
+                    let mut size = 0;
+                    size = args[0].get_type().size();
+
+                    if let Expr::Variable(struct_name, _) = &args[0] {
+                        // println!("{:?}", self.structures.get(struct_name).unwrap().0.fields);
+                        size = self.structures.get(struct_name).unwrap().0._size;
+                    }
+
                     // println!("{args:?}");
 
-                    let size = args[0].get_type().size();
 
                     for (i, reg) in self.regs.clone().iter().enumerate() {
                         if reg == "rax" {
@@ -653,10 +664,8 @@ impl CodeGen {
 
                 match t {
                     Type::int => {
-                        self.output.push_str(&format!(
-                            "mov {}, dword [rbp - {off}]\n",
-                            reg32(&av_reg)
-                        ));
+                        self.output
+                            .push_str(&format!("mov {}, dword [rbp - {off}]\n", reg32(&av_reg)));
                         Some(av_reg)
                     }
                     Type::float => {
@@ -669,10 +678,8 @@ impl CodeGen {
                         Some(xmm)
                     }
                     Type::Char | Type::Bool => {
-                        self.output.push_str(&format!(
-                            "mov {}, byte [rbp - {off}]\n",
-                            reg8(&av_reg)
-                        ));
+                        self.output
+                            .push_str(&format!("mov {}, byte [rbp - {off}]\n", reg8(&av_reg)));
                         Some(av_reg)
                     }
                     _ => {
@@ -761,11 +768,8 @@ impl CodeGen {
                         Type::int | Type::Char | Type::Bool | Type::Pointer(_) | Type::Long => {
                             if r.starts_with("xmm") {
                                 let gp = self.regs.pop_front().expect("No gp reg");
-                                self.output.push_str(&format!(
-                                    "cvttss2si {}, {}\n",
-                                    reg32(&gp),
-                                    r
-                                ));
+                                self.output
+                                    .push_str(&format!("cvttss2si {}, {}\n", reg32(&gp), r));
                                 self.fp_regs.push_back(r);
                                 param_values.push((param_name, gp));
                                 continue;
@@ -892,10 +896,9 @@ impl CodeGen {
 
                         let reg = self.regs.pop_front().unwrap();
 
-                        
                         self.output
                             .push_str(&format!("mov {reg}, [rbp - {var_off}]\n"));
-                        
+
                         self.output
                             .push_str(&format!("mov qword [rbp - {offset}], {reg}\n"));
 
@@ -1322,10 +1325,8 @@ impl CodeGen {
                                     .push_str(&format!("mov {}, byte [{ptr}]\n", reg8(&reg)));
                             }
                             Type::int => {
-                                self.output.push_str(&format!(
-                                    "mov {}, dword [{ptr}]\n",
-                                    reg32(&reg)
-                                ));
+                                self.output
+                                    .push_str(&format!("mov {}, dword [{ptr}]\n", reg32(&reg)));
                             }
 
                             _ => {
@@ -1467,10 +1468,8 @@ impl CodeGen {
                 match value.get_type() {
                     Type::int => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
-                            self.output.push_str(&format!(
-                                "mov dword [{ptr_reg}], {}\n",
-                                reg32(&val_reg)
-                            ));
+                            self.output
+                                .push_str(&format!("mov dword [{ptr_reg}], {}\n", reg32(&val_reg)));
                             self.regs.push_back(ptr_reg);
                             self.regs.push_back(val_reg);
                         } else {
@@ -1489,10 +1488,8 @@ impl CodeGen {
                     }
                     Type::Bool | Type::Char => {
                         if let Some(val_reg) = self.handle_expr(value, None) {
-                            self.output.push_str(&format!(
-                                "mov byte [{ptr_reg}], {}\n",
-                                reg8(&val_reg)
-                            ));
+                            self.output
+                                .push_str(&format!("mov byte [{ptr_reg}], {}\n", reg8(&val_reg)));
                             self.regs.push_back(ptr_reg);
                             self.regs.push_back(val_reg);
                         } else {
@@ -1564,42 +1561,65 @@ impl CodeGen {
                 let offset = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
-                
+
                 // Load current value into a register
                 let current_reg = self.regs.pop_front().expect("No register available");
-                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&current_reg)));
-                
+                self.output.push_str(&format!(
+                    "mov {}, dword [rbp - {offset}]\n",
+                    reg32(&current_reg)
+                ));
+
                 // Generate code for the right-hand side value
-                let value_reg = self.handle_expr(value, None).expect("No register for value");
-                
+                let value_reg = self
+                    .handle_expr(value, None)
+                    .expect("No register for value");
+
                 // Perform the compound operation
                 match op {
                     BinaryOp::Add => {
-                        self.output.push_str(&format!("add {}, {}\n", reg32(&current_reg), reg32(&value_reg)));
+                        self.output.push_str(&format!(
+                            "add {}, {}\n",
+                            reg32(&current_reg),
+                            reg32(&value_reg)
+                        ));
                     }
                     BinaryOp::Sub => {
-                        self.output.push_str(&format!("sub {}, {}\n", reg32(&current_reg), reg32(&value_reg)));
+                        self.output.push_str(&format!(
+                            "sub {}, {}\n",
+                            reg32(&current_reg),
+                            reg32(&value_reg)
+                        ));
                     }
                     BinaryOp::Mul => {
-                        self.output.push_str(&format!("imul {}, {}\n", reg32(&current_reg), reg32(&value_reg)));
+                        self.output.push_str(&format!(
+                            "imul {}, {}\n",
+                            reg32(&current_reg),
+                            reg32(&value_reg)
+                        ));
                     }
                     BinaryOp::Div => {
                         // For division, we need to use eax and edx
-                        self.output.push_str(&format!("mov eax, {}\n", reg32(&current_reg)));
+                        self.output
+                            .push_str(&format!("mov eax, {}\n", reg32(&current_reg)));
                         self.output.push_str("cdq\n"); // Sign extend eax to edx:eax
-                        self.output.push_str(&format!("idiv {}\n", reg32(&value_reg)));
-                        self.output.push_str(&format!("mov {}, eax\n", reg32(&current_reg)));
+                        self.output
+                            .push_str(&format!("idiv {}\n", reg32(&value_reg)));
+                        self.output
+                            .push_str(&format!("mov {}, eax\n", reg32(&current_reg)));
                     }
                     _ => panic!("Unsupported compound assignment operator: {:?}", op),
                 }
-                
+
                 // Store the result back to the variable
-                self.output.push_str(&format!("mov dword [rbp - {offset}], {}\n", reg32(&current_reg)));
-                
+                self.output.push_str(&format!(
+                    "mov dword [rbp - {offset}], {}\n",
+                    reg32(&current_reg)
+                ));
+
                 // Return registers to the pool
                 self.regs.push_back(current_reg);
                 self.regs.push_back(value_reg);
-                
+
                 None
             }
 
@@ -1607,13 +1627,15 @@ impl CodeGen {
                 let offset = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
-                
+
                 // Increment the variable in place and return the new value
-                self.output.push_str(&format!("inc dword [rbp - {offset}]\n"));
-                
+                self.output
+                    .push_str(&format!("inc dword [rbp - {offset}]\n"));
+
                 let reg = self.regs.pop_front().expect("No register available");
-                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
-                
+                self.output
+                    .push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
+
                 Some(reg)
             }
 
@@ -1621,12 +1643,14 @@ impl CodeGen {
                 let offset = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
-                
+
                 // Load current value, then increment
                 let reg = self.regs.pop_front().expect("No register available");
-                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
-                self.output.push_str(&format!("inc dword [rbp - {offset}]\n"));
-                
+                self.output
+                    .push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
+                self.output
+                    .push_str(&format!("inc dword [rbp - {offset}]\n"));
+
                 Some(reg)
             }
 
@@ -1634,13 +1658,15 @@ impl CodeGen {
                 let offset = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
-                
+
                 // Decrement the variable in place and return the new value
-                self.output.push_str(&format!("dec dword [rbp - {offset}]\n"));
-                
+                self.output
+                    .push_str(&format!("dec dword [rbp - {offset}]\n"));
+
                 let reg = self.regs.pop_front().expect("No register available");
-                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
-                
+                self.output
+                    .push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
+
                 Some(reg)
             }
 
@@ -1648,12 +1674,14 @@ impl CodeGen {
                 let offset = self
                     .local_offset(name)
                     .unwrap_or_else(|| panic!("Unknown var '{name}'"));
-                
+
                 // Load current value, then decrement
                 let reg = self.regs.pop_front().expect("No register available");
-                self.output.push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
-                self.output.push_str(&format!("dec dword [rbp - {offset}]\n"));
-                
+                self.output
+                    .push_str(&format!("mov {}, dword [rbp - {offset}]\n", reg32(&reg)));
+                self.output
+                    .push_str(&format!("dec dword [rbp - {offset}]\n"));
+
                 Some(reg)
             }
 
@@ -1671,11 +1699,7 @@ impl CodeGen {
                                 if let Expr::IntLiteral(n) = &**right {
                                     let r = self.regs.pop_front().expect("No registers");
 
-                                    self.output.push_str(&format!(
-                                        "mov {}, {}\n",
-                                        reg32(&r),
-                                        n
-                                    ));
+                                    self.output.push_str(&format!("mov {}, {}\n", reg32(&r), n));
 
                                     let rhs_reg = r;
 
@@ -1853,8 +1877,7 @@ impl CodeGen {
 
                 // Reload LHS into a working register
                 let lhs = self.regs.pop_front().unwrap();
-                self.output
-                    .push_str(&format!("mov {}, qword [rsp]\n", lhs));
+                self.output.push_str(&format!("mov {}, qword [rsp]\n", lhs));
                 self.output.push_str("add rsp, 8\n");
                 self.stack_size -= 8;
 
@@ -2017,7 +2040,7 @@ impl CodeGen {
                         Some(reg)
                     }
                     // TODO: ADD BITWISE
-                    _ => {None}
+                    _ => None,
                 }
             }
             Expr::Unary {
