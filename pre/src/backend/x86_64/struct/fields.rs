@@ -1,4 +1,4 @@
-use crate::codegen::{align_up, size_align_of};
+use crate::backend::x86_64::{align_up, size_align_of};
 use crate::lexer::ast::Type;
 
 pub fn layout_of_struct(instances: &[Type]) -> (usize, usize) {

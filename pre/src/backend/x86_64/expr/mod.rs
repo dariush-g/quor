@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    codegen::{
+    backend::x86_64::{
         CodeGen, align_up,
         regs::{reg8, reg32},
         size_align_of,
@@ -312,14 +312,14 @@ impl CodeGen {
                 let target = if is_defined {
                     name.clone()
                 } else {
-                    format!("{name}")
+                    name.to_string()
                 };
 
                 self.call_with_alignment(&target);
 
                 let reg = self.regs.pop_front().unwrap();
                 self.output.push_str(&format!("mov {reg}, rax\n"));
-                return Some(reg);
+                Some(reg)
             }
             Expr::FloatLiteral(f) => {
                 self.output.push_str(&format!(
@@ -530,8 +530,8 @@ impl CodeGen {
                     if &field.name == instance_name {
                         field_offset = Some(field.offset as i32);
                         // Get the field type from the struct definition
-                        if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim()) {
-                            if let Stmt::StructDecl { instances, .. } = struct_stmt {
+                        if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim())
+                            && let Stmt::StructDecl { instances, .. } = struct_stmt {
                                 for (fname, ftype) in instances {
                                     if fname == instance_name {
                                         field_type = Some(ftype);
@@ -539,20 +539,15 @@ impl CodeGen {
                                     }
                                 }
                             }
-                        }
                         break;
                     }
                 }
 
-                let mut field_offset = field_offset.expect(&format!(
-                    "Field '{}' not found in struct '{}'",
-                    instance_name, struct_type
-                ));
+                let mut field_offset = field_offset.unwrap_or_else(|| panic!("Field '{}' not found in struct '{}'",
+                    instance_name, struct_type));
 
-                let field_type = field_type.expect(&format!(
-                    "Field type for '{}' not found in struct '{}'",
-                    instance_name, struct_type
-                ));
+                let field_type = field_type.unwrap_or_else(|| panic!("Field type for '{}' not found in struct '{}'",
+                    instance_name, struct_type));
 
                 let struct_stmt = &self
                     .structures
@@ -560,11 +555,10 @@ impl CodeGen {
                     .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                     .1;
 
-                if let Stmt::StructDecl { union, .. } = struct_stmt {
-                    if *union {
+                if let Stmt::StructDecl { union, .. } = struct_stmt
+                    && *union {
                         field_offset = 0;
                     }
-                }
 
                 match field_type {
                     Type::int => {
@@ -616,16 +610,12 @@ impl CodeGen {
             Expr::Variable(name, _) => {
                 // println!("{:?}", self.regs);
                 // Decide register class based on type
-                if let Some(t) = self.globals.get(name) {
-                    match t {
-                        Type::float => {
-                            let xmm = self.fp_regs.pop_front().expect("No fp reg");
-                            self.output.push_str(&format!("movss {xmm}, [{name}]\n"));
-                            return Some(xmm);
-                        }
-                        _ => {}
+                if let Some(t) = self.globals.get(name)
+                    && t == &Type::float {
+                        let xmm = self.fp_regs.pop_front().expect("No fp reg");
+                        self.output.push_str(&format!("movss {xmm}, [{name}]\n"));
+                        return Some(xmm);
                     }
-                }
 
                 let av_reg = self.regs.pop_front().expect("No registers");
 
@@ -731,7 +721,7 @@ impl CodeGen {
                     let mut map: HashMap<&str, &Type> = HashMap::new();
                     if let Stmt::StructDecl { instances, .. } = stmt {
                         for (fname, fty) in instances {
-                            map.insert(fname.as_str(), &fty);
+                            map.insert(fname.as_str(), fty);
                         }
                     }
 
@@ -885,7 +875,7 @@ impl CodeGen {
                     Expr::Variable(x, _) => {
                         let var_off = self
                             .local_offset(&x)
-                            .expect(&format!("Error with variable: {x}"));
+                            .unwrap_or_else(|| panic!("Error with variable: {x}"));
 
                         // match ty {
                         //     Type::int | Type::float => {}
@@ -1058,11 +1048,10 @@ impl CodeGen {
                             })
                             .1;
 
-                        if let Stmt::StructDecl { union, .. } = struct_stmt {
-                            if *union {
+                        if let Stmt::StructDecl { union, .. } = struct_stmt
+                            && *union {
                                 field_offset = 0;
                             }
-                        }
 
                         match value.get_type() {
                             Type::int => {
@@ -1260,11 +1249,10 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                         .1;
 
-                    if let Stmt::StructDecl { union, .. } = struct_stmt {
-                        if *union {
+                    if let Stmt::StructDecl { union, .. } = struct_stmt
+                        && *union {
                             field_offset = 0;
                         }
-                    }
 
                     // Get a register for the address
                     let addr_reg = self.regs.pop_front().expect("No registers available");
@@ -1376,8 +1364,7 @@ impl CodeGen {
                             field_offset = Some(field.offset as i32);
                             // Get the field type from the struct definition
                             if let Some((_, struct_stmt)) = self.structures.get(struct_type.trim())
-                            {
-                                if let Stmt::StructDecl { instances, .. } = struct_stmt {
+                                && let Stmt::StructDecl { instances, .. } = struct_stmt {
                                     for (fname, ftype) in instances {
                                         if fname == instance_name {
                                             field_type = Some(ftype);
@@ -1385,20 +1372,15 @@ impl CodeGen {
                                         }
                                     }
                                 }
-                            }
                             break;
                         }
                     }
 
-                    let mut field_offset = field_offset.expect(&format!(
-                        "Field '{}' not found in struct '{}'",
-                        instance_name, struct_type
-                    ));
+                    let mut field_offset = field_offset.unwrap_or_else(|| panic!("Field '{}' not found in struct '{}'",
+                        instance_name, struct_type));
 
-                    let field_type = field_type.expect(&format!(
-                        "Field type for '{}' not found in struct '{}'",
-                        instance_name, struct_type
-                    ));
+                    let field_type = field_type.unwrap_or_else(|| panic!("Field type for '{}' not found in struct '{}'",
+                        instance_name, struct_type));
 
                     let struct_stmt = &self
                         .structures
@@ -1406,11 +1388,10 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                         .1;
 
-                    if let Stmt::StructDecl { union, .. } = struct_stmt {
-                        if *union {
+                    if let Stmt::StructDecl { union, .. } = struct_stmt
+                        && *union {
                             field_offset = 0;
                         }
-                    }
 
                     match field_type {
                         Type::int => {
@@ -1687,88 +1668,76 @@ impl CodeGen {
             Expr::Binary {
                 left, op, right, ..
             } => {
-                match left.get_type() {
-                    Type::Pointer(inside_ty) => match right.get_type() {
-                        Type::int => {
-                            let size = inside_ty.size();
+                if let Type::Pointer(inside_ty) = left.get_type() && right.get_type() == Type::int {
+                    let size = inside_ty.size();
 
-                            if right.get_type() == Type::int {
-                                let lhs = self.handle_expr(left, None).unwrap();
+                    if right.get_type() == Type::int {
+                        let lhs = self.handle_expr(left, None).unwrap();
 
-                                if let Expr::IntLiteral(n) = &**right {
-                                    let r = self.regs.pop_front().expect("No registers");
+                        if let Expr::IntLiteral(n) = &**right {
+                            let r = self.regs.pop_front().expect("No registers");
 
-                                    self.output.push_str(&format!("mov {}, {}\n", reg32(&r), n));
+                            self.output.push_str(&format!("mov {}, {}\n", reg32(&r), n));
 
-                                    let rhs_reg = r;
+                            let rhs_reg = r;
 
-                                    if size > 1 {
-                                        self.output
-                                            .push_str(&format!("imul {}, {}\n", rhs_reg, size));
-                                    }
+                            if size > 1 {
+                                self.output
+                                    .push_str(&format!("imul {}, {}\n", rhs_reg, size));
+                            }
 
-                                    match op {
-                                        BinaryOp::Add => {
-                                            self.output
-                                                .push_str(&format!("add {}, {}\n", lhs, rhs_reg));
-                                            self.regs.push_back(rhs_reg);
-                                            return Some(lhs);
-                                        }
-                                        BinaryOp::Sub => {
-                                            self.output
-                                                .push_str(&format!("sub {}, {}\n", lhs, rhs_reg));
-                                            self.regs.push_back(rhs_reg);
-                                            return Some(lhs);
-                                        }
-                                        _ => return None,
-                                    }
+                            match op {
+                                BinaryOp::Add => {
+                                    self.output
+                                        .push_str(&format!("add {}, {}\n", lhs, rhs_reg));
+                                    self.regs.push_back(rhs_reg);
+                                    return Some(lhs);
                                 }
+                                BinaryOp::Sub => {
+                                    self.output
+                                        .push_str(&format!("sub {}, {}\n", lhs, rhs_reg));
+                                    self.regs.push_back(rhs_reg);
+                                    return Some(lhs);
+                                }
+                                _ => return None,
                             }
                         }
-                        _ => {}
-                    },
-                    _ => {}
+                    }
                 }
 
-                match right.get_type() {
-                    Type::Pointer(inside_ty) => match left.get_type() {
-                        Type::int => {
-                            let size = inside_ty.size();
+                if let Type::Pointer(inside_ty) = right.get_type() && left.get_type() == Type::int {
+                    let size = inside_ty.size();
 
-                            if left.get_type() == Type::int {
-                                let rhs = self.handle_expr(&right, None).unwrap();
+                    if left.get_type() == Type::int {
+                        let rhs = self.handle_expr(right, None).unwrap();
 
-                                if let Expr::IntLiteral(n) = &**left {
-                                    let r = self.regs.pop_front().expect("No registers");
-                                    self.output.push_str(&format!("mov {}, {}\n", r, n));
-                                    let lhs_reg = r;
+                        if let Expr::IntLiteral(n) = &**left {
+                            let r = self.regs.pop_front().expect("No registers");
+                            self.output.push_str(&format!("mov {}, {}\n", r, n));
+                            let lhs_reg = r;
 
-                                    if size > 1 {
-                                        self.output
-                                            .push_str(&format!("imul {}, {}\n", lhs_reg, size));
-                                    }
+                            if size > 1 {
+                                self.output
+                                    .push_str(&format!("imul {}, {}\n", lhs_reg, size));
+                            }
 
-                                    match op {
-                                        BinaryOp::Add => {
-                                            self.output
-                                                .push_str(&format!("add {}, {}\n", rhs, lhs_reg));
-                                            self.regs.push_back(lhs_reg);
-                                            return Some(rhs);
-                                        }
-                                        BinaryOp::Sub => {
-                                            self.output
-                                                .push_str(&format!("sub {}, {}\n", rhs, lhs_reg));
-                                            self.regs.push_back(lhs_reg);
-                                            return Some(rhs);
-                                        }
-                                        _ => return None,
-                                    }
+                            match op {
+                                BinaryOp::Add => {
+                                    self.output
+                                        .push_str(&format!("add {}, {}\n", rhs, lhs_reg));
+                                    self.regs.push_back(lhs_reg);
+                                    return Some(rhs);
                                 }
+                                BinaryOp::Sub => {
+                                    self.output
+                                        .push_str(&format!("sub {}, {}\n", rhs, lhs_reg));
+                                    self.regs.push_back(lhs_reg);
+                                    return Some(rhs);
+                                }
+                                _ => return None,
                             }
                         }
-                        _ => {}
-                    },
-                    _ => {}
+                    }
                 }
 
                 // Float operations path

@@ -1,6 +1,6 @@
 use crate::{
     analyzer::base_type,
-    codegen::{
+    backend::x86_64::{
         CodeGen,
         regs::{reg8, reg32},
     },
@@ -144,7 +144,7 @@ impl CodeGen {
                 value,
             } => match value {
                 Expr::Cast { expr, target_type } => {
-                    let reg = self.handle_expr(&expr, None).unwrap();
+                    let reg = self.handle_expr(expr, None).unwrap();
                     let off = self.alloc_local(name, target_type);
 
                     match target_type {
@@ -220,7 +220,7 @@ impl CodeGen {
                                 self.regs.push_back(reg);
                             }
                             _ => {
-                                if let Some(val_reg) = self.handle_expr(&element, None) {
+                                if let Some(val_reg) = self.handle_expr(element, None) {
                                     self.output.push_str(&format!(
                                         "mov qword [rbp - {offset}], {val_reg}\n"
                                     ));
@@ -384,8 +384,8 @@ impl CodeGen {
                     let ptr_reg = self.handle_expr(expr, None).expect("ptr reg");
                     let offset = self.alloc_local(name, var_type);
 
-                    if let Type::Pointer(inner) = var_type {
-                        if let Type::Struct {
+                    if let Type::Pointer(inner) = var_type
+                        && let Type::Struct {
                             name: struct_name, ..
                         } = &**inner
                         {
@@ -394,7 +394,6 @@ impl CodeGen {
                                 (Some(struct_name.clone()), offset, var_type.clone()),
                             );
                         }
-                    }
 
                     self.output
                         .push_str(&format!("mov {ptr_reg}, [{ptr_reg}]\n"));
@@ -506,11 +505,10 @@ impl CodeGen {
                         .unwrap_or_else(|| panic!("Struct layout not found for '{struct_type}'"))
                         .1;
 
-                    if let Stmt::StructDecl { union, .. } = struct_stmt {
-                        if *union {
+                    if let Stmt::StructDecl { union, .. } = struct_stmt
+                        && *union {
                             field_offset = 0;
                         }
-                    }
 
                     // Allocate space for the variable if not already allocated
                     let offset = if self.local_offset(name).is_none() {

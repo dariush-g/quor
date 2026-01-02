@@ -1,5 +1,5 @@
 use crate::{
-    codegen::{
+    backend::x86_64::{
         CodeGen,
         regs::{reg8, reg32},
         r#struct::fields::layout_fields,

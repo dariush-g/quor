@@ -1,5 +1,5 @@
 use crate::{
-    codegen::{
+    backend::x86_64::{
         CodeGen,
         regs::{reg8, reg32},
     },
@@ -12,7 +12,7 @@ impl CodeGen {
         name: &str,
         params: Vec<(String, Type)>,
         body: &Vec<Stmt>,
-        attributes: &Vec<String>,
+        attributes: &[String],
     ) {
         self.locals.clear();
         self.stack_size = 0;

@@ -465,7 +465,7 @@ impl TypeChecker {
             {
                 let param_types = params.iter().map(|(_, ty)| ty.clone()).collect();
                 if !function_names.insert(name.clone()) {
-                    return Err(format!("Function already declared"));
+                    return Err("Function already declared".to_string());
                 }
                 type_checker
                     .declare_fn(name.as_str(), param_types, return_type.clone(), attributes)
@@ -490,17 +490,16 @@ impl TypeChecker {
             checked_program.push(checked_stmt);
         }
 
-        for mut stmt in &mut checked_program {
-            type_checker.fill_stmt_types(&mut stmt);
+        for stmt in &mut checked_program {
+            type_checker.fill_stmt_types(stmt);
         } // println!("{:?}", type_checker.variables);
 
         let mut remove_indices = Vec::new();
         for (i, stmt) in checked_program.iter().enumerate() {
-            if let Stmt::FunDecl { name, .. } = stmt.clone() {
-                if !type_checker.called.contains(&name) && name != "main" {
+            if let Stmt::FunDecl { name, .. } = stmt.clone()
+                && !type_checker.called.contains(&name) && name != "main" {
                     remove_indices.push(i);
                 }
-            }
         }
 
         for i in remove_indices.into_iter().rev() {
@@ -565,11 +564,10 @@ impl TypeChecker {
     fn fill_expr_types(&mut self, expr: &mut Expr) {
         match expr {
             Expr::Variable(name, ty) => {
-                if matches!(ty, Type::Unknown) {
-                    if let Some(var_type) = self.lookup_var(name) {
+                if matches!(ty, Type::Unknown)
+                    && let Some(var_type) = self.lookup_var(name) {
                         *ty = var_type.clone();
                     }
-                }
             }
             Expr::Unary { expr: inner, .. } => self.fill_expr_types(inner),
             Expr::Binary { left, right, .. } => {
@@ -581,12 +579,11 @@ impl TypeChecker {
                 for arg in args {
                     if name == "sizeof" {
                         let param = &arg;
-                        if let Expr::Variable(name, _) = param {
-                            if self.classes.contains_key(name) {
+                        if let Expr::Variable(name, _) = param
+                            && self.classes.contains_key(name) {
                                 self.variables.last_mut().unwrap().remove(name);
                                 return;
                             }
-                        }
                     }
                     self.fill_expr_types(arg);
                     self.called.push(name.to_string());
@@ -659,7 +656,7 @@ impl TypeChecker {
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
         match expr {
             Expr::IndexAssign { value, .. } => {
-                return Ok(value.get_type());
+                Ok(value.get_type())
             }
             Expr::LongLiteral(_) => Ok(Type::Long),
             Expr::FieldAssign {
@@ -670,7 +667,7 @@ impl TypeChecker {
                 let ty = self
                     .type_check_expr(&Expr::InstanceVar(class_name.clone(), field.to_string()))?;
 
-                if ty != self.type_check_expr(&value)? {
+                if ty != self.type_check_expr(value)? {
                     return Err(format!("Error with class: {class_name}, field: {field}"));
                 }
 
@@ -819,13 +816,12 @@ impl TypeChecker {
 
                 if name == "sizeof" {
                     let param = &args[0];
-                    if let Expr::Variable(name1, _) = param {
-                        if self.classes.contains_key(name1) {
+                    if let Expr::Variable(name1, _) = param
+                        && self.classes.contains_key(name1) {
                             self.variables.last_mut().unwrap().remove(name);
                             // return Ok(Type::StructLiteral(name1.to_string()));
                             return Ok(Type::int);
                         }
-                    }
                 }
 
                 let (param_types, ret_type, attributes) = self
@@ -849,11 +845,10 @@ impl TypeChecker {
 
                     let arg_type = base_type(&arg_type);
 
-                    if matches!(expected_type, Type::Pointer(inner) if **inner == Type::Void) {
-                        if matches!(arg_type, Type::Pointer(_)) {
+                    if matches!(expected_type, Type::Pointer(inner) if **inner == Type::Void)
+                        && matches!(arg_type, Type::Pointer(_)) {
                             continue; // allow any pointer as void*
                         }
-                    }
 
                     if name == "sizeof" {
                         return Ok(Type::int);
@@ -864,12 +859,11 @@ impl TypeChecker {
                     // }
 
                     if arg_type != *expected_type {
-                        if name == "malloc" {
-                            if let Type::StructLiteral(_) = arg_type {
+                        if name == "malloc"
+                            && let Type::StructLiteral(_) = arg_type {
                                 // return Ok(Type::StructLiteral(struname.to_string()));
                                 return Ok(Type::Pointer(Box::new(Type::Void)));
                             }
-                        }
                         return Err(format!(
                             "Argument type mismatch in call to '{name}': expected {expected_type:?}, got {arg_type:?}"
                         ));
@@ -934,8 +928,8 @@ impl TypeChecker {
                 match array_full {
                     Type::Array(ty, len) => {
                         let element_type = *ty;
-                        if let Expr::IntLiteral(n) = **index {
-                            if len.is_some()
+                        if let Expr::IntLiteral(n) = **index
+                            && len.is_some()
                                 && n >= len
                                     .unwrap()
                                     .try_into()
@@ -943,7 +937,6 @@ impl TypeChecker {
                             {
                                 return Err("Index out of bounds".to_string());
                             }
-                        }
                         Ok(element_type)
                     }
                     Type::Pointer(ty) => {
@@ -952,7 +945,7 @@ impl TypeChecker {
                             return Ok(element_type);
                         }
 
-                        return Err("Array type error".to_string());
+                        Err("Array type error".to_string())
                     }
                     _ => Err("Array type error".to_string()),
                 }
@@ -973,12 +966,11 @@ impl TypeChecker {
                             let val_ty = self.type_check_expr(value)?;
 
                             // Update the variable type in-place
-                            if let Expr::Variable(n, _) = *target.clone() {
-                                if let Some(var_ty) = self.variables.last_mut().unwrap().get_mut(&n)
+                            if let Expr::Variable(n, _) = *target.clone()
+                                && let Some(var_ty) = self.variables.last_mut().unwrap().get_mut(&n)
                                 {
                                     *var_ty = Type::Pointer(Box::new(val_ty.clone()));
                                 }
-                            }
 
                             return Ok(val_ty);
                         }
@@ -997,7 +989,7 @@ impl TypeChecker {
 
                 if *self.classes.get(name).unwrap() {
                     if params.len() != 1 {
-                        return Err(format!("Expected one parameter for union init"));
+                        return Err("Expected one parameter for union init".to_string());
                     }
 
                     let found = class_fields.iter().find_map(|field| {

@@ -1,5 +1,5 @@
 use crate::{
-    codegen::r#struct::fields::{StructLayout, layout_of_struct},
+    backend::x86_64::r#struct::fields::{StructLayout, layout_of_struct},
     lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
 };
 
@@ -125,6 +125,7 @@ impl CodeGen {
             _ => None,
         }
     }
+    #[allow(unused_assignments)]
     // asm      import paths
     pub fn generate(stmts: &Vec<Stmt>) -> String {
         let mut code = CodeGen {
@@ -191,51 +192,51 @@ impl CodeGen {
         let mut has_main = false;
 
         for stmt in stmts {
-            if let Stmt::AtDecl(decl, param, val, _) = stmt {
-                if decl.as_str() == "define" || decl.as_str() == "defines" {
-                    let param = param.clone().unwrap();
-                    code.output.push_str("section .data\n");
-                    if let Some(val) = val {
-                        match val {
-                            Expr::IntLiteral(n) => {
-                                code.output.push_str(&format!("{param}: dd {n}\n"));
+            if let Stmt::AtDecl(decl, param, val, _) = stmt
+                && (decl.as_str() == "define" || decl.as_str() == "defines")
+            {
+                let param = param.clone().unwrap();
+                code.output.push_str("section .data\n");
+                if let Some(val) = val {
+                    match val {
+                        Expr::IntLiteral(n) => {
+                            code.output.push_str(&format!("{param}: dd {n}\n"));
+                            code.globals.insert(param.clone(), Type::int);
+                        }
+                        Expr::LongLiteral(n) => {
+                            code.output.push_str(&format!("{param}: dq {n}\n"));
+                            code.globals.insert(param.clone(), Type::Long);
+                        }
+                        Expr::FloatLiteral(n) => {
+                            code.output.push_str(&format!("{param}: dd {n}\n"));
+                            code.globals.insert(param.clone(), Type::float);
+                        }
+                        Expr::BoolLiteral(n) => {
+                            code.output.push_str(&format!("{param}: db {}\n", *n as u8));
+                            code.globals.insert(param.clone(), Type::Bool);
+                        }
+                        Expr::CharLiteral(n) => {
+                            code.output.push_str(&format!("{param}: db {n}\n"));
+                            code.globals.insert(param.clone(), Type::Char);
+                        }
+                        Expr::StringLiteral(n) => {
+                            code.output.push_str(&format!("{param}: db \"{n}\",0\n"));
+                            code.globals
+                                .insert(param.clone(), Type::Pointer(Box::new(Type::Char)));
+                        }
+                        other => {
+                            if let Some(v) = CodeGen::const_eval_int(other) {
+                                code.output.push_str(&format!("{param}: dd {v}\n"));
                                 code.globals.insert(param.clone(), Type::int);
-                            }
-                            Expr::LongLiteral(n) => {
-                                code.output.push_str(&format!("{param}: dq {n}\n"));
-                                code.globals.insert(param.clone(), Type::Long);
-                            }
-                            Expr::FloatLiteral(n) => {
-                                code.output.push_str(&format!("{param}: dd {n}\n"));
-                                code.globals.insert(param.clone(), Type::float);
-                            }
-                            Expr::BoolLiteral(n) => {
-                                code.output.push_str(&format!("{param}: db {}\n", *n as u8));
-                                code.globals.insert(param.clone(), Type::Bool);
-                            }
-                            Expr::CharLiteral(n) => {
-                                code.output.push_str(&format!("{param}: db {n}\n"));
-                                code.globals.insert(param.clone(), Type::Char);
-                            }
-                            Expr::StringLiteral(n) => {
-                                code.output.push_str(&format!("{param}: db \"{n}\",0\n"));
-                                code.globals
-                                    .insert(param.clone(), Type::Pointer(Box::new(Type::Char)));
-                            }
-                            other => {
-                                if let Some(v) = CodeGen::const_eval_int(other) {
-                                    code.output.push_str(&format!("{param}: dd {v}\n"));
-                                    code.globals.insert(param.clone(), Type::int);
-                                } else {
-                                    // Fallback: reserve 4 bytes and mark as int
-                                    code.output.push_str(&format!("{param}: dd 0\n"));
-                                    code.globals.insert(param.clone(), Type::int);
-                                }
+                            } else {
+                                // Fallback: reserve 4 bytes and mark as int
+                                code.output.push_str(&format!("{param}: dd 0\n"));
+                                code.globals.insert(param.clone(), Type::int);
                             }
                         }
                     }
-                    code.output.push_str("section .text\n");
                 }
+                code.output.push_str("section .text\n");
             }
             if let Stmt::FunDecl {
                 name,
@@ -246,23 +247,15 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
-                    if params.len() > 0 {
-                        if params[0].1 == Type::int {
-                            if let Type::Pointer(boxed_ty) = &params[1].1 {
-                                if let Type::Pointer(inside) = *boxed_ty.clone() {
-                                    if *inside == Type::Char {
-                                        code.generate_function(
-                                            "main",
-                                            params.clone(),
-                                            body,
-                                            attributes,
-                                        );
-                                        has_main = true;
-                                    }
-                                }
-                            }
+                    if !params.is_empty() {
+                        if params[0].1 == Type::int
+                            && let Type::Pointer(boxed_ty) = &params[1].1
+                            && let Type::Pointer(inside) = *boxed_ty.clone()
+                            && *inside == Type::Char
+                        {
+                            code.generate_function("main", params.clone(), body, attributes);
+                            has_main = true;
                         }
-                    } else {
                         code.generate_function("main", vec![], body, attributes);
                         has_main = true;
                     }

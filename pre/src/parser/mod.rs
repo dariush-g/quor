@@ -124,7 +124,7 @@ impl Parser {
                         param.push('.');
                         self.advance();
                         if let TokenType::Identifier(qu) = &self.peek().token_type {
-                            param.push_str(&qu);
+                            param.push_str(qu);
                             self.advance();
                         }
                     }
@@ -152,7 +152,7 @@ impl Parser {
                         param.push('.');
                         self.advance();
                         if let TokenType::Identifier(qu) = &self.peek().token_type {
-                            param.push_str(&qu);
+                            param.push_str(qu);
                             self.advance();
                         }
                     }
@@ -623,11 +623,11 @@ impl Parser {
                     _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
                 }
             }
-            return Err(ParseError::Expected {
+            Err(ParseError::Expected {
                 expected: TokenType::DoubleColon,
                 found: self.peek().clone(),
                 message: "Expected increment".to_owned(),
-            });
+            })
         } else {
             self.consume(TokenType::RightParen, "Expected ')' after while condition")?;
             let body = Box::new(self.statement(true, None)?);
@@ -1251,8 +1251,8 @@ impl Parser {
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after block")?;
-        if last_expr.is_some() {
-            statements.push(Stmt::Expression(last_expr.unwrap()));
+        if let Some(last_expr) = last_expr {
+            statements.push(Stmt::Expression(last_expr));
         }
         Ok(statements)
     }

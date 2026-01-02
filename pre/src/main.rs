@@ -1,5 +1,5 @@
 use quor::analyzer::TypeChecker;
-use quor::codegen::CodeGen;
+use quor::backend::x86_64::CodeGen;
 use quor::lexer::Lexer;
 use quor::parser::Parser;
 
