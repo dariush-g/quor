@@ -9,10 +9,10 @@
 - Arrays with indexing (No indexing for pointers yet)
 - Basic structs (stack-allocated with heap option)
 - Basic unions (stack-allocated with heap option)
-- Variables
+- Variables & global constants
 - Functions and function calls
 - `if` / 'else' / `while` / 'for'
-- imports to a standard lib and to local files
+- Imports to a standard lib and to local files
 - Basic memory management using C's `malloc()` and `free()`
 - Inline assembly
 
@@ -95,6 +95,18 @@ def get_time_int() :: int {
 }
 
 ```
+
+### Global constants
+
+```quor
+@import::<io.qu>
+@define ONE_HUNDRED 100
+def main() :: int {
+	print("%d", ONE_HUNDRED);
+	return 0;
+}
+```
+
 ## Known limitations:
 ### 6 parameter functions
 ### No bitwise operations
