@@ -13,7 +13,7 @@ def main() :: int {
 		z: "hello!"
 	};
 
-	print_int(example_struct.x);
+	print("%d", example_struct.x);
 
 	return 0;
 }
