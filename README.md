@@ -95,3 +95,8 @@ def get_time_int() :: int {
 }
 
 ```
+## Known limitations:
+### 6 parameter functions
+### No bitwise operations
+### No pointer indexing 
+
