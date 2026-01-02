@@ -108,7 +108,8 @@ def main() :: int {
 ```
 
 ## Known limitations:
-### 6 parameter functions
-### No bitwise operations
-### No pointer indexing 
+### 6 parameter functions 
+### No bitwise operations yet
+### No pointer indexing yet
+### No type inference yet
 
