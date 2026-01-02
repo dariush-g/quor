@@ -6,6 +6,6 @@ def add(a: int, b: int) :: int {
 def main() :: int {
 	let x: int = 5;
 	let y: int = 6;
-	print_int(add(x, y));
+	print("%d", add(x, y));
 	return 0;
 }
