@@ -11,7 +11,7 @@ def main() :: int {
 		y: 'h'
 	};
 
-	print_int(example_union.x);
+	print("%d", example_union.x);
 		
 	return 0;
 }
