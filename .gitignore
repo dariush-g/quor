@@ -1,2 +1,2 @@
-/target
-pre/target/
+**/target/
+**/.DS_Store
