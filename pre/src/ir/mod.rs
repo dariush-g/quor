@@ -1,6 +1,6 @@
-use crate::lexer::ast::{Stmt, Type};
+use crate::lexer::ast::Type;
 
-pub mod ast;
+pub mod cfg;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VReg(pub usize);

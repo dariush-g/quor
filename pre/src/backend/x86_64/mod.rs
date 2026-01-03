@@ -312,14 +312,14 @@ impl CodeGen {
 
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let mut print = fs::read_to_string(format!("{manifest_dir}/lib/io.asm"))
+        let mut print = fs::read_to_string(format!("{manifest_dir}/lib/x86_64/io.asm"))
             .unwrap_or_else(|_| panic!("Error importing io"));
 
         print.push('\n');
 
         code.output.push_str(&print);
 
-        let mut mem = fs::read_to_string(format!("{manifest_dir}/lib/mem.asm"))
+        let mut mem = fs::read_to_string(format!("{manifest_dir}/lib/x86_64/mem.asm"))
             .unwrap_or_else(|_| panic!("Error importing mem"));
 
         mem.push('\n');
