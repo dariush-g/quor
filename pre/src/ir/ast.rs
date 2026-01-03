@@ -31,7 +31,7 @@ impl IRGenerator {
     }
 
     pub fn generate(&mut self, program: Vec<Stmt>) -> Result<IRProgram, String> {
-        let mut ir_functions = Vec::new();
+        let mut ir_functions: Vec<IRFunction> = Vec::new();
 
         for stmt in program {
             if let Stmt::FunDecl {
