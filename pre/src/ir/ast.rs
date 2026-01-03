@@ -1,7 +1,24 @@
 use crate::{
-    ir::{IRFunction, IRInstruction, IRProgram, VReg},
+    ir::{BlockId, IRBlock, IRFunction, IRInstruction, IRProgram, VReg},
     lexer::ast::Stmt,
 };
+
+#[derive(Default, Debug, Clone)]
+pub struct BlockIdGen {
+    next: usize,
+}
+
+impl BlockIdGen {
+    pub fn new() -> Self {
+        Self { next: 0 }
+    }
+
+    pub fn fresh(&mut self) -> BlockId {
+        let id = BlockId(self.next);
+        self.next += 1;
+        id
+    }
+}
 
 #[derive(Default)]
 pub struct VRegGenerator {
@@ -19,32 +36,14 @@ impl VRegGenerator {
 #[derive(Default)]
 pub struct IRGenerator {
     vreg_gen: VRegGenerator,
-    label_counter: usize,
-    current_func_instrs: Vec<IRInstruction>,
+    block_gen: BlockIdGen,
+    blocks: Vec<IRBlock>,
+    current_block: Vec<IRInstruction>,
 }
 
 impl IRGenerator {
-    fn fresh_label(&mut self, pref: &str) -> String {
-        let label = format!("{}.{}", pref, self.label_counter);
-        self.label_counter += 1;
-        label
-    }
-
-    pub fn generate(&mut self, program: Vec<Stmt>) -> Result<IRProgram, String> {
-        let mut ir_functions: Vec<IRFunction> = Vec::new();
-
-        for stmt in program {
-            if let Stmt::FunDecl {
-                name,
-                params,
-                return_type,
-                body,
-                attributes,
-            } = stmt
-            {}
-        }
-
-        Err("error".to_string())
+    fn generate() -> Result<IRProgram, String> {
+        Err(String::from("error"))
     }
 
     fn generate_function(&mut self, func: &Stmt) -> Result<IRFunction, String> {
@@ -62,13 +61,12 @@ impl IRGenerator {
                 params.push(self.vreg_gen.fresh());
             }
 
-
             let ir_func = IRFunction {
                 name: name.clone(),
                 params,
                 ret_type: return_type.clone(),
-                locals: todo!(),
                 blocks: todo!(),
+                entry: todo!(),
             };
         }
 

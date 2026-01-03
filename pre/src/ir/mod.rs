@@ -1,4 +1,4 @@
-use crate::lexer::ast::Type;
+use crate::lexer::ast::{Stmt, Type};
 
 pub mod ast;
 
@@ -87,28 +87,10 @@ pub enum IRInstruction {
         size: usize,
     }, // returns pointer
 
-    Label {
-        name: String,
-    },
-    Jump {
-        target: String,
-    },
-    JumpIf {
-        condition: Value,
-        target: String,
-    },
-    JumpIfNot {
-        condition: Value,
-        target: String,
-    },
-
     Call {
         reg: Option<VReg>,
         func: String,
         args: Vec<Value>,
-    },
-    Return {
-        value: Option<Value>,
     },
 
     Move {
@@ -121,10 +103,29 @@ pub enum IRInstruction {
     },
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BlockId(usize);
+
 #[derive(Debug, Clone)]
 pub struct IRBlock {
-    pub label: String,
+    pub id: BlockId,
     pub instructions: Vec<IRInstruction>,
+    pub terminator: Terminator,
+}
+
+#[derive(Clone, Debug)]
+pub enum Terminator {
+    Return {
+        value: Option<Value>,
+    },
+    Jump {
+        block: BlockId,
+    },
+    Branch {
+        condition: Value,
+        if_true: BlockId,
+        if_false: BlockId,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -132,12 +133,20 @@ pub struct IRFunction {
     pub name: String,
     pub params: Vec<VReg>,
     pub ret_type: Type,
-    pub locals: Vec<(String, Type)>,
     pub blocks: Vec<IRBlock>,
+    pub entry: BlockId,
 }
 
 #[derive(Debug, Clone)]
 pub struct IRProgram {
     pub functions: Vec<IRFunction>,
-    pub globals: Vec<(String, Type)>,
+    pub global_consts: Vec<Stmt>,
+    pub structs: Vec<StructDef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDef {
+    name: String,
+    fields: Vec<(String, Type)>,
+    is_union: bool,
 }
