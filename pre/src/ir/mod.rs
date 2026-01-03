@@ -9,7 +9,8 @@ pub struct VReg(pub usize);
 pub enum Value {
     Reg(VReg),
     Const(i64),
-    Ident(String),
+    Local(usize),
+    Global(usize),
 }
 
 #[derive(Clone, Debug)]
@@ -71,21 +72,32 @@ pub enum IRInstruction {
         right: Value,
     },
 
+    Cast {
+        reg: VReg,
+        src: Value,
+        ty: Type,
+    },
+
     Load {
         reg: VReg,
         addr: Value,
         offset: i32,
+        ty: Type,
     },
+
     Store {
         value: Value,
         addr: Value,
         offset: i32,
+        ty: Type,
     },
 
-    StackAlloc {
-        reg: VReg,
-        size: usize,
-    }, // returns pointer
+    Gep {
+        dest: VReg,
+        base: Value,
+        index: Value, // multiplied by element size
+        scale: usize,
+    },
 
     Call {
         reg: Option<VReg>,
@@ -97,14 +109,15 @@ pub enum IRInstruction {
         dest: VReg,
         from: Value,
     },
+
     AddressOf {
         dest: VReg,
-        from: String,
+        src: Value, // src must be Local or Global
     },
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct BlockId(usize);
+pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct IRBlock {
@@ -140,13 +153,32 @@ pub struct IRFunction {
 #[derive(Debug, Clone)]
 pub struct IRProgram {
     pub functions: Vec<IRFunction>,
-    pub global_consts: Vec<Stmt>,
+    pub global_consts: Vec<GlobalDef>,
     pub structs: Vec<StructDef>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructDef {
-    name: String,
-    fields: Vec<(String, Type)>,
-    is_union: bool,
+    pub name: String,
+    pub fields: Vec<(String, Type)>,
+    pub is_union: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalDef {
+    pub name: usize, // global id
+    pub ty: Type,
+    pub init: ConstInit,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConstInit {
+    Int(i64),
+    Bool(bool),
+    Char(u8),
+    Float32(u32),
+    Null,
+    AddrOfGlobal(usize),
+    Bytes(Vec<u8>),
+    Zeroed(usize),
 }
