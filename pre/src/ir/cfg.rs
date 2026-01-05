@@ -1,11 +1,10 @@
-use crate::{
-    ir::{BlockId, IRBlock, IRFunction, IRInstruction, IRProgram, StructDef, VReg},
-    lexer::ast::Stmt,
-};
+use std::collections::HashMap;
+
+use crate::{ir::block::*, lexer::ast::*};
 
 #[derive(Default, Debug, Clone)]
 pub struct BlockIdGen {
-    next: usize,
+    pub next: usize,
 }
 
 impl BlockIdGen {
@@ -22,7 +21,7 @@ impl BlockIdGen {
 
 #[derive(Default)]
 pub struct VRegGenerator {
-    next: usize,
+    pub next: usize,
 }
 
 impl VRegGenerator {
@@ -35,10 +34,10 @@ impl VRegGenerator {
 
 #[derive(Default)]
 pub struct IRGenerator {
-    vreg_gen: VRegGenerator,
-    block_gen: BlockIdGen,
-    blocks: Vec<IRBlock>,
-    current_block: Vec<IRInstruction>,
+    pub vreg_gen: VRegGenerator,
+    pub block_gen: BlockIdGen,
+    pub blocks: Vec<IRBlock>,
+    pub globals: HashMap<String, GlobalDef>,
 }
 
 impl IRGenerator {
@@ -98,7 +97,54 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn generate_block(&mut self, vec_stmt: Vec<Stmt>) {
-        for stmt in vec_stmt {}
+    fn first_parse_full_block(&mut self, vec_stmt: Vec<Stmt>) -> Vec<IRBlock> {
+        let mut blocks = Vec::new();
+        let mut current: Vec<IRInstruction> = Vec::new();
+        let mut var_map: HashMap<String, (Option<usize>, Option<VReg>)> = HashMap::new();
+        let mut var_count = 0_usize;
+        for stmt in vec_stmt {
+            match stmt {
+                Stmt::AtDecl(dec, content, ..) => match dec.as_str() {
+                    "__asm__" | "_asm_" | "asm" => {
+                        current.push(IRInstruction::Declaration(AtDecl::InlineAssembly {
+                            content: content.unwrap(),
+                        }));
+                    }
+                    _ => {
+                        eprintln!("warning :: unexpected declaration: \"{dec}\"");
+                    }
+                },
+                Stmt::VarDecl { name, value, .. } => {
+                    let id = var_count;
+                    var_count += 1;
+                    var_map.insert(name, (Some(id), None));
+                }
+                Stmt::FunDecl { name, .. } => {
+                    eprintln!("warning :: function {name} defined inside a block")
+                }
+                Stmt::StructDecl { name, .. } => {
+                    eprintln!("warning :: struct {name} defined a block")
+                }
+                Stmt::If {
+                    condition,
+                    then_stmt,
+                    else_stmt,
+                } => todo!(),
+                Stmt::While { condition, body } => todo!(),
+                Stmt::For {
+                    init,
+                    condition,
+                    update,
+                    body,
+                } => todo!(),
+                Stmt::Block(stmts) => todo!(),
+                Stmt::Expression(expr) => todo!(),
+                Stmt::Return(expr) => todo!(),
+                Stmt::Break => todo!(),
+                Stmt::Continue => todo!(),
+            }
+        }
+
+        return blocks;
     }
 }
