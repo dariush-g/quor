@@ -247,6 +247,7 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
+                    has_main = true;
                     if !params.is_empty() {
                         if params[0].1 == Type::int
                             && let Type::Pointer(boxed_ty) = &params[1].1
@@ -254,10 +255,11 @@ impl CodeGen {
                             && *inside == Type::Char
                         {
                             code.generate_function("main", params.clone(), body, attributes);
-                            has_main = true;
+                        } else {
+                            panic!("unexpected parameters for main function");
                         }
+                    } else {
                         code.generate_function("main", vec![], body, attributes);
-                        has_main = true;
                     }
                 } else {
                     code.functions.push((

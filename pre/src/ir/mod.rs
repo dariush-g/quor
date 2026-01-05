@@ -1,4 +1,4 @@
-use crate::lexer::ast::Type;
+use crate::lexer::ast::{Expr, Type};
 
 pub mod cfg;
 
@@ -114,6 +114,16 @@ pub enum IRInstruction {
         dest: VReg,
         src: Value, // src must be Local or Global
     },
+
+    Declaration(AtDecl),
+}
+
+#[derive(Clone, Debug)]
+pub enum AtDecl {
+    Import { path: String, local: bool },
+    Define { name: String, ty: Type, val: Expr },
+    TrustRet,
+    InlineAssembly { content: String },
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -148,9 +158,10 @@ pub struct IRFunction {
     pub ret_type: Type,
     pub blocks: Vec<IRBlock>,
     pub entry: BlockId,
+    pub attributes: Vec<AtDecl>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct IRProgram {
     pub functions: Vec<IRFunction>,
     pub global_consts: Vec<GlobalDef>,

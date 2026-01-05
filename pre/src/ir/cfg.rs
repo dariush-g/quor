@@ -1,5 +1,5 @@
 use crate::{
-    ir::{BlockId, IRBlock, IRFunction, IRInstruction, IRProgram, VReg},
+    ir::{BlockId, IRBlock, IRFunction, IRInstruction, IRProgram, StructDef, VReg},
     lexer::ast::Stmt,
 };
 
@@ -42,11 +42,35 @@ pub struct IRGenerator {
 }
 
 impl IRGenerator {
-    fn generate() -> Result<IRProgram, String> {
+    fn generate(mut stmts: Vec<Stmt>) -> Result<IRProgram, String> {
+        let program = IRProgram::default();
+        let mut ir_generator = IRGenerator::default();
+        for (i, stmt) in stmts.clone().iter().enumerate() {
+            if let Stmt::AtDecl(..) = stmt {
+                ir_generator.generate_declaration(stmt)?;
+                stmts.remove(i);
+            };
+        }
+        for stmt in stmts {
+            match stmt {
+                Stmt::FunDecl { .. } => ir_generator.generate_function(&stmt),
+                Stmt::StructDecl { .. } => ir_generator.generate_struct(&stmt),
+                _ => Ok(()),
+            }?
+        }
+
         Err(String::from("error"))
     }
 
-    fn generate_function(&mut self, func: &Stmt) -> Result<IRFunction, String> {
+    fn generate_struct(&mut self, stmt: &Stmt) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn generate_declaration(&mut self, stmt: &Stmt) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn generate_function(&mut self, func: &Stmt) -> Result<(), String> {
         if let Stmt::FunDecl {
             name,
             params,
@@ -67,9 +91,14 @@ impl IRGenerator {
                 ret_type: return_type.clone(),
                 blocks: todo!(),
                 entry: todo!(),
+                attributes: todo!(),
             };
         }
 
-        Err("error".to_string())
+        Ok(())
+    }
+
+    fn generate_block(&mut self, vec_stmt: Vec<Stmt>) {
+        for stmt in vec_stmt {}
     }
 }
