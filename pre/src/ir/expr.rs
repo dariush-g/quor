@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use crate::{
     ir::{
-        block::{GlobalDef, IRInstruction, IRProgram, StructDef, VReg, Value},
+        block::{IRInstruction, StructDef, Value},
         cfg::IRGenerator,
     },
-    lexer::ast::{Expr, Type},
+    lexer::ast::{BinaryOp, Expr, Type, UnaryOp},
 };
 
 impl IRGenerator {
@@ -75,31 +73,28 @@ impl IRGenerator {
         }
     }
 
-    fn lower_place(&mut self, expr: Expr, out: &mut Vec<IRInstruction>) -> Option<Value> {
+    fn lower_place(&mut self, expr: Expr, _out: &mut Vec<IRInstruction>) -> Option<(Value, Type)> {
         match expr {
-            Expr::Variable(name, _ty) => {
+            Expr::Variable(name, ty) => {
                 let id = self.var_map.get(&name).unwrap().1;
-                Some(Value::Local(id))
+                Some((Value::Local(id), ty))
             }
             Expr::StringLiteral(s) => {
                 let g = self.globals.get(&s).unwrap();
-                Some(Value::Global(g.id))
+                Some((Value::Global(g.id), g.ty.clone()))
             }
-            // Expr::Deref(inner) => {
-            //     // if you have deref lvalues: *p is a place whose address is just p
-            //     // (i.e. *p as a place is "Reg(ptr)" for your Store/Load addr field)
-            //     let (ptr_val, _ty) = self.first_pass_parse_expr(*inner, out).unwrap();
-            //     Some(ptr_val) // must be Value::Reg(...) typically
-            // }
-            Expr::ArrayAccess { array, index } => {
-                // compute element address with Gep and return Value::Reg(addr)
-                // requires types + scale; return that computed address as a "place"
-                todo!()
-            }
-            Expr::InstanceVar(obj, field) => {
-                // compute field address and return it as a "place"
-                todo!()
-            }
+            Expr::ArrayAccess { array, index } => None,
+            Expr::IndexAssign {
+                array,
+                index,
+                value,
+            } => None,
+            Expr::InstanceVar(_, _) => None,
+            Expr::FieldAssign {
+                class_name,
+                field,
+                value,
+            } => None,
             _ => None, // not an lvalue
         }
     }
@@ -110,6 +105,7 @@ impl IRGenerator {
         out: &mut Vec<IRInstruction>,
     ) -> Option<(Value, Type)> {
         let var_map = self.var_map.clone();
+        let ir_program = self.ir_program.clone();
         match expr {
             Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::int)),
             Expr::LongLiteral(l) => Some((Value::Const(l), Type::Long)),
@@ -148,14 +144,29 @@ impl IRGenerator {
                 Some((Value::Local(loc), self.type_struct(&name)))
             }
             Expr::AddressOf(expression) => {
-                let load = IRInstruction::AddressOf {
-                    dest: self.vreg_gen.fresh(),
-                    src: self.first_pass_parse_expr(*expression, out).unwrap().0,
+                let reg = self.vreg_gen.fresh();
+                let (place, inner_ty) = self.lower_place(*expression, out).unwrap();
+                out.push(IRInstruction::AddressOf {
+                    dest: reg,
+                    src: place,
+                });
+                Some((Value::Reg(reg), Type::Pointer(Box::new(inner_ty))))
+            }
+            Expr::DerefAssign { target, value } => {
+                let (rhs_val, _) = self.lower_place(*value, out).unwrap();
+
+                let (ptr_val, ptr_ty) = self.lower_place(*target, out).unwrap(); // ptr_val should be Value::Reg(_)
+
+                let instr = IRInstruction::Store {
+                    value: rhs_val,
+                    addr: ptr_val,
+                    offset: 0,
+                    ty: ptr_ty.deref().unwrap().clone(),
                 };
-                out.push(load);
+
+                out.push(instr);
                 None
             }
-            Expr::DerefAssign { target, value } => todo!(),
             Expr::InstanceVar(_, _) => todo!(),
             Expr::Variable(name, ty) => {
                 let id = self
@@ -163,43 +174,159 @@ impl IRGenerator {
                     .get(&name)
                     .expect("should not happen :: first_pass_parse_expr :: Expr::Variable")
                     .1;
-                Some((Value::Local(id), ty))
+                let reg = self.vreg_gen.fresh();
+                out.push(IRInstruction::Load {
+                    reg,
+                    addr: Value::Local(id),
+                    offset: 0,
+                    ty: ty.clone(),
+                });
+                Some((Value::Reg(reg), ty))
             }
             Expr::Assign { name, value } => {
                 let var_info = var_map
                     .get(&name)
                     .expect("should not happen :: first_pass_parse_expr :: Expr::Assign");
-                let val = self.first_pass_parse_expr(*value, out).unwrap().0;
+                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value, out).unwrap();
+                let rhs = self.ensure_rvalue(rhs, &rhs_ty, out);
                 let assign = IRInstruction::Store {
-                    value: Value::Local(var_info.1),
-                    addr: val,
+                    value: rhs,
+                    addr: Value::Local(var_info.1),
                     offset: 0,
                     ty: var_info.0.clone(),
                 };
                 out.push(assign);
                 None
             }
-            Expr::CompoundAssign { name, op, value } => todo!(),
-            Expr::PreIncrement { name } => todo!(),
-            Expr::PostIncrement { name } => todo!(),
-            Expr::PreDecrement { name } => todo!(),
-            Expr::PostDecrement { name } => todo!(),
             Expr::Binary {
                 left,
                 op,
                 right,
                 result_type,
-            } => todo!(),
+            } => {
+                let (left_rvalue, left_type) = self.first_pass_parse_expr(*left, out).unwrap();
+                let left = self.ensure_rvalue(left_rvalue, &left_type, out);
+
+                let (right_rvalue, right_type) = self.first_pass_parse_expr(*right, out).unwrap();
+                let right = self.ensure_rvalue(right_rvalue, &right_type, out);
+
+                let reg = self.vreg_gen.fresh();
+
+                match op {
+                    BinaryOp::Add => out.push(IRInstruction::Add { reg, left, right }),
+                    BinaryOp::Sub => out.push(IRInstruction::Sub { reg, left, right }),
+                    BinaryOp::Mul => out.push(IRInstruction::Mul { reg, left, right }),
+                    BinaryOp::Div => out.push(IRInstruction::Div { reg, left, right }),
+                    BinaryOp::Mod => out.push(IRInstruction::Mod { reg, left, right }),
+                    BinaryOp::Equal => out.push(IRInstruction::Eq { reg, left, right }),
+                    BinaryOp::NotEqual => out.push(IRInstruction::Ne { reg, left, right }),
+                    BinaryOp::Less => out.push(IRInstruction::Lt { reg, left, right }),
+                    BinaryOp::LessEqual => out.push(IRInstruction::Le { reg, left, right }),
+                    BinaryOp::Greater => out.push(IRInstruction::Gt { reg, left, right }),
+                    BinaryOp::GreaterEqual => out.push(IRInstruction::Ge { reg, left, right }),
+                    // BinaryOp::AND => todo!(),
+                    // BinaryOp::OR => todo!(),
+                    // BinaryOp::XOR => todo!(),
+                    // BinaryOp::NOT => todo!(),
+                    // BinaryOp::LSHIFT => todo!(),
+                    // BinaryOp::RSHIFT => todo!(),
+                    // BinaryOp::ZFILLRSHIFT => todo!(),
+                    // BinaryOp::And => todo!(),
+                    // BinaryOp::Or => todo!(),
+                    _ => {}
+                }
+
+                Some((Value::Reg(reg), result_type))
+            }
             Expr::Unary {
                 op,
                 expr,
                 result_type,
-            } => todo!(),
+            } => match op {
+                UnaryOp::Not => {
+                    let (v, ty) = self.first_pass_parse_expr(*expr, out).unwrap();
+                    let v = self.ensure_rvalue(v, &ty, out);
+                    let reg = self.vreg_gen.fresh();
+                    out.push(IRInstruction::Eq {
+                        reg,
+                        left: v,
+                        right: Value::Const(0),
+                    });
+                    Some((Value::Reg(reg), Type::Bool))
+                }
+
+                UnaryOp::Negate => {
+                    let (v, ty) = self.first_pass_parse_expr(*expr, out).unwrap();
+                    let v = self.ensure_rvalue(v, &ty, out);
+                    let reg = self.vreg_gen.fresh();
+                    out.push(IRInstruction::Sub {
+                        reg,
+                        left: Value::Const(0),
+                        right: v,
+                    });
+                    Some((Value::Reg(reg), result_type))
+                }
+
+                UnaryOp::AddressOf => {
+                    let (place, inner_ty) =
+                        self.lower_place(*expr, out).expect("cannot take address");
+                    let reg = self.vreg_gen.fresh();
+                    out.push(IRInstruction::AddressOf {
+                        dest: reg,
+                        src: place,
+                    });
+                    Some((Value::Reg(reg), Type::Pointer(Box::new(inner_ty))))
+                }
+
+                UnaryOp::Dereference => {
+                    let (ptr, ptr_ty) = self.first_pass_parse_expr(*expr, out).unwrap();
+                    let ptr = self.ensure_rvalue(ptr, &ptr_ty, out);
+
+                    let pointee = match ptr_ty {
+                        Type::Pointer(t) => *t,
+                        _ => panic!("dereference of non-pointer"),
+                    };
+
+                    let reg = self.vreg_gen.fresh();
+                    out.push(IRInstruction::Load {
+                        reg,
+                        addr: ptr,
+                        offset: 0,
+                        ty: pointee.clone(),
+                    });
+                    Some((Value::Reg(reg), pointee))
+                }
+            },
             Expr::Call {
                 name,
                 args,
                 return_type,
-            } => todo!(),
+            } => {
+                let reg = if return_type == Type::Void {
+                    None
+                } else {
+                    Some(self.vreg_gen.fresh())
+                };
+
+                let args: Vec<Value> = args
+                    .iter()
+                    .map(|arg| {
+                        let (v, ty) = self.first_pass_parse_expr(arg.clone(), out).unwrap();
+                        self.ensure_rvalue(v, &ty, out)
+                    })
+                    .collect();
+
+                let instr = IRInstruction::Call {
+                    reg,
+                    func: name,
+                    args,
+                };
+                out.push(instr);
+                if let Some(reg) = reg {
+                    return Some((Value::Reg(reg), return_type));
+                }
+                None
+            }
             Expr::Cast { expr, target_type } => todo!(),
             Expr::Array(exprs, _) => todo!(),
             Expr::ArrayAccess { array, index } => todo!(),
@@ -212,7 +339,55 @@ impl IRGenerator {
                 class_name,
                 field,
                 value,
-            } => todo!(),
+            } => {
+                let local_value_of_struct = self.var_map.get(&class_name).unwrap().1;
+                let struc = ir_program
+                    .structs
+                    .iter()
+                    .find(|s| s.name == class_name)
+                    .unwrap();
+                let offset = struc.offsets.get(&field).unwrap();
+
+                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value, out).unwrap();
+                let rhs = self.ensure_rvalue(rhs, &rhs_ty, out);
+
+                let instr = IRInstruction::Store {
+                    value: rhs,
+                    addr: Value::Local(local_value_of_struct),
+                    offset: *offset as i32,
+                    ty: struc
+                        .fields
+                        .iter()
+                        .find(|s| s.0 == field)
+                        .unwrap()
+                        .1
+                        .clone(),
+                };
+
+                out.push(instr);
+                None
+            }
+            Expr::CompoundAssign { name, op, value } => None,
+            Expr::PreIncrement { name } => None,
+            Expr::PostIncrement { name } => None,
+            Expr::PreDecrement { name } => None,
+            Expr::PostDecrement { name } => None,
+        }
+    }
+
+    fn ensure_rvalue(&mut self, v: Value, ty: &Type, out: &mut Vec<IRInstruction>) -> Value {
+        match v {
+            Value::Local(_) | Value::Global(_) => {
+                let r = self.vreg_gen.fresh();
+                out.push(IRInstruction::Load {
+                    reg: r,
+                    addr: v,
+                    offset: 0,
+                    ty: ty.clone(),
+                });
+                Value::Reg(r)
+            }
+            _ => v,
         }
     }
 }

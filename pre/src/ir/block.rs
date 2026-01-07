@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::lexer::ast::{Expr, Type};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -171,6 +173,7 @@ pub struct IRProgram {
 pub struct StructDef {
     pub name: String,
     pub fields: Vec<(String, Type)>,
+    pub offsets: HashMap<String, usize>,
     pub is_union: bool,
 }
 
