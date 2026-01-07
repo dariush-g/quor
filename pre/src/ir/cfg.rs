@@ -118,6 +118,69 @@ impl IRGenerator {
         Ok(())
     }
 
+    fn parse_block(&mut self, stmts: Vec<Stmt>) -> IRBlock {
+        let block_id = self.block_gen.fresh();
+        let mut instructions = Vec::new();
+        let terminator: Terminator;
+        for stmt in stmts {
+            match stmt {
+                Stmt::AtDecl(dec, content, ..) => match dec.as_str() {
+                    "__asm__" | "_asm_" | "asm" => {
+                        instructions.push(IRInstruction::Declaration(AtDecl::InlineAssembly {
+                            content: content.unwrap(),
+                        }));
+                    }
+                    _ => {
+                        eprintln!("warning :: unexpected declaration: \"{dec}\"");
+                    }
+                },
+                Stmt::VarDecl {
+                    name,
+                    value,
+                    var_type,
+                } => {
+                    let val = self.add_new_var(name, var_type);
+                    self.emit_into_local(val, value, &mut instructions);
+                }
+                Stmt::FunDecl { name, .. } => {
+                    eprintln!("warning :: function {name} defined inside a block")
+                }
+                Stmt::StructDecl { name, .. } => {
+                    eprintln!("warning :: struct {name} defined a block")
+                }
+                Stmt::If {
+                    condition,
+                    then_stmt,
+                    else_stmt,
+                } => {
+                    let terminator = Terminator::Branch {
+                        condition: todo!(),
+                        if_true: todo!(),
+                        if_false: todo!(),
+                    };
+                }
+                Stmt::While { condition, body } => todo!(),
+                Stmt::For {
+                    init,
+                    condition,
+                    update,
+                    body,
+                } => todo!(),
+                Stmt::Block(stmts) => todo!(),
+                Stmt::Expression(expr) => todo!(),
+                Stmt::Return(expr) => {}
+                Stmt::Break => todo!(),
+                Stmt::Continue => todo!(),
+            }
+        };
+
+        IRBlock {
+            id: block_id,
+            instructions: todo!(),
+            terminator: todo!(),
+        }
+    }
+
     fn first_parse_full_block(&mut self, vec_stmt: Vec<Stmt>) -> Vec<IRBlock> {
         let mut blocks = Vec::new();
         let mut current: Vec<IRInstruction> = Vec::new();
@@ -134,7 +197,11 @@ impl IRGenerator {
                         eprintln!("warning :: unexpected declaration: \"{dec}\"");
                     }
                 },
-                Stmt::VarDecl { name, value, var_type } => {
+                Stmt::VarDecl {
+                    name,
+                    value,
+                    var_type,
+                } => {
                     let val = self.add_new_var(name, var_type);
                     self.emit_into_local(val, value, &mut current);
                 }

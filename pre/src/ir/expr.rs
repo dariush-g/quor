@@ -369,9 +369,9 @@ impl IRGenerator {
             }
             Expr::ArrayAccess { array, index } => {
                 let register = self.vreg_gen.fresh();
-                
+
                 let (addr_val, mut array_ty) = self.first_pass_parse_expr(*array, out).unwrap();
- 
+
                 if let Type::Array(ty, _) = array_ty {
                     array_ty = *ty;
                 }
@@ -380,8 +380,13 @@ impl IRGenerator {
 
                 let (offset, ty) = self.first_pass_parse_expr(*index, out).unwrap();
                 let offset = self.ensure_rvalue(offset, &ty, out);
-                
-                out.push(IRInstruction::Gep { dest: addr_reg, base: addr_val, index: offset, scale: array_ty.size() });
+
+                out.push(IRInstruction::Gep {
+                    dest: addr_reg,
+                    base: addr_val,
+                    index: offset,
+                    scale: array_ty.size(),
+                });
 
                 out.push(IRInstruction::Load {
                     reg: register,
@@ -396,19 +401,50 @@ impl IRGenerator {
                 index,
                 value,
             } => {
-                let (addr_val, _) = self.first_pass_parse_expr(*array, out).unwrap();
-                let (offset, ty) = self.first_pass_parse_expr(*index, out).unwrap();
-                let offset = self.ensure_rvalue(offset, &ty, out);
-                let (value_val, _value_ty) = self.first_pass_parse_expr(*value, out).unwrap();
+                let (base, mut base_ty) = self.first_pass_parse_expr(*array, out).unwrap();
+
+                if let Type::Array(elem_ty, _) = base_ty {
+                    base_ty = *elem_ty;
+                }
+                let elem_ty = base_ty.clone();
+
+                let (idx, idx_ty) = self.first_pass_parse_expr(*index, out).unwrap();
+                let idx = self.ensure_rvalue(idx, &idx_ty, out);
+
+                let base_ptr = match base {
+                    Value::Local(_) | Value::Global(_) => {
+                        let r = self.vreg_gen.fresh();
+                        out.push(IRInstruction::AddressOf {
+                            dest: r,
+                            src: base.clone(),
+                        });
+                        Value::Reg(r)
+                    }
+                    _ => base.clone(),
+                };
+
+                // base_ptr + idx * sizeof(elem)
+                let addr_reg = self.vreg_gen.fresh();
+                out.push(IRInstruction::Gep {
+                    dest: addr_reg,
+                    base: base_ptr,
+                    index: idx,
+                    scale: elem_ty.size(),
+                });
+
+                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value, out).unwrap();
+                let rhs = self.ensure_rvalue(rhs, &rhs_ty, out);
+
                 out.push(IRInstruction::Store {
-                    addr: addr_val,
+                    value: rhs,
+                    addr: Value::Reg(addr_reg),
                     offset: 0,
-                    ty: ty.clone(),
-                    value: value_val,
+                    ty: elem_ty,
                 });
 
                 None
             }
+
             Expr::FieldAssign {
                 class_name,
                 field,
