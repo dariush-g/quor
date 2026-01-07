@@ -180,6 +180,7 @@ pub struct GlobalDef {
     pub ty: Type,
     pub value: GlobalValue,
 }
+
 #[derive(Debug, Clone)]
 pub enum GlobalValue {
     Bytes(Vec<u8>),
