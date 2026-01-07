@@ -89,7 +89,10 @@ impl IRGenerator {
                 index,
                 value,
             } => None,
-            Expr::InstanceVar(_, _) => None,
+            Expr::InstanceVar(struct_name, field) => {
+                let (ty, local_id) = self.var_map.get(&struct_name).unwrap();
+                Some((Value::Local(*local_id), ty.clone()))
+            }
             Expr::FieldAssign {
                 class_name,
                 field,
@@ -327,14 +330,85 @@ impl IRGenerator {
                 }
                 None
             }
-            Expr::Cast { expr, target_type } => todo!(),
-            Expr::Array(exprs, _) => todo!(),
-            Expr::ArrayAccess { array, index } => todo!(),
+            Expr::Cast { expr, target_type } => {
+                let register = self.vreg_gen.fresh();
+                let (from_val, from_ty) = self.first_pass_parse_expr(*expr, out).unwrap();
+                out.push(IRInstruction::Load {
+                    reg: register,
+                    addr: from_val,
+                    offset: 0,
+                    ty: from_ty,
+                });
+                let register2 = self.vreg_gen.fresh();
+                out.push(IRInstruction::Cast {
+                    reg: register2,
+                    src: Value::Reg(register),
+                    ty: target_type.clone(),
+                });
+                Some((Value::Reg(register2), target_type))
+            }
+            Expr::Array(exprs, ty) => {
+                let local_id = self.var_gen.fresh();
+                let size_per = ty.size();
+                for (i, index_expression) in exprs.iter().enumerate() {
+                    let (index_val, _) = self
+                        .first_pass_parse_expr(index_expression.clone(), out)
+                        .unwrap();
+                    let index_val = self.ensure_rvalue(index_val, &ty, out);
+                    out.push(IRInstruction::Store {
+                        value: index_val,
+                        addr: Value::Local(local_id),
+                        offset: (i * size_per) as i32,
+                        ty: ty.clone(),
+                    });
+                }
+                Some((
+                    Value::Local(local_id),
+                    Type::Array(Box::new(ty), Some(exprs.len())),
+                ))
+            }
+            Expr::ArrayAccess { array, index } => {
+                let register = self.vreg_gen.fresh();
+                
+                let (addr_val, mut array_ty) = self.first_pass_parse_expr(*array, out).unwrap();
+ 
+                if let Type::Array(ty, _) = array_ty {
+                    array_ty = *ty;
+                }
+
+                let addr_reg = self.vreg_gen.fresh();
+
+                let (offset, ty) = self.first_pass_parse_expr(*index, out).unwrap();
+                let offset = self.ensure_rvalue(offset, &ty, out);
+                
+                out.push(IRInstruction::Gep { dest: addr_reg, base: addr_val, index: offset, scale: array_ty.size() });
+
+                out.push(IRInstruction::Load {
+                    reg: register,
+                    addr: Value::Reg(addr_reg),
+                    offset: 0,
+                    ty: ty.clone(),
+                });
+                Some((Value::Reg(register), ty))
+            }
             Expr::IndexAssign {
                 array,
                 index,
                 value,
-            } => todo!(),
+            } => {
+                let (addr_val, _) = self.first_pass_parse_expr(*array, out).unwrap();
+                let (offset, ty) = self.first_pass_parse_expr(*index, out).unwrap();
+                let offset = self.ensure_rvalue(offset, &ty, out);
+                let (value_val, _value_ty) = self.first_pass_parse_expr(*value, out).unwrap();
+                out.push(IRInstruction::Store {
+                    addr: addr_val,
+                    offset: 0,
+                    ty: ty.clone(),
+                    value: value_val,
+                });
+
+                None
+            }
             Expr::FieldAssign {
                 class_name,
                 field,
