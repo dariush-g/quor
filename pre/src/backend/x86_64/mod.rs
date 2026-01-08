@@ -247,6 +247,7 @@ impl CodeGen {
             } = stmt
             {
                 if name == "main" {
+                    has_main = true;
                     if !params.is_empty() {
                         if params[0].1 == Type::int
                             && let Type::Pointer(boxed_ty) = &params[1].1
@@ -254,10 +255,11 @@ impl CodeGen {
                             && *inside == Type::Char
                         {
                             code.generate_function("main", params.clone(), body, attributes);
-                            has_main = true;
+                        } else {
+                            panic!("unexpected parameters for main function");
                         }
+                    } else {
                         code.generate_function("main", vec![], body, attributes);
-                        has_main = true;
                     }
                 } else {
                     code.functions.push((
@@ -312,14 +314,14 @@ impl CodeGen {
 
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-        let mut print = fs::read_to_string(format!("{manifest_dir}/lib/io.asm"))
+        let mut print = fs::read_to_string(format!("{manifest_dir}/lib/x86_64/io.asm"))
             .unwrap_or_else(|_| panic!("Error importing io"));
 
         print.push('\n');
 
         code.output.push_str(&print);
 
-        let mut mem = fs::read_to_string(format!("{manifest_dir}/lib/mem.asm"))
+        let mut mem = fs::read_to_string(format!("{manifest_dir}/lib/x86_64/mem.asm"))
             .unwrap_or_else(|_| panic!("Error importing mem"));
 
         mem.push('\n');
