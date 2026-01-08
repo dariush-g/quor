@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{ir::block::*, lexer::ast::*};
 
@@ -17,6 +17,12 @@ impl BlockIdGen {
         self.next += 1;
         id
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ScopeHandler {
+    pub closed: HashSet<BlockId>,
+    pub open: BlockId,
 }
 
 #[derive(Default)]
@@ -54,9 +60,23 @@ pub struct IRGenerator {
     pub blocks: Vec<IRBlock>,
     pub globals: HashMap<String, GlobalDef>,
     pub ir_program: IRProgram,
+    pub scope_handler: ScopeHandler,
 }
 
 impl IRGenerator {
+    fn first_scope(&mut self) -> BlockId {
+        let id = self.block_gen.fresh();
+        self.scope_handler.open = id;
+        id
+    }
+
+    fn new_scope(&mut self) -> BlockId {
+        let id = self.block_gen.fresh();
+        self.scope_handler.closed.insert(self.scope_handler.open);
+        self.scope_handler.open = id;
+        id
+    }
+
     fn add_new_var(&mut self, name: String, ty: Type) -> Value {
         let id = self.var_gen.fresh();
         self.var_map.insert(name, (ty, id));
@@ -172,7 +192,7 @@ impl IRGenerator {
                 Stmt::Break => todo!(),
                 Stmt::Continue => todo!(),
             }
-        };
+        }
 
         IRBlock {
             id: block_id,

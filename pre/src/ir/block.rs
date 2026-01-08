@@ -127,7 +127,7 @@ pub enum AtDecl {
     InlineAssembly { content: String },
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone)]
