@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{ir::block::*, lexer::ast::*};
 
@@ -54,16 +54,32 @@ pub struct IRGenerator {
     pub blocks: Vec<IRBlock>,
     pub globals: HashMap<String, GlobalDef>,
     pub ir_program: IRProgram,
+    pub block_scope_handler: BlockScopeHandler,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct BlockScopeHandler {
+    pub closed: HashSet<BlockId>,
+    pub open: BlockId,
 }
 
 impl IRGenerator {
-    fn add_new_var(&mut self, name: String, ty: Type) -> Value {
+    pub fn new_scope(&mut self) -> BlockId {
+        let id = self.block_gen.fresh();
+        self.block_scope_handler
+            .closed
+            .insert(self.block_scope_handler.open);
+        self.block_scope_handler.open = id;
+        id
+    }
+
+    pub fn add_new_var(&mut self, name: String, ty: Type) -> Value {
         let id = self.var_gen.fresh();
         self.var_map.insert(name, (ty, id));
         Value::Local(id)
     }
 
-    fn generate(mut stmts: Vec<Stmt>) -> Result<IRProgram, String> {
+    pub fn generate(mut stmts: Vec<Stmt>) -> Result<IRProgram, String> {
         let mut ir_generator = IRGenerator::default();
         for (i, stmt) in stmts.clone().iter().enumerate() {
             if let Stmt::AtDecl(..) = stmt {
@@ -93,15 +109,14 @@ impl IRGenerator {
     fn generate_function(&mut self, func: &Stmt) -> Result<(), String> {
         if let Stmt::FunDecl {
             name,
-            params,
+            params: parameters,
             return_type,
             body,
             attributes,
         } = func
         {
             let mut params = vec![];
-
-            for _ in 0..params.len() {
+            for _ in 0..parameters.len() {
                 params.push(self.vreg_gen.fresh());
             }
 
@@ -118,10 +133,10 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn parse_block(&mut self, stmts: Vec<Stmt>) -> IRBlock {
-        let block_id = self.block_gen.fresh();
+    fn parse_block(&mut self, stmts: Vec<Stmt>) -> BlockId {
+        let scope = self.new_scope();
         let mut instructions = Vec::new();
-        let terminator: Terminator;
+        let mut terminator: Terminator = Terminator::Return { value: None };
         for stmt in stmts {
             match stmt {
                 Stmt::AtDecl(dec, content, ..) => match dec.as_str() {
@@ -167,18 +182,33 @@ impl IRGenerator {
                     body,
                 } => todo!(),
                 Stmt::Block(stmts) => todo!(),
-                Stmt::Expression(expr) => todo!(),
-                Stmt::Return(expr) => {}
+                Stmt::Expression(expr) => {
+                    self.first_pass_parse_expr(expr, &mut instructions);
+                }
+                Stmt::Return(expr) => {
+                    if let Some(expr) = expr {
+                        if let Some((val, ty)) = self.first_pass_parse_expr(expr, &mut instructions)
+                        {
+                            terminator = Terminator::Return { value: Some(val) }
+                        }
+                    } else {
+                        terminator = Terminator::Return { value: None }
+                    }
+                }
                 Stmt::Break => todo!(),
                 Stmt::Continue => todo!(),
             }
+        }
+
+        let block = IRBlock {
+            id: scope,
+            instructions,
+            terminator,
         };
 
-        IRBlock {
-            id: block_id,
-            instructions: todo!(),
-            terminator: todo!(),
-        }
+        self.blocks.push(block);
+
+        scope
     }
 
     fn first_parse_full_block(&mut self, vec_stmt: Vec<Stmt>) -> Vec<IRBlock> {

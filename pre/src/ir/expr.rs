@@ -102,7 +102,7 @@ impl IRGenerator {
         }
     }
 
-    fn first_pass_parse_expr(
+    pub fn first_pass_parse_expr(
         &mut self,
         expr: Expr,
         out: &mut Vec<IRInstruction>,
