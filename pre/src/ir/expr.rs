@@ -22,7 +22,7 @@ impl IRGenerator {
         layout
     }
 
-    pub fn emit_into_local(&mut self, addr: Value, expr: Expr, out: &mut Vec<IRInstruction>) {
+    pub fn emit_into_local(&mut self, addr: Value, expr: Expr) {
         match expr {
             Expr::StructInit { name, params } => {
                 let def = self
@@ -37,9 +37,9 @@ impl IRGenerator {
                 for (i, (_field_name, field_expr)) in params.iter().enumerate() {
                     let (field_ty, field_off) = &layout[i];
 
-                    let (value, _ty) = self.first_pass_parse_expr(field_expr.clone(), out).unwrap();
+                    let (value, _ty) = self.first_pass_parse_expr(field_expr.clone()).unwrap();
 
-                    out.push(IRInstruction::Store {
+                    self.scope_handler.instructions.push(IRInstruction::Store {
                         value,
                         addr: addr.clone(),
                         offset: *field_off,
@@ -48,8 +48,8 @@ impl IRGenerator {
                 }
             }
             other => {
-                let (v, ty) = self.first_pass_parse_expr(other, out).unwrap();
-                out.push(IRInstruction::Store {
+                let (v, ty) = self.first_pass_parse_expr(other).unwrap();
+                self.scope_handler.instructions.push(IRInstruction::Store {
                     value: v,
                     addr,
                     offset: 0,
@@ -73,7 +73,7 @@ impl IRGenerator {
         }
     }
 
-    fn lower_place(&mut self, expr: Expr, _out: &mut Vec<IRInstruction>) -> Option<(Value, Type)> {
+    pub fn lower_place(&mut self, expr: Expr) -> Option<(Value, Type)> {
         match expr {
             Expr::Variable(name, ty) => {
                 let id = self.var_map.get(&name).unwrap().1;
@@ -102,11 +102,7 @@ impl IRGenerator {
         }
     }
 
-    fn first_pass_parse_expr(
-        &mut self,
-        expr: Expr,
-        out: &mut Vec<IRInstruction>,
-    ) -> Option<(Value, Type)> {
+    pub fn first_pass_parse_expr(&mut self, expr: Expr) -> Option<(Value, Type)> {
         let var_map = self.var_map.clone();
         let ir_program = self.ir_program.clone();
         match expr {
@@ -134,9 +130,9 @@ impl IRGenerator {
                 for (i, (_field_name, field_expr)) in params.iter().enumerate() {
                     let (field_ty, field_off) = &layout[i];
 
-                    let (value, _ty) = self.first_pass_parse_expr(field_expr.clone(), out).unwrap();
+                    let (value, _ty) = self.first_pass_parse_expr(field_expr.clone()).unwrap();
 
-                    out.push(IRInstruction::Store {
+                    self.scope_handler.instructions.push(IRInstruction::Store {
                         value,
                         addr: Value::Local(loc),
                         offset: *field_off,
@@ -148,17 +144,19 @@ impl IRGenerator {
             }
             Expr::AddressOf(expression) => {
                 let reg = self.vreg_gen.fresh();
-                let (place, inner_ty) = self.lower_place(*expression, out).unwrap();
-                out.push(IRInstruction::AddressOf {
-                    dest: reg,
-                    src: place,
-                });
+                let (place, inner_ty) = self.lower_place(*expression).unwrap();
+                self.scope_handler
+                    .instructions
+                    .push(IRInstruction::AddressOf {
+                        dest: reg,
+                        src: place,
+                    });
                 Some((Value::Reg(reg), Type::Pointer(Box::new(inner_ty))))
             }
             Expr::DerefAssign { target, value } => {
-                let (rhs_val, _) = self.lower_place(*value, out).unwrap();
+                let (rhs_val, _) = self.lower_place(*value).unwrap();
 
-                let (ptr_val, ptr_ty) = self.lower_place(*target, out).unwrap(); // ptr_val should be Value::Reg(_)
+                let (ptr_val, ptr_ty) = self.lower_place(*target).unwrap(); // ptr_val should be Value::Reg(_)
 
                 let instr = IRInstruction::Store {
                     value: rhs_val,
@@ -167,7 +165,7 @@ impl IRGenerator {
                     ty: ptr_ty.deref().unwrap().clone(),
                 };
 
-                out.push(instr);
+                self.scope_handler.instructions.push(instr);
                 None
             }
             Expr::InstanceVar(_, _) => todo!(),
@@ -178,7 +176,7 @@ impl IRGenerator {
                     .expect("should not happen :: first_pass_parse_expr :: Expr::Variable")
                     .1;
                 let reg = self.vreg_gen.fresh();
-                out.push(IRInstruction::Load {
+                self.scope_handler.instructions.push(IRInstruction::Load {
                     reg,
                     addr: Value::Local(id),
                     offset: 0,
@@ -190,15 +188,15 @@ impl IRGenerator {
                 let var_info = var_map
                     .get(&name)
                     .expect("should not happen :: first_pass_parse_expr :: Expr::Assign");
-                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value, out).unwrap();
-                let rhs = self.ensure_rvalue(rhs, &rhs_ty, out);
+                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
+                let rhs = self.ensure_rvalue(rhs, &rhs_ty);
                 let assign = IRInstruction::Store {
                     value: rhs,
                     addr: Value::Local(var_info.1),
                     offset: 0,
                     ty: var_info.0.clone(),
                 };
-                out.push(assign);
+                self.scope_handler.instructions.push(assign);
                 None
             }
             Expr::Binary {
@@ -207,26 +205,68 @@ impl IRGenerator {
                 right,
                 result_type,
             } => {
-                let (left_rvalue, left_type) = self.first_pass_parse_expr(*left, out).unwrap();
-                let left = self.ensure_rvalue(left_rvalue, &left_type, out);
+                let (left_rvalue, left_type) = self.first_pass_parse_expr(*left).unwrap();
+                let left = self.ensure_rvalue(left_rvalue, &left_type);
 
-                let (right_rvalue, right_type) = self.first_pass_parse_expr(*right, out).unwrap();
-                let right = self.ensure_rvalue(right_rvalue, &right_type, out);
+                let (right_rvalue, right_type) = self.first_pass_parse_expr(*right).unwrap();
+                let right = self.ensure_rvalue(right_rvalue, &right_type);
 
                 let reg = self.vreg_gen.fresh();
 
                 match op {
-                    BinaryOp::Add => out.push(IRInstruction::Add { reg, left, right }),
-                    BinaryOp::Sub => out.push(IRInstruction::Sub { reg, left, right }),
-                    BinaryOp::Mul => out.push(IRInstruction::Mul { reg, left, right }),
-                    BinaryOp::Div => out.push(IRInstruction::Div { reg, left, right }),
-                    BinaryOp::Mod => out.push(IRInstruction::Mod { reg, left, right }),
-                    BinaryOp::Equal => out.push(IRInstruction::Eq { reg, left, right }),
-                    BinaryOp::NotEqual => out.push(IRInstruction::Ne { reg, left, right }),
-                    BinaryOp::Less => out.push(IRInstruction::Lt { reg, left, right }),
-                    BinaryOp::LessEqual => out.push(IRInstruction::Le { reg, left, right }),
-                    BinaryOp::Greater => out.push(IRInstruction::Gt { reg, left, right }),
-                    BinaryOp::GreaterEqual => out.push(IRInstruction::Ge { reg, left, right }),
+                    BinaryOp::Add => self.scope_handler.instructions.push(IRInstruction::Add {
+                        reg,
+                        left,
+                        right,
+                    }),
+                    BinaryOp::Sub => self.scope_handler.instructions.push(IRInstruction::Sub {
+                        reg,
+                        left,
+                        right,
+                    }),
+                    BinaryOp::Mul => self.scope_handler.instructions.push(IRInstruction::Mul {
+                        reg,
+                        left,
+                        right,
+                    }),
+                    BinaryOp::Div => self.scope_handler.instructions.push(IRInstruction::Div {
+                        reg,
+                        left,
+                        right,
+                    }),
+                    BinaryOp::Mod => self.scope_handler.instructions.push(IRInstruction::Mod {
+                        reg,
+                        left,
+                        right,
+                    }),
+                    BinaryOp::Equal => {
+                        self.scope_handler
+                            .instructions
+                            .push(IRInstruction::Eq { reg, left, right })
+                    }
+                    BinaryOp::NotEqual => {
+                        self.scope_handler
+                            .instructions
+                            .push(IRInstruction::Ne { reg, left, right })
+                    }
+                    BinaryOp::Less => {
+                        self.scope_handler
+                            .instructions
+                            .push(IRInstruction::Lt { reg, left, right })
+                    }
+                    BinaryOp::LessEqual => self
+                        .scope_handler
+                        .instructions
+                        .push(IRInstruction::Le { reg, left, right }),
+                    BinaryOp::Greater => {
+                        self.scope_handler
+                            .instructions
+                            .push(IRInstruction::Gt { reg, left, right })
+                    }
+                    BinaryOp::GreaterEqual => self
+                        .scope_handler
+                        .instructions
+                        .push(IRInstruction::Ge { reg, left, right }),
                     // BinaryOp::AND => todo!(),
                     // BinaryOp::OR => todo!(),
                     // BinaryOp::XOR => todo!(),
@@ -247,10 +287,10 @@ impl IRGenerator {
                 result_type,
             } => match op {
                 UnaryOp::Not => {
-                    let (v, ty) = self.first_pass_parse_expr(*expr, out).unwrap();
-                    let v = self.ensure_rvalue(v, &ty, out);
+                    let (v, ty) = self.first_pass_parse_expr(*expr).unwrap();
+                    let v = self.ensure_rvalue(v, &ty);
                     let reg = self.vreg_gen.fresh();
-                    out.push(IRInstruction::Eq {
+                    self.scope_handler.instructions.push(IRInstruction::Eq {
                         reg,
                         left: v,
                         right: Value::Const(0),
@@ -259,10 +299,10 @@ impl IRGenerator {
                 }
 
                 UnaryOp::Negate => {
-                    let (v, ty) = self.first_pass_parse_expr(*expr, out).unwrap();
-                    let v = self.ensure_rvalue(v, &ty, out);
+                    let (v, ty) = self.first_pass_parse_expr(*expr).unwrap();
+                    let v = self.ensure_rvalue(v, &ty);
                     let reg = self.vreg_gen.fresh();
-                    out.push(IRInstruction::Sub {
+                    self.scope_handler.instructions.push(IRInstruction::Sub {
                         reg,
                         left: Value::Const(0),
                         right: v,
@@ -271,19 +311,20 @@ impl IRGenerator {
                 }
 
                 UnaryOp::AddressOf => {
-                    let (place, inner_ty) =
-                        self.lower_place(*expr, out).expect("cannot take address");
+                    let (place, inner_ty) = self.lower_place(*expr).expect("cannot take address");
                     let reg = self.vreg_gen.fresh();
-                    out.push(IRInstruction::AddressOf {
-                        dest: reg,
-                        src: place,
-                    });
+                    self.scope_handler
+                        .instructions
+                        .push(IRInstruction::AddressOf {
+                            dest: reg,
+                            src: place,
+                        });
                     Some((Value::Reg(reg), Type::Pointer(Box::new(inner_ty))))
                 }
 
                 UnaryOp::Dereference => {
-                    let (ptr, ptr_ty) = self.first_pass_parse_expr(*expr, out).unwrap();
-                    let ptr = self.ensure_rvalue(ptr, &ptr_ty, out);
+                    let (ptr, ptr_ty) = self.first_pass_parse_expr(*expr).unwrap();
+                    let ptr = self.ensure_rvalue(ptr, &ptr_ty);
 
                     let pointee = match ptr_ty {
                         Type::Pointer(t) => *t,
@@ -291,7 +332,7 @@ impl IRGenerator {
                     };
 
                     let reg = self.vreg_gen.fresh();
-                    out.push(IRInstruction::Load {
+                    self.scope_handler.instructions.push(IRInstruction::Load {
                         reg,
                         addr: ptr,
                         offset: 0,
@@ -314,8 +355,8 @@ impl IRGenerator {
                 let args: Vec<Value> = args
                     .iter()
                     .map(|arg| {
-                        let (v, ty) = self.first_pass_parse_expr(arg.clone(), out).unwrap();
-                        self.ensure_rvalue(v, &ty, out)
+                        let (v, ty) = self.first_pass_parse_expr(arg.clone()).unwrap();
+                        self.ensure_rvalue(v, &ty)
                     })
                     .collect();
 
@@ -324,7 +365,7 @@ impl IRGenerator {
                     func: name,
                     args,
                 };
-                out.push(instr);
+                self.scope_handler.instructions.push(instr);
                 if let Some(reg) = reg {
                     return Some((Value::Reg(reg), return_type));
                 }
@@ -332,15 +373,15 @@ impl IRGenerator {
             }
             Expr::Cast { expr, target_type } => {
                 let register = self.vreg_gen.fresh();
-                let (from_val, from_ty) = self.first_pass_parse_expr(*expr, out).unwrap();
-                out.push(IRInstruction::Load {
+                let (from_val, from_ty) = self.first_pass_parse_expr(*expr).unwrap();
+                self.scope_handler.instructions.push(IRInstruction::Load {
                     reg: register,
                     addr: from_val,
                     offset: 0,
                     ty: from_ty,
                 });
                 let register2 = self.vreg_gen.fresh();
-                out.push(IRInstruction::Cast {
+                self.scope_handler.instructions.push(IRInstruction::Cast {
                     reg: register2,
                     src: Value::Reg(register),
                     ty: target_type.clone(),
@@ -352,10 +393,10 @@ impl IRGenerator {
                 let size_per = ty.size();
                 for (i, index_expression) in exprs.iter().enumerate() {
                     let (index_val, _) = self
-                        .first_pass_parse_expr(index_expression.clone(), out)
+                        .first_pass_parse_expr(index_expression.clone())
                         .unwrap();
-                    let index_val = self.ensure_rvalue(index_val, &ty, out);
-                    out.push(IRInstruction::Store {
+                    let index_val = self.ensure_rvalue(index_val, &ty);
+                    self.scope_handler.instructions.push(IRInstruction::Store {
                         value: index_val,
                         addr: Value::Local(local_id),
                         offset: (i * size_per) as i32,
@@ -370,7 +411,7 @@ impl IRGenerator {
             Expr::ArrayAccess { array, index } => {
                 let register = self.vreg_gen.fresh();
 
-                let (addr_val, mut array_ty) = self.first_pass_parse_expr(*array, out).unwrap();
+                let (addr_val, mut array_ty) = self.first_pass_parse_expr(*array).unwrap();
 
                 if let Type::Array(ty, _) = array_ty {
                     array_ty = *ty;
@@ -378,17 +419,17 @@ impl IRGenerator {
 
                 let addr_reg = self.vreg_gen.fresh();
 
-                let (offset, ty) = self.first_pass_parse_expr(*index, out).unwrap();
-                let offset = self.ensure_rvalue(offset, &ty, out);
+                let (offset, ty) = self.first_pass_parse_expr(*index).unwrap();
+                let offset = self.ensure_rvalue(offset, &ty);
 
-                out.push(IRInstruction::Gep {
+                self.scope_handler.instructions.push(IRInstruction::Gep {
                     dest: addr_reg,
                     base: addr_val,
                     index: offset,
                     scale: array_ty.size(),
                 });
 
-                out.push(IRInstruction::Load {
+                self.scope_handler.instructions.push(IRInstruction::Load {
                     reg: register,
                     addr: Value::Reg(addr_reg),
                     offset: 0,
@@ -401,23 +442,25 @@ impl IRGenerator {
                 index,
                 value,
             } => {
-                let (base, mut base_ty) = self.first_pass_parse_expr(*array, out).unwrap();
+                let (base, mut base_ty) = self.first_pass_parse_expr(*array).unwrap();
 
                 if let Type::Array(elem_ty, _) = base_ty {
                     base_ty = *elem_ty;
                 }
                 let elem_ty = base_ty.clone();
 
-                let (idx, idx_ty) = self.first_pass_parse_expr(*index, out).unwrap();
-                let idx = self.ensure_rvalue(idx, &idx_ty, out);
+                let (idx, idx_ty) = self.first_pass_parse_expr(*index).unwrap();
+                let idx = self.ensure_rvalue(idx, &idx_ty);
 
                 let base_ptr = match base {
                     Value::Local(_) | Value::Global(_) => {
                         let r = self.vreg_gen.fresh();
-                        out.push(IRInstruction::AddressOf {
-                            dest: r,
-                            src: base.clone(),
-                        });
+                        self.scope_handler
+                            .instructions
+                            .push(IRInstruction::AddressOf {
+                                dest: r,
+                                src: base.clone(),
+                            });
                         Value::Reg(r)
                     }
                     _ => base.clone(),
@@ -425,17 +468,17 @@ impl IRGenerator {
 
                 // base_ptr + idx * sizeof(elem)
                 let addr_reg = self.vreg_gen.fresh();
-                out.push(IRInstruction::Gep {
+                self.scope_handler.instructions.push(IRInstruction::Gep {
                     dest: addr_reg,
                     base: base_ptr,
                     index: idx,
                     scale: elem_ty.size(),
                 });
 
-                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value, out).unwrap();
-                let rhs = self.ensure_rvalue(rhs, &rhs_ty, out);
+                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
+                let rhs = self.ensure_rvalue(rhs, &rhs_ty);
 
-                out.push(IRInstruction::Store {
+                self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs,
                     addr: Value::Reg(addr_reg),
                     offset: 0,
@@ -458,8 +501,8 @@ impl IRGenerator {
                     .unwrap();
                 let offset = struc.offsets.get(&field).unwrap();
 
-                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value, out).unwrap();
-                let rhs = self.ensure_rvalue(rhs, &rhs_ty, out);
+                let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
+                let rhs = self.ensure_rvalue(rhs, &rhs_ty);
 
                 let instr = IRInstruction::Store {
                     value: rhs,
@@ -474,7 +517,7 @@ impl IRGenerator {
                         .clone(),
                 };
 
-                out.push(instr);
+                self.scope_handler.instructions.push(instr);
                 None
             }
             Expr::CompoundAssign { name, op, value } => None,
@@ -485,11 +528,11 @@ impl IRGenerator {
         }
     }
 
-    fn ensure_rvalue(&mut self, v: Value, ty: &Type, out: &mut Vec<IRInstruction>) -> Value {
+    fn ensure_rvalue(&mut self, v: Value, ty: &Type) -> Value {
         match v {
             Value::Local(_) | Value::Global(_) => {
                 let r = self.vreg_gen.fresh();
-                out.push(IRInstruction::Load {
+                self.scope_handler.instructions.push(IRInstruction::Load {
                     reg: r,
                     addr: v,
                     offset: 0,

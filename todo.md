@@ -5,4 +5,4 @@ modularize x86 codegen for IR
 make strings static in .data
 add partial SSA to IR
 
-do ARM codegen
+start ARM codegen

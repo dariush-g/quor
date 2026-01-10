@@ -150,6 +150,7 @@ pub enum Terminator {
         if_true: BlockId,
         if_false: BlockId,
     },
+    TemporaryNone,
 }
 
 #[derive(Debug, Clone)]

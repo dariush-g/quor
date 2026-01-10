@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{ir::block::*, lexer::ast::*};
 
@@ -21,8 +21,10 @@ impl BlockIdGen {
 
 #[derive(Clone, Debug, Default)]
 pub struct ScopeHandler {
-    pub closed: HashSet<BlockId>,
-    pub open: BlockId,
+    pub break_stack: VecDeque<BlockId>,
+    pub continue_stack: VecDeque<BlockId>,
+    pub instructions: Vec<IRInstruction>,
+    pub current: BlockId,
 }
 
 #[derive(Default)]
@@ -64,33 +66,45 @@ pub struct IRGenerator {
 }
 
 impl IRGenerator {
-    fn first_scope(&mut self) -> BlockId {
+    pub fn set_current(&mut self, block: BlockId) {
+        self.blocks[self.scope_handler.current.0]
+            .instructions
+            .append(&mut self.scope_handler.instructions);
+        self.scope_handler.current = block;
+    }
+
+    pub fn new_block(&mut self) -> BlockId {
         let id = self.block_gen.fresh();
-        self.scope_handler.open = id;
+        let block = IRBlock {
+            id,
+            instructions: Vec::new(),
+            terminator: Terminator::TemporaryNone,
+        };
+        self.blocks.push(block);
         id
     }
 
-    fn new_scope(&mut self) -> BlockId {
-        let id = self.block_gen.fresh();
-        self.scope_handler.closed.insert(self.scope_handler.open);
-        self.scope_handler.open = id;
-        id
-    }
+    // pub fn first_scope(&mut self) -> BlockId {
+    //     let id = self.block_gen.fresh();
+    //     self.scope_handler.open = id;
+    //     id
+    // }
 
-    fn add_new_var(&mut self, name: String, ty: Type) -> Value {
+    // pub fn new_scope(&mut self) -> BlockId {
+    //     let id = self.block_gen.fresh();
+    //     self.scope_handler.closed.insert(self.scope_handler.open);
+    //     self.scope_handler.open = id;
+    //     id
+    // }
+
+    pub fn add_new_var(&mut self, name: String, ty: Type) -> Value {
         let id = self.var_gen.fresh();
         self.var_map.insert(name, (ty, id));
         Value::Local(id)
     }
 
-    fn generate(mut stmts: Vec<Stmt>) -> Result<IRProgram, String> {
+    pub fn generate(stmts: Vec<Stmt>) -> Result<IRProgram, String> {
         let mut ir_generator = IRGenerator::default();
-        for (i, stmt) in stmts.clone().iter().enumerate() {
-            if let Stmt::AtDecl(..) = stmt {
-                ir_generator.generate_declaration(stmt)?;
-                stmts.remove(i);
-            };
-        }
         for stmt in stmts {
             match stmt {
                 Stmt::FunDecl { .. } => ir_generator.generate_function(&stmt),
@@ -138,69 +152,6 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn parse_block(&mut self, stmts: Vec<Stmt>) -> IRBlock {
-        let block_id = self.block_gen.fresh();
-        let mut instructions = Vec::new();
-        let terminator: Terminator;
-        for stmt in stmts {
-            match stmt {
-                Stmt::AtDecl(dec, content, ..) => match dec.as_str() {
-                    "__asm__" | "_asm_" | "asm" => {
-                        instructions.push(IRInstruction::Declaration(AtDecl::InlineAssembly {
-                            content: content.unwrap(),
-                        }));
-                    }
-                    _ => {
-                        eprintln!("warning :: unexpected declaration: \"{dec}\"");
-                    }
-                },
-                Stmt::VarDecl {
-                    name,
-                    value,
-                    var_type,
-                } => {
-                    let val = self.add_new_var(name, var_type);
-                    self.emit_into_local(val, value, &mut instructions);
-                }
-                Stmt::FunDecl { name, .. } => {
-                    eprintln!("warning :: function {name} defined inside a block")
-                }
-                Stmt::StructDecl { name, .. } => {
-                    eprintln!("warning :: struct {name} defined a block")
-                }
-                Stmt::If {
-                    condition,
-                    then_stmt,
-                    else_stmt,
-                } => {
-                    let terminator = Terminator::Branch {
-                        condition: todo!(),
-                        if_true: todo!(),
-                        if_false: todo!(),
-                    };
-                }
-                Stmt::While { condition, body } => todo!(),
-                Stmt::For {
-                    init,
-                    condition,
-                    update,
-                    body,
-                } => todo!(),
-                Stmt::Block(stmts) => todo!(),
-                Stmt::Expression(expr) => todo!(),
-                Stmt::Return(expr) => {}
-                Stmt::Break => todo!(),
-                Stmt::Continue => todo!(),
-            }
-        }
-
-        IRBlock {
-            id: block_id,
-            instructions: todo!(),
-            terminator: todo!(),
-        }
-    }
-
     fn first_parse_full_block(&mut self, vec_stmt: Vec<Stmt>) -> Vec<IRBlock> {
         let mut blocks = Vec::new();
         let mut current: Vec<IRInstruction> = Vec::new();
@@ -223,7 +174,7 @@ impl IRGenerator {
                     var_type,
                 } => {
                     let val = self.add_new_var(name, var_type);
-                    self.emit_into_local(val, value, &mut current);
+                    self.emit_into_local(val, value);
                 }
                 Stmt::FunDecl { name, .. } => {
                     eprintln!("warning :: function {name} defined inside a block")
