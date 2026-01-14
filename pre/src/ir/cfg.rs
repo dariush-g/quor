@@ -21,6 +21,7 @@ impl BlockIdGen {
 
 #[derive(Clone, Debug, Default)]
 pub struct ScopeHandler {
+    pub closed: Vec<BlockId>,
     pub break_stack: VecDeque<BlockId>,
     pub continue_stack: VecDeque<BlockId>,
     pub instructions: Vec<IRInstruction>,
@@ -70,6 +71,7 @@ impl IRGenerator {
         self.blocks[self.scope_handler.current.0]
             .instructions
             .append(&mut self.scope_handler.instructions);
+        
         self.scope_handler.current = block;
     }
 
@@ -139,83 +141,19 @@ impl IRGenerator {
                 params.push(self.vreg_gen.fresh());
             }
 
+            let entry = self.block_gen.fresh();
+            self.lower_block(body);
+
             let ir_func = IRFunction {
                 name: name.clone(),
                 params,
                 ret_type: return_type.clone(),
                 blocks: todo!(),
-                entry: todo!(),
+                entry,
                 attributes: todo!(),
             };
         }
 
         Ok(())
-    }
-
-    fn first_parse_full_block(&mut self, vec_stmt: Vec<Stmt>) -> Vec<IRBlock> {
-        let mut blocks = Vec::new();
-        let mut current: Vec<IRInstruction> = Vec::new();
-        let ret = None;
-        for stmt in vec_stmt {
-            match stmt {
-                Stmt::AtDecl(dec, content, ..) => match dec.as_str() {
-                    "__asm__" | "_asm_" | "asm" => {
-                        current.push(IRInstruction::Declaration(AtDecl::InlineAssembly {
-                            content: content.unwrap(),
-                        }));
-                    }
-                    _ => {
-                        eprintln!("warning :: unexpected declaration: \"{dec}\"");
-                    }
-                },
-                Stmt::VarDecl {
-                    name,
-                    value,
-                    var_type,
-                } => {
-                    let val = self.add_new_var(name, var_type);
-                    self.emit_into_local(val, value);
-                }
-                Stmt::FunDecl { name, .. } => {
-                    eprintln!("warning :: function {name} defined inside a block")
-                }
-                Stmt::StructDecl { name, .. } => {
-                    eprintln!("warning :: struct {name} defined a block")
-                }
-                Stmt::If {
-                    condition,
-                    then_stmt,
-                    else_stmt,
-                } => {
-                    let terminator = Terminator::Branch {
-                        condition: todo!(),
-                        if_true: todo!(),
-                        if_false: todo!(),
-                    };
-                }
-                Stmt::While { condition, body } => todo!(),
-                Stmt::For {
-                    init,
-                    condition,
-                    update,
-                    body,
-                } => todo!(),
-                Stmt::Block(stmts) => todo!(),
-                Stmt::Expression(expr) => todo!(),
-                Stmt::Return(expr) => {
-                    blocks.push(IRBlock {
-                        id: self.block_gen.fresh(),
-                        instructions: current,
-                        terminator: Terminator::Return { value: ret.clone() },
-                    });
-
-                    current = Vec::new();
-                }
-                Stmt::Break => todo!(),
-                Stmt::Continue => todo!(),
-            }
-        }
-
-        blocks
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     ir::{
-        block::{AtDecl, BlockId, IRInstruction, Terminator, Value},
+        block::{AtDecl, BlockId, IRInstruction, Terminator},
         cfg::IRGenerator,
     },
     lexer::ast::{Expr, Stmt},
@@ -56,20 +56,10 @@ impl IRGenerator {
         }
     }
 
-    pub fn lower_if(
-        &mut self,
-        cond: Expr,
-        if_true: &[Stmt],
-        else_: Option<&[Stmt]>,
-        continue_: &[Stmt],
-    ) {
+    pub fn lower_if(&mut self, cond: Expr, if_true: &[Stmt], else_: Option<&[Stmt]>) {
         let cond_block = self.new_block();
         let if_true_block = self.new_block();
-        let if_false_block = if let Some(else_) = else_ {
-            Some(self.new_block())
-        } else {
-            None
-        };
+        let if_false_block = else_.map(|_else_| self.new_block());
         let continue_block = self.new_block();
 
         let (value, _) = self.lower_place(cond).unwrap();
@@ -90,6 +80,12 @@ impl IRGenerator {
                     if_false: if_false_block,
                 },
             );
+            self.set_terminator(
+                if_false_block,
+                Terminator::Jump {
+                    block: continue_block,
+                },
+            );
         } else {
             self.set_terminator(
                 self.scope_handler.current,
@@ -107,7 +103,9 @@ impl IRGenerator {
         if let Terminator::TemporaryNone = self.blocks[self.scope_handler.current.0].terminator {
             self.set_terminator(
                 self.scope_handler.current,
-                Terminator::Jump { block: cond_block },
+                Terminator::Jump {
+                    block: continue_block,
+                },
             );
         }
     }
@@ -145,18 +143,17 @@ impl IRGenerator {
                     condition,
                     then_stmt,
                     else_stmt,
-                } => todo!(),
+                } => self.lower_if(
+                    condition.clone(),
+                    (**then_stmt).as_block(),
+                    else_stmt.as_ref().map(|s| s.as_block()),
+                ),
                 Stmt::While { condition, body } => {
                     if let Stmt::Block(stmts) = *body.clone() {
                         self.lower_while(condition.clone(), &stmts);
                     }
                 }
-                Stmt::For {
-                    init,
-                    condition,
-                    update,
-                    body,
-                } => todo!(),
+                Stmt::For { .. } => {}
                 Stmt::Block(stmts) => {
                     self.lower_block(stmts);
                 }
@@ -170,8 +167,22 @@ impl IRGenerator {
                     }
                     self.set_terminator(self.scope_handler.current, Terminator::Return { value });
                 }
-                Stmt::Break => {}
-                Stmt::Continue => todo!(),
+                Stmt::Break => {
+                    let break_scope = self.scope_handler.break_stack.pop_front().unwrap();
+                    self.set_terminator(
+                        self.scope_handler.clone().current,
+                        Terminator::Jump { block: break_scope },
+                    );
+                }
+                Stmt::Continue => {
+                    let continue_scope = self.scope_handler.continue_stack.pop_front().unwrap();
+                    self.set_terminator(
+                        self.scope_handler.clone().current,
+                        Terminator::Jump {
+                            block: continue_scope,
+                        },
+                    );
+                }
             }
         }
     }

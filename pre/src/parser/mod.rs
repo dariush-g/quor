@@ -426,6 +426,14 @@ impl Parser {
         if self.match_token(&[TokenType::LeftBrace]) {
             return Ok(Stmt::Block(self.block(final_iter_in_loop)?));
         }
+        if self.match_token(&[TokenType::Break]) {
+            self.advance();
+            return Ok(Stmt::Break);
+        }
+        if self.match_token(&[TokenType::Continue]) {
+            self.advance();
+            return Ok(Stmt::Continue);
+        }
 
         let expr = self.expression()?;
         if semi {

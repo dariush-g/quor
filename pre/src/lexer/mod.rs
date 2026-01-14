@@ -221,6 +221,9 @@ impl Lexer {
         let text: String = self.chars[start_pos..self.current].iter().collect();
 
         let token_type = match text.as_str() {
+            "break" => TokenType::Break,
+            "continue" => TokenType::Continue,
+
             "def" => TokenType::Def,
 
             "let" => TokenType::Let,

@@ -235,6 +235,15 @@ pub enum UnaryOp {
     Dereference, // *
 }
 
+impl Stmt {
+    pub fn as_block(&self) -> &[Stmt] {
+        match self {
+            Stmt::Block(stmts) => stmts,
+            _ => std::slice::from_ref(self),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Stmt {
     AtDecl(String, Option<String>, Option<Expr>, Option<Box<Stmt>>),
