@@ -71,7 +71,7 @@ impl IRGenerator {
         self.blocks[self.scope_handler.current.0]
             .instructions
             .append(&mut self.scope_handler.instructions);
-        
+
         self.scope_handler.current = block;
     }
 
@@ -123,6 +123,35 @@ impl IRGenerator {
     }
 
     fn generate_declaration(&mut self, stmt: &Stmt) -> Result<(), String> {
+        if let Stmt::AtDecl(decl, param, val, content) = stmt {
+            let declaration = match decl.as_str() {
+                "import" => {
+                    if param.clone().unwrap().ends_with("!") {
+                        let mut param1 = param.clone().unwrap();
+                        param1.pop();
+                        AtDecl::Import {
+                            path: param1,
+                            local: false,
+                        }
+                    } else {
+                        AtDecl::Import {
+                            path: param.clone().unwrap(),
+                            local: true,
+                        }
+                    }
+                }
+                "asm" | "_asm_" | "__asm__" => AtDecl::InlineAssembly {
+                    content: param.clone().unwrap(),
+                },
+                "trust_ret" => AtDecl::TrustRet,
+                "define" => AtDecl::Define {
+                    name: param.clone().unwrap(),
+                    ty: val.clone().unwrap().get_type(),
+                    val: val.clone().unwrap(),
+                },
+                _ => panic!("Unknown AtDecl: {decl}"),
+            };
+        };
         Ok(())
     }
 
