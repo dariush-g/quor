@@ -1,5 +1,6 @@
 use quor::analyzer::TypeChecker;
 use quor::backend::x86_64::CodeGen;
+use quor::ir::cfg::IRGenerator;
 use quor::lexer::Lexer;
 use quor::parser::Parser;
 
@@ -236,19 +237,21 @@ fn main() {
 
     // println!("{typed:?}");
 
-    // Codegen -> ASM
-    let codegen = CodeGen::generate(&typed);
+    let cfg = quor::ir::cfg::IRGenerator::generate(typed);
+    println!("{cfg:?}");
 
-    let asm = codegen;
+    // let codegen = CodeGen::generate(&typed);
+
+    // let asm = codegen;
 
     // for st in codegen.1 {
     //     gen_asm(st, asm.clone());
     // }
 
-    if let Err(e) = build_link_run(&asm, &workdir, out_name, keep_asm) {
-        eprintln!("build failed: {e}");
-        std::process::exit(1);
-    }
+    // if let Err(e) = build_link_run(&asm, &workdir, out_name, keep_asm) {
+    //     eprintln!("build failed: {e}");
+    //     std::process::exit(1);
+    // }
 }
 
 // fn gen_asm(input_path: String, mut current: String) -> String {

@@ -127,6 +127,15 @@ pub enum AtDecl {
     InlineAssembly { content: String },
 }
 
+impl AtDecl {
+    pub fn parse_attribute(attribute: &str) -> Option<AtDecl> {
+        match attribute {
+            "trust_ret" => Some(AtDecl::TrustRet),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub struct BlockId(pub usize);
 

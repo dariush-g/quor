@@ -111,6 +111,7 @@ impl IRGenerator {
             match stmt {
                 Stmt::FunDecl { .. } => ir_generator.generate_function(&stmt),
                 Stmt::StructDecl { .. } => ir_generator.generate_struct(&stmt),
+                Stmt::AtDecl(..) => ir_generator.generate_declaration(&stmt, None),
                 _ => Ok(()),
             }?
         }
@@ -122,7 +123,11 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn generate_declaration(&mut self, stmt: &Stmt) -> Result<(), String> {
+    fn generate_declaration(
+        &mut self,
+        stmt: &Stmt,
+        next_stmt: Option<&Stmt>,
+    ) -> Result<(), String> {
         if let Stmt::AtDecl(decl, param, val, content) = stmt {
             let declaration = match decl.as_str() {
                 "import" => {
@@ -170,17 +175,26 @@ impl IRGenerator {
                 params.push(self.vreg_gen.fresh());
             }
 
-            let entry = self.block_gen.fresh();
+            let entry = self.new_block();
+            self.set_current(entry);
             self.lower_block(body);
 
             let ir_func = IRFunction {
                 name: name.clone(),
                 params,
                 ret_type: return_type.clone(),
-                blocks: todo!(),
+                blocks: Vec::new(),
                 entry,
-                attributes: todo!(),
+                attributes: attributes
+                    .iter()
+                    .map(|att| {
+                        AtDecl::parse_attribute(att)
+                            .unwrap_or_else(|| panic!("Error parsing IRFunction attributes"))
+                    })
+                    .collect(),
             };
+
+            self.ir_program.functions.push(ir_func);
         }
 
         Ok(())
