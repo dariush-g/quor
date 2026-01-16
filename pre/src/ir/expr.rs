@@ -8,15 +8,15 @@ use crate::{
 
 impl IRGenerator {
     fn layout_struct(&self, def: &StructDef) -> Vec<(Type, i32)> {
-        // type and offset
         let mut layout = Vec::new();
         if def.is_union {
-            for field in def.fields.clone() {
+            for field in &def.fields {
                 layout.push((field.1.clone(), 0));
             }
+            return layout;
         }
 
-        for field in def.fields.clone() {
+        for field in &def.fields {
             layout.push((field.1.clone(), field.1.size() as i32));
         }
         layout
@@ -83,28 +83,26 @@ impl IRGenerator {
                 let g = self.globals.get(&s).unwrap();
                 Some((Value::Global(g.id), g.ty.clone()))
             }
-            Expr::ArrayAccess { array, index } => None,
+            Expr::ArrayAccess { array: _, index: _ } => None,
             Expr::IndexAssign {
-                array,
-                index,
-                value,
+                array: _,
+                index: _,
+                value: _,
             } => None,
-            Expr::InstanceVar(struct_name, field) => {
+            Expr::InstanceVar(struct_name, _field) => {
                 let (ty, local_id) = self.var_map.get(&struct_name).unwrap();
                 Some((Value::Local(*local_id), ty.clone()))
             }
             Expr::FieldAssign {
-                class_name,
-                field,
-                value,
+                class_name: _,
+                field: _,
+                value: _,
             } => None,
             _ => None, // not an lvalue
         }
     }
 
     pub fn first_pass_parse_expr(&mut self, expr: Expr) -> Option<(Value, Type)> {
-        let var_map = self.var_map.clone();
-        let ir_program = self.ir_program.clone();
         match expr {
             Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::int)),
             Expr::LongLiteral(l) => Some((Value::Const(l), Type::Long)),
@@ -143,8 +141,8 @@ impl IRGenerator {
                 Some((Value::Local(loc), self.type_struct(&name)))
             }
             Expr::AddressOf(expression) => {
-                let reg = self.vreg_gen.fresh();
                 let (place, inner_ty) = self.lower_place(*expression).unwrap();
+                let reg = self.vreg_gen.fresh();
                 self.scope_handler
                     .instructions
                     .push(IRInstruction::AddressOf {
@@ -155,26 +153,20 @@ impl IRGenerator {
             }
             Expr::DerefAssign { target, value } => {
                 let (rhs_val, _) = self.lower_place(*value).unwrap();
+                let (ptr_val, ptr_ty) = self.lower_place(*target).unwrap();
+                let pointee_ty = ptr_ty.deref().expect("cannot dereference non-pointer").clone();
 
-                let (ptr_val, ptr_ty) = self.lower_place(*target).unwrap(); // ptr_val should be Value::Reg(_)
-
-                let instr = IRInstruction::Store {
+                self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs_val,
                     addr: ptr_val,
                     offset: 0,
-                    ty: ptr_ty.deref().unwrap().clone(),
-                };
-
-                self.scope_handler.instructions.push(instr);
+                    ty: pointee_ty,
+                });
                 None
             }
             Expr::InstanceVar(_, _) => todo!(),
             Expr::Variable(name, ty) => {
-                let id = self
-                    .var_map
-                    .get(&name)
-                    .expect("should not happen :: first_pass_parse_expr :: Expr::Variable")
-                    .1;
+                let id = self.var_map.get(&name).expect("variable not found").1;
                 let reg = self.vreg_gen.fresh();
                 self.scope_handler.instructions.push(IRInstruction::Load {
                     reg,
@@ -185,18 +177,21 @@ impl IRGenerator {
                 Some((Value::Reg(reg), ty))
             }
             Expr::Assign { name, value } => {
-                let var_info = var_map
-                    .get(&name)
-                    .expect("should not happen :: first_pass_parse_expr :: Expr::Assign");
+                let (local_id, var_ty) = {
+                    let var_info = self
+                        .var_map
+                        .get(&name)
+                        .expect("variable not found in assignment");
+                    (var_info.1, var_info.0.clone())
+                };
                 let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
                 let rhs = self.ensure_rvalue(rhs, &rhs_ty);
-                let assign = IRInstruction::Store {
+                self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs,
-                    addr: Value::Local(var_info.1),
+                    addr: Value::Local(local_id),
                     offset: 0,
-                    ty: var_info.0.clone(),
-                };
-                self.scope_handler.instructions.push(assign);
+                    ty: var_ty,
+                });
                 None
             }
             Expr::Binary {
@@ -311,7 +306,7 @@ impl IRGenerator {
                 }
 
                 UnaryOp::AddressOf => {
-                    let (place, inner_ty) = self.lower_place(*expr).expect("cannot take address");
+                    let (place, inner_ty) = self.lower_place(*expr).expect("cannot take address of non-place");
                     let reg = self.vreg_gen.fresh();
                     self.scope_handler
                         .instructions
@@ -328,7 +323,7 @@ impl IRGenerator {
 
                     let pointee = match ptr_ty {
                         Type::Pointer(t) => *t,
-                        _ => panic!("dereference of non-pointer"),
+                        _ => panic!("cannot dereference non-pointer type"),
                     };
 
                     let reg = self.vreg_gen.fresh();
@@ -372,21 +367,15 @@ impl IRGenerator {
                 None
             }
             Expr::Cast { expr, target_type } => {
-                let register = self.vreg_gen.fresh();
                 let (from_val, from_ty) = self.first_pass_parse_expr(*expr).unwrap();
-                self.scope_handler.instructions.push(IRInstruction::Load {
-                    reg: register,
-                    addr: from_val,
-                    offset: 0,
-                    ty: from_ty,
-                });
-                let register2 = self.vreg_gen.fresh();
+                let from_val = self.ensure_rvalue(from_val, &from_ty);
+                let result_reg = self.vreg_gen.fresh();
                 self.scope_handler.instructions.push(IRInstruction::Cast {
-                    reg: register2,
-                    src: Value::Reg(register),
+                    reg: result_reg,
+                    src: from_val,
                     ty: target_type.clone(),
                 });
-                Some((Value::Reg(register2), target_type))
+                Some((Value::Reg(result_reg), target_type))
             }
             Expr::Array(exprs, ty) => {
                 let local_id = self.var_gen.fresh();
@@ -409,64 +398,62 @@ impl IRGenerator {
                 ))
             }
             Expr::ArrayAccess { array, index } => {
-                let register = self.vreg_gen.fresh();
+                let (addr_val, array_ty) = self.first_pass_parse_expr(*array).unwrap();
+                let elem_ty = if let Type::Array(ty, _) = array_ty {
+                    *ty
+                } else {
+                    array_ty
+                };
 
-                let (addr_val, mut array_ty) = self.first_pass_parse_expr(*array).unwrap();
-
-                if let Type::Array(ty, _) = array_ty {
-                    array_ty = *ty;
-                }
+                let (index_val, index_ty) = self.first_pass_parse_expr(*index).unwrap();
+                let index_val = self.ensure_rvalue(index_val, &index_ty);
 
                 let addr_reg = self.vreg_gen.fresh();
-
-                let (offset, ty) = self.first_pass_parse_expr(*index).unwrap();
-                let offset = self.ensure_rvalue(offset, &ty);
-
                 self.scope_handler.instructions.push(IRInstruction::Gep {
                     dest: addr_reg,
                     base: addr_val,
-                    index: offset,
-                    scale: array_ty.size(),
+                    index: index_val,
+                    scale: elem_ty.size(),
                 });
 
+                let result_reg = self.vreg_gen.fresh();
                 self.scope_handler.instructions.push(IRInstruction::Load {
-                    reg: register,
+                    reg: result_reg,
                     addr: Value::Reg(addr_reg),
                     offset: 0,
-                    ty: ty.clone(),
+                    ty: elem_ty.clone(),
                 });
-                Some((Value::Reg(register), ty))
+                Some((Value::Reg(result_reg), elem_ty))
             }
             Expr::IndexAssign {
                 array,
                 index,
                 value,
             } => {
-                let (base, mut base_ty) = self.first_pass_parse_expr(*array).unwrap();
-
-                if let Type::Array(elem_ty, _) = base_ty {
-                    base_ty = *elem_ty;
-                }
-                let elem_ty = base_ty.clone();
+                let (base, base_ty) = self.first_pass_parse_expr(*array).unwrap();
+                let elem_ty = if let Type::Array(ty, _) = base_ty {
+                    *ty
+                } else {
+                    base_ty
+                };
 
                 let (idx, idx_ty) = self.first_pass_parse_expr(*index).unwrap();
                 let idx = self.ensure_rvalue(idx, &idx_ty);
 
                 let base_ptr = match base {
                     Value::Local(_) | Value::Global(_) => {
-                        let r = self.vreg_gen.fresh();
+                        let reg = self.vreg_gen.fresh();
                         self.scope_handler
                             .instructions
                             .push(IRInstruction::AddressOf {
-                                dest: r,
-                                src: base.clone(),
+                                dest: reg,
+                                src: base,
                             });
-                        Value::Reg(r)
+                        Value::Reg(reg)
                     }
-                    _ => base.clone(),
+                    _ => base,
                 };
 
-                // base_ptr + idx * sizeof(elem)
                 let addr_reg = self.vreg_gen.fresh();
                 self.scope_handler.instructions.push(IRInstruction::Gep {
                     dest: addr_reg,
@@ -493,38 +480,41 @@ impl IRGenerator {
                 field,
                 value,
             } => {
-                let local_value_of_struct = self.var_map.get(&class_name).unwrap().1;
-                let struc = ir_program
-                    .structs
-                    .iter()
-                    .find(|s| s.name == class_name)
-                    .unwrap();
-                let offset = struc.offsets.get(&field).unwrap();
+                let (local_id, offset, field_ty) = {
+                    let local_id = self.var_map.get(&class_name).expect("struct variable not found").1;
+                    let struc = self
+                        .ir_program
+                        .structs
+                        .iter()
+                        .find(|s| s.name == class_name)
+                        .expect("struct definition not found");
+                    let offset = struc.offsets.get(&field).expect("field not found in struct");
+                    let field_ty = struc
+                        .fields
+                        .iter()
+                        .find(|(name, _)| *name == field)
+                        .expect("field not found")
+                        .1
+                        .clone();
+                    (local_id, *offset, field_ty)
+                };
 
                 let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
                 let rhs = self.ensure_rvalue(rhs, &rhs_ty);
 
-                let instr = IRInstruction::Store {
+                self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs,
-                    addr: Value::Local(local_value_of_struct),
-                    offset: *offset as i32,
-                    ty: struc
-                        .fields
-                        .iter()
-                        .find(|s| s.0 == field)
-                        .unwrap()
-                        .1
-                        .clone(),
-                };
-
-                self.scope_handler.instructions.push(instr);
+                    addr: Value::Local(local_id),
+                    offset: offset as i32,
+                    ty: field_ty,
+                });
                 None
             }
-            Expr::CompoundAssign { name, op, value } => None,
-            Expr::PreIncrement { name } => None,
-            Expr::PostIncrement { name } => None,
-            Expr::PreDecrement { name } => None,
-            Expr::PostDecrement { name } => None,
+            Expr::CompoundAssign { name: _, op: _, value: _ } => None,
+            Expr::PreIncrement { name: _ } => None,
+            Expr::PostIncrement { name: _ } => None,
+            Expr::PreDecrement { name: _ } => None,
+            Expr::PostDecrement { name: _ } => None,
         }
     }
 

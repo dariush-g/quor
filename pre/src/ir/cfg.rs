@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use crate::{ir::block::*, lexer::ast::*};
 
@@ -86,19 +86,6 @@ impl IRGenerator {
         id
     }
 
-    // pub fn first_scope(&mut self) -> BlockId {
-    //     let id = self.block_gen.fresh();
-    //     self.scope_handler.open = id;
-    //     id
-    // }
-
-    // pub fn new_scope(&mut self) -> BlockId {
-    //     let id = self.block_gen.fresh();
-    //     self.scope_handler.closed.insert(self.scope_handler.open);
-    //     self.scope_handler.open = id;
-    //     id
-    // }
-
     pub fn add_new_var(&mut self, name: String, ty: Type) -> Value {
         let id = self.var_gen.fresh();
         self.var_map.insert(name, (ty, id));
@@ -107,71 +94,82 @@ impl IRGenerator {
 
     pub fn generate(stmts: Vec<Stmt>) -> Result<IRProgram, String> {
         let mut ir_generator = IRGenerator::default();
+
         for stmt in stmts {
-            match stmt {
-                Stmt::FunDecl { .. } => ir_generator.generate_function(&stmt),
-                Stmt::StructDecl { .. } => ir_generator.generate_struct(&stmt),
-                Stmt::AtDecl(..) => ir_generator.generate_declaration(&stmt, None),
-                _ => Ok(()),
-            }?
+            if let Stmt::Expression(expr) = stmt {
+                if let Expr::StringLiteral(string) = expr {
+                    let global_def = GlobalDef {
+                        id: ,
+                        ty: Type::Pointer(Box::new(Type::Char)),
+                        value: GlobalValue::Bytes(string.bytes()),
+                    };
+                    ir_generator.globals.insert(string, v)
+                }
+            }
         }
 
-        Err(String::from("error"))
+        for stmt in stmts {
+            match stmt {
+                Stmt::FunDecl { .. } => ir_generator.generate_function(&stmt)?,
+                Stmt::StructDecl { .. } => ir_generator.generate_struct(&stmt)?,
+                Stmt::AtDecl(..) => ir_generator.generate_declaration(&stmt, None)?,
+                _ => {}
+            }
+        }
+
+        Ok(ir_generator.ir_program)
     }
 
-    fn generate_struct(&mut self, stmt: &Stmt) -> Result<(), String> {
+    fn generate_struct(&mut self, _stmt: &Stmt) -> Result<(), String> {
         Ok(())
     }
 
     fn generate_declaration(
         &mut self,
         stmt: &Stmt,
-        next_stmt: Option<&Stmt>,
+        _next_stmt: Option<&Stmt>,
     ) -> Result<(), String> {
-        if let Stmt::AtDecl(decl, param, val, content) = stmt {
-            let declaration = match decl.as_str() {
+        if let Stmt::AtDecl(decl, param, val, _content) = stmt {
+            let _declaration = match decl.as_str() {
                 "import" => {
-                    if param.clone().unwrap().ends_with("!") {
-                        let mut param1 = param.clone().unwrap();
-                        param1.pop();
-                        AtDecl::Import {
-                            path: param1,
-                            local: false,
-                        }
+                    let path = param.as_ref().unwrap();
+                    if path.ends_with('!') {
+                        let mut path = path.clone();
+                        path.pop();
+                        AtDecl::Import { path, local: false }
                     } else {
                         AtDecl::Import {
-                            path: param.clone().unwrap(),
+                            path: path.clone(),
                             local: true,
                         }
                     }
                 }
                 "asm" | "_asm_" | "__asm__" => AtDecl::InlineAssembly {
-                    content: param.clone().unwrap(),
+                    content: param.as_ref().unwrap().clone(),
                 },
                 "trust_ret" => AtDecl::TrustRet,
                 "define" => AtDecl::Define {
-                    name: param.clone().unwrap(),
-                    ty: val.clone().unwrap().get_type(),
-                    val: val.clone().unwrap(),
+                    name: param.as_ref().unwrap().clone(),
+                    ty: val.as_ref().unwrap().get_type(),
+                    val: val.as_ref().unwrap().clone(),
                 },
                 _ => panic!("Unknown AtDecl: {decl}"),
             };
-        };
+        }
         Ok(())
     }
 
     fn generate_function(&mut self, func: &Stmt) -> Result<(), String> {
         if let Stmt::FunDecl {
             name,
-            params,
+            params: func_params,
             return_type,
             body,
             attributes,
         } = func
         {
-            let mut params = vec![];
-
-            for _ in 0..params.len() {
+            let mut params = Vec::with_capacity(func_params.len());
+            for _ in 0..func_params.len() {
                 params.push(self.vreg_gen.fresh());
             }
 
@@ -187,10 +185,7 @@ impl IRGenerator {
                 entry,
                 attributes: attributes
                     .iter()
-                    .map(|att| {
-                        AtDecl::parse_attribute(att)
-                            .unwrap_or_else(|| panic!("Error parsing IRFunction attributes"))
-                    })
+                    .filter_map(|attr| AtDecl::parse_attribute(attr.as_str()))
                     .collect(),
             };
 

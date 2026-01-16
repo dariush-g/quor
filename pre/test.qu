@@ -1,5 +1,6 @@
-
+@import::<io.qu>
 
 def main() :: int {
+    print("hello");
     return 0;
 }

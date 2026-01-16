@@ -26,9 +26,7 @@ impl IRGenerator {
         );
         self.set_current(cond_block);
 
-        let (cond_value, _cond_type) = self
-            .lower_place(cond)
-            .expect("Error in fn lowering while :: getting cond_value :: lowering.rs");
+        let (cond_value, _) = self.lower_place(cond).unwrap();
 
         self.set_terminator(
             cond_block,
@@ -108,6 +106,21 @@ impl IRGenerator {
                 },
             );
         }
+
+        if let (Some(else_block), Some(false_block)) = (else_, if_false_block) {
+            self.set_current(false_block);
+            self.lower_block(else_block);
+            if let Terminator::TemporaryNone = self.blocks[self.scope_handler.current.0].terminator {
+                self.set_terminator(
+                    self.scope_handler.current,
+                    Terminator::Jump {
+                        block: continue_block,
+                    },
+                );
+            }
+        }
+
+        self.set_current(continue_block);
     }
 
     pub fn lower_block(&mut self, body: &[Stmt]) {
@@ -137,7 +150,7 @@ impl IRGenerator {
                     eprintln!("warning :: function {name} defined inside a block")
                 }
                 Stmt::StructDecl { name, .. } => {
-                    eprintln!("warning :: struct {name} defined a block")
+                    eprintln!("warning :: struct {name} defined in a block")
                 }
                 Stmt::If {
                     condition,
@@ -170,14 +183,14 @@ impl IRGenerator {
                 Stmt::Break => {
                     let break_scope = self.scope_handler.break_stack.pop_front().unwrap();
                     self.set_terminator(
-                        self.scope_handler.clone().current,
+                        self.scope_handler.current,
                         Terminator::Jump { block: break_scope },
                     );
                 }
                 Stmt::Continue => {
                     let continue_scope = self.scope_handler.continue_stack.pop_front().unwrap();
                     self.set_terminator(
-                        self.scope_handler.clone().current,
+                        self.scope_handler.current,
                         Terminator::Jump {
                             block: continue_scope,
                         },
