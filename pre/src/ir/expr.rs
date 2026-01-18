@@ -80,7 +80,12 @@ impl IRGenerator {
                 Some((Value::Local(id), ty))
             }
             Expr::StringLiteral(s) => {
-                let g = self.globals.get(&s).unwrap();
+                let mut g = self.static_strings.get(&s);
+                if g.is_none() {
+                    self.new_static_string(s.clone());
+                    g = self.static_strings.get(&s);
+                }
+                let g = g.unwrap();
                 Some((Value::Global(g.id), g.ty.clone()))
             }
             Expr::ArrayAccess { array: _, index: _ } => None,
@@ -109,8 +114,13 @@ impl IRGenerator {
             Expr::FloatLiteral(f) => Some((Value::ConstFloat(f as f64), Type::float)),
             Expr::BoolLiteral(b) => Some((Value::Const(b as i64), Type::Bool)),
             Expr::StringLiteral(s) => {
-                let n = self.globals.get(&s).unwrap();
-                Some((Value::Global(n.id), n.ty.clone()))
+                let mut def = self.globals.get(&s);
+                if def.is_none() {
+                    self.new_static_string(s.clone());
+                    def = self.static_strings.get(&s);
+                }
+                let def = def.unwrap();
+                Some((Value::Global(def.id), def.ty.clone()))
             }
             Expr::CharLiteral(c) => Some((Value::Const(c as i64), Type::Char)),
             Expr::StructInit { name, params } => {
@@ -154,7 +164,10 @@ impl IRGenerator {
             Expr::DerefAssign { target, value } => {
                 let (rhs_val, _) = self.lower_place(*value).unwrap();
                 let (ptr_val, ptr_ty) = self.lower_place(*target).unwrap();
-                let pointee_ty = ptr_ty.deref().expect("cannot dereference non-pointer").clone();
+                let pointee_ty = ptr_ty
+                    .deref()
+                    .expect("cannot dereference non-pointer")
+                    .clone();
 
                 self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs_val,
@@ -306,7 +319,9 @@ impl IRGenerator {
                 }
 
                 UnaryOp::AddressOf => {
-                    let (place, inner_ty) = self.lower_place(*expr).expect("cannot take address of non-place");
+                    let (place, inner_ty) = self
+                        .lower_place(*expr)
+                        .expect("cannot take address of non-place");
                     let reg = self.vreg_gen.fresh();
                     self.scope_handler
                         .instructions
@@ -481,14 +496,21 @@ impl IRGenerator {
                 value,
             } => {
                 let (local_id, offset, field_ty) = {
-                    let local_id = self.var_map.get(&class_name).expect("struct variable not found").1;
+                    let local_id = self
+                        .var_map
+                        .get(&class_name)
+                        .expect("struct variable not found")
+                        .1;
                     let struc = self
                         .ir_program
                         .structs
                         .iter()
                         .find(|s| s.name == class_name)
                         .expect("struct definition not found");
-                    let offset = struc.offsets.get(&field).expect("field not found in struct");
+                    let offset = struc
+                        .offsets
+                        .get(&field)
+                        .expect("field not found in struct");
                     let field_ty = struc
                         .fields
                         .iter()
@@ -510,7 +532,11 @@ impl IRGenerator {
                 });
                 None
             }
-            Expr::CompoundAssign { name: _, op: _, value: _ } => None,
+            Expr::CompoundAssign {
+                name: _,
+                op: _,
+                value: _,
+            } => None,
             Expr::PreIncrement { name: _ } => None,
             Expr::PostIncrement { name: _ } => None,
             Expr::PreDecrement { name: _ } => None,

@@ -54,14 +54,29 @@ impl VarGenerator {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct GlobalGenerator {
+    pub next: usize,
+}
+
+impl GlobalGenerator {
+    pub fn fresh(&mut self) -> usize {
+        let id = self.next;
+        self.next += 1;
+        id
+    }
+}
+
 #[derive(Default)]
 pub struct IRGenerator {
     pub vreg_gen: VRegGenerator,
     pub block_gen: BlockIdGen,
     pub var_gen: VarGenerator,
+    pub global_gen: GlobalGenerator,
     pub var_map: HashMap<String, (Type, usize)>,
     pub blocks: Vec<IRBlock>,
     pub globals: HashMap<String, GlobalDef>,
+    pub static_strings: HashMap<String, GlobalDef>,
     pub ir_program: IRProgram,
     pub scope_handler: ScopeHandler,
 }
@@ -72,6 +87,7 @@ impl IRGenerator {
             .instructions
             .append(&mut self.scope_handler.instructions);
 
+        self.scope_handler.closed.push(self.scope_handler.current);
         self.scope_handler.current = block;
     }
 
@@ -86,6 +102,22 @@ impl IRGenerator {
         id
     }
 
+    pub fn new_global(&mut self, name: String, ty: Type, value: GlobalValue) {
+        let id = self.global_gen.fresh();
+        let def = GlobalDef { id, ty, value };
+        self.globals.insert(name, def);
+    }
+
+    pub fn new_static_string(&mut self, value: String) {
+        let id = self.global_gen.fresh();
+        let def = GlobalDef {
+            id,
+            ty: Type::Pointer(Box::new(Type::Char)),
+            value: GlobalValue::Bytes(value.as_bytes().to_vec()),
+        };
+        self.static_strings.insert(value, def);
+    }
+
     pub fn add_new_var(&mut self, name: String, ty: Type) -> Value {
         let id = self.var_gen.fresh();
         self.var_map.insert(name, (ty, id));
@@ -94,19 +126,6 @@ impl IRGenerator {
 
     pub fn generate(stmts: Vec<Stmt>) -> Result<IRProgram, String> {
         let mut ir_generator = IRGenerator::default();
-
-        for stmt in stmts {
-            if let Stmt::Expression(expr) = stmt {
-                if let Expr::StringLiteral(string) = expr {
-                    let global_def = GlobalDef {
-                        id: ,
-                        ty: Type::Pointer(Box::new(Type::Char)),
-                        value: GlobalValue::Bytes(string.bytes()),
-                    };
-                    ir_generator.globals.insert(string, v)
-                }
-            }
-        }
 
         for stmt in stmts {
             match stmt {
@@ -177,17 +196,32 @@ impl IRGenerator {
             self.set_current(entry);
             self.lower_block(body);
 
+            let mut blocks: Vec<IRBlock> = self
+                .scope_handler
+                .closed
+                .iter()
+                .map(|id| self.blocks[id.0].clone())
+                .collect();
+
+            if let Some(last) = blocks.last_mut()
+                && *return_type == Type::Void
+                && let Terminator::TemporaryNone = last.terminator
+            {
+                last.terminator = Terminator::Return { value: None };
+            }
+
             let ir_func = IRFunction {
                 name: name.clone(),
                 params,
                 ret_type: return_type.clone(),
-                blocks: Vec::new(),
+                blocks,
                 entry,
                 attributes: attributes
                     .iter()
                     .filter_map(|attr| AtDecl::parse_attribute(attr.as_str()))
                     .collect(),
             };
+            self.scope_handler.closed.clear();
 
             self.ir_program.functions.push(ir_func);
         }

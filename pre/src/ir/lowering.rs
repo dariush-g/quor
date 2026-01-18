@@ -110,7 +110,8 @@ impl IRGenerator {
         if let (Some(else_block), Some(false_block)) = (else_, if_false_block) {
             self.set_current(false_block);
             self.lower_block(else_block);
-            if let Terminator::TemporaryNone = self.blocks[self.scope_handler.current.0].terminator {
+            if let Terminator::TemporaryNone = self.blocks[self.scope_handler.current.0].terminator
+            {
                 self.set_terminator(
                     self.scope_handler.current,
                     Terminator::Jump {
@@ -178,6 +179,10 @@ impl IRGenerator {
                     if let Some(expr) = expr {
                         value = Some(self.first_pass_parse_expr(expr.clone()).unwrap().0);
                     }
+                    let instructions = &mut self.scope_handler.instructions;
+                    self.blocks[self.scope_handler.current.0]
+                        .instructions
+                        .append(instructions);
                     self.set_terminator(self.scope_handler.current, Terminator::Return { value });
                 }
                 Stmt::Break => {

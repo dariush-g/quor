@@ -3,7 +3,7 @@
 def print(_: char*) :: void {
     @__asm__ {
         call printf
-    }        
+    }
 }
 
 def f_write(filename: char*, content: char*) :: void {
