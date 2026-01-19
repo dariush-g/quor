@@ -1,12 +1,12 @@
 
-@define x 0
 
 struct Node {
     data: int;
-    next: Node*;
 }
 
+@define x Node { data: 0 }
+
+
 def main() :: int {
-    let x: int = 0;
     return 0;
 }
