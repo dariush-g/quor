@@ -183,8 +183,7 @@ pub struct IRProgram {
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub name: String,
-    pub fields: Vec<(String, Type)>,
-    pub offsets: HashMap<String, i32>,
+    pub fields: HashMap<String, (i32, Type)>,
     pub is_union: bool,
 }
 

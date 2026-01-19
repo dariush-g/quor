@@ -128,10 +128,17 @@ impl IRGenerator {
     pub fn generate(stmts: Vec<Stmt>) -> Result<IRProgram, String> {
         let mut ir_generator = IRGenerator::default();
 
+        for stmt in stmts.clone() {
+            if let Stmt::StructDecl { .. } = stmt {
+                ir_generator.generate_struct(&stmt)?
+            }
+        }
+
+        // println!("{:?}", ir_generator.ir_program.structs);
+
         for stmt in stmts {
             match stmt {
                 Stmt::FunDecl { .. } => ir_generator.generate_function(&stmt)?,
-                Stmt::StructDecl { .. } => ir_generator.generate_struct(&stmt)?,
                 Stmt::AtDecl(..) => ir_generator.generate_declaration(&stmt, None)?,
                 _ => {}
             }
@@ -151,8 +158,7 @@ impl IRGenerator {
 
             let def = StructDef {
                 name: name.clone(),
-                fields: instances,
-                offsets,
+                fields: offsets,
                 is_union: union,
             };
 

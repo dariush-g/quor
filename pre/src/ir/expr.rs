@@ -2,42 +2,27 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{
-        block::{IRInstruction, StructDef, Value},
+        block::{GlobalDef, GlobalValue, IRInstruction, StructDef, Value},
         cfg::IRGenerator,
     },
     lexer::ast::{BinaryOp, Expr, Type, UnaryOp},
 };
 
 impl IRGenerator {
-    fn layout_struct(&self, def: &StructDef) -> Vec<(Type, i32)> {
-        let mut layout = Vec::new();
-        if def.is_union {
-            for field in &def.fields {
-                layout.push((field.1.clone(), 0));
-            }
-            return layout;
-        }
-
-        for field in &def.fields {
-            layout.push((field.1.clone(), field.1.size() as i32));
-        }
-        layout
-    }
-
     pub fn get_field_offsets(
         &self,
         fields: &Vec<(String, Type)>,
         is_union: bool,
-    ) -> HashMap<String, i32> {
+    ) -> HashMap<String, (i32, Type)> {
         let mut map = HashMap::new();
         if is_union {
             for field in fields {
-                map.insert(field.0.clone(), 0);
+                map.insert(field.0.clone(), (0, field.1.clone()));
             }
         } else {
             let mut offset_compound = 0;
             for field in fields {
-                map.insert(field.0.clone(), offset_compound as i32);
+                map.insert(field.0.clone(), (offset_compound as i32, field.1.clone()));
                 offset_compound += field.1.size();
             }
         }
@@ -54,10 +39,10 @@ impl IRGenerator {
                     .get(&name)
                     .expect("no known struct: '{name}'");
 
-                let layout = self.layout_struct(def);
+                let layout = def.fields.clone();
 
-                for (i, (_field_name, field_expr)) in params.iter().enumerate() {
-                    let (field_ty, field_off) = &layout[i];
+                for (field_name, field_expr) in params.iter() {
+                    let (field_off, field_ty) = &layout.get(field_name).unwrap();
 
                     let (value, _ty) = self.first_pass_parse_expr(field_expr.clone()).unwrap();
 
@@ -90,12 +75,18 @@ impl IRGenerator {
                 .get(struct_name)
                 .expect("no known struct")
                 .fields
-                .clone(),
+                .clone()
+                .iter()
+                .map(|f| (f.0.clone(), f.1.1.clone()))
+                .collect(),
         }
     }
 
     pub fn lower_place(&mut self, expr: Expr) -> Option<(Value, Type)> {
         match expr {
+            Expr::BoolLiteral(b) => Some((Value::Const(b as i64), Type::Bool)),
+            Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::Bool)),
+            Expr::LongLiteral(i) => Some((Value::Const(i), Type::Bool)),
             Expr::Variable(name, ty) => {
                 let id = self.var_map.get(&name).unwrap().1;
                 Some((Value::Local(id), ty))
@@ -147,12 +138,12 @@ impl IRGenerator {
             Expr::StructInit { name, params } => {
                 let def = self.ir_program.structs.get(&name).expect("unknown struct");
 
-                let layout = self.layout_struct(def);
+                let layout = def.fields.clone();
 
                 let loc = self.var_gen.fresh();
 
-                for (i, (_field_name, field_expr)) in params.iter().enumerate() {
-                    let (field_ty, field_off) = &layout[i];
+                for (field_name, field_expr) in params.iter() {
+                    let (field_off, field_ty) = &layout.get(field_name).unwrap();
 
                     let (value, _ty) = self.first_pass_parse_expr(field_expr.clone()).unwrap();
 
@@ -193,7 +184,38 @@ impl IRGenerator {
                 });
                 None
             }
-            Expr::InstanceVar(_, _) => todo!(),
+            Expr::InstanceVar(struct_var_name, field_name) => {
+                let mut field_type = Type::Void;
+                let vreg = self.vreg_gen.fresh();
+                if let Some((ty, id)) = self.var_map.get(&struct_var_name) {
+                    if let Type::Struct { name, .. } = ty {
+                        let struct_def = self.ir_program.structs.get(name).unwrap();
+                        let offset = struct_def.fields.get(&field_name).unwrap().0;
+                        field_type = struct_def.fields.get(&field_name).unwrap().1.clone();
+                        self.scope_handler.instructions.push(IRInstruction::Load {
+                            reg: vreg,
+                            addr: Value::Local(*id),
+                            offset,
+                            ty: field_type.clone(),
+                        });
+                    }
+                } else if let Some(global_def) = self.globals.get(&struct_var_name)
+                    && let GlobalValue::Struct(expr) = &global_def.value
+                    && let Expr::StructInit { name, .. } = expr
+                {
+                    let struct_def = self.ir_program.structs.get(name).unwrap();
+                    let offset = struct_def.fields.get(&field_name).unwrap().0;
+                    field_type = struct_def.fields.get(&field_name).unwrap().1.clone();
+                    self.scope_handler.instructions.push(IRInstruction::Load {
+                        reg: vreg,
+                        addr: Value::Global(global_def.id),
+                        offset,
+                        ty: field_type.clone(),
+                    });
+                }
+
+                Some((Value::Reg(vreg), field_type))
+            }
             Expr::Variable(name, ty) => {
                 let id = self.var_map.get(&name).expect("variable not found").1;
                 let reg = self.vreg_gen.fresh();
@@ -391,7 +413,9 @@ impl IRGenerator {
                     func: name,
                     args,
                 };
+
                 self.scope_handler.instructions.push(instr);
+
                 if let Some(reg) = reg {
                     return Some((Value::Reg(reg), return_type));
                 }
@@ -505,14 +529,13 @@ impl IRGenerator {
 
                 None
             }
-            //TODO: NEEDS FIXING. I think class name is the variable name of the struct not the struct name
             Expr::FieldAssign {
                 class_name,
                 field,
                 value,
             } => {
                 let var_map = self.var_map.clone();
-                
+
                 let (local_id, offset, field_ty) = {
                     let (struct_type, local_id) =
                         var_map.get(&class_name).expect("struct variable not found");
@@ -521,18 +544,13 @@ impl IRGenerator {
                         let struc = self.ir_program.structs.get(name).expect("struct not found");
 
                         let offset = struc
-                            .offsets
-                            .get(&field)
-                            .expect("field not found in struct");
-                        let field_ty = struc
                             .fields
-                            .iter()
-                            .find(|(name, _)| *name == field)
-                            .expect("field not found")
-                            .1
-                            .clone();
+                            .get(&field)
+                            .expect("field not found in struct")
+                            .0;
+                        let field_ty = struc.fields.get(&field).unwrap().1.clone();
 
-                        Some((local_id, *offset, field_ty))
+                        Some((local_id, offset, field_ty))
                     } else {
                         None
                     }
