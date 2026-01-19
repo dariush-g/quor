@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ir::{
         block::{IRInstruction, StructDef, Value},
@@ -22,15 +24,35 @@ impl IRGenerator {
         layout
     }
 
+    pub fn get_field_offsets(
+        &self,
+        fields: &Vec<(String, Type)>,
+        is_union: bool,
+    ) -> HashMap<String, i32> {
+        let mut map = HashMap::new();
+        if is_union {
+            for field in fields {
+                map.insert(field.0.clone(), 0);
+            }
+        } else {
+            let mut offset_compound = 0;
+            for field in fields {
+                map.insert(field.0.clone(), offset_compound as i32);
+                offset_compound += field.1.size();
+            }
+        }
+
+        map
+    }
+
     pub fn emit_into_local(&mut self, addr: Value, expr: Expr) {
         match expr {
             Expr::StructInit { name, params } => {
                 let def = self
                     .ir_program
                     .structs
-                    .iter()
-                    .find(|s| s.name == name)
-                    .expect("unknown struct");
+                    .get(&name)
+                    .expect("no known struct: '{name}'");
 
                 let layout = self.layout_struct(def);
 
@@ -65,9 +87,8 @@ impl IRGenerator {
             instances: self
                 .ir_program
                 .structs
-                .iter()
-                .find(|s| s.name == struct_name)
-                .unwrap()
+                .get(struct_name)
+                .expect("no known struct")
                 .fields
                 .clone(),
         }
@@ -124,12 +145,7 @@ impl IRGenerator {
             }
             Expr::CharLiteral(c) => Some((Value::Const(c as i64), Type::Char)),
             Expr::StructInit { name, params } => {
-                let def = self
-                    .ir_program
-                    .structs
-                    .iter()
-                    .find(|s| s.name == name)
-                    .expect("unknown struct");
+                let def = self.ir_program.structs.get(&name).expect("unknown struct");
 
                 let layout = self.layout_struct(def);
 
@@ -489,45 +505,47 @@ impl IRGenerator {
 
                 None
             }
-
+            //TODO: NEEDS FIXING. I think class name is the variable name of the struct not the struct name
             Expr::FieldAssign {
                 class_name,
                 field,
                 value,
             } => {
+                let var_map = self.var_map.clone();
+                
                 let (local_id, offset, field_ty) = {
-                    let local_id = self
-                        .var_map
-                        .get(&class_name)
-                        .expect("struct variable not found")
-                        .1;
-                    let struc = self
-                        .ir_program
-                        .structs
-                        .iter()
-                        .find(|s| s.name == class_name)
-                        .expect("struct definition not found");
-                    let offset = struc
-                        .offsets
-                        .get(&field)
-                        .expect("field not found in struct");
-                    let field_ty = struc
-                        .fields
-                        .iter()
-                        .find(|(name, _)| *name == field)
-                        .expect("field not found")
-                        .1
-                        .clone();
-                    (local_id, *offset, field_ty)
-                };
+                    let (struct_type, local_id) =
+                        var_map.get(&class_name).expect("struct variable not found");
+
+                    if let Type::Struct { name, .. } = struct_type {
+                        let struc = self.ir_program.structs.get(name).expect("struct not found");
+
+                        let offset = struc
+                            .offsets
+                            .get(&field)
+                            .expect("field not found in struct");
+                        let field_ty = struc
+                            .fields
+                            .iter()
+                            .find(|(name, _)| *name == field)
+                            .expect("field not found")
+                            .1
+                            .clone();
+
+                        Some((local_id, *offset, field_ty))
+                    } else {
+                        None
+                    }
+                }
+                .unwrap();
 
                 let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
                 let rhs = self.ensure_rvalue(rhs, &rhs_ty);
 
                 self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs,
-                    addr: Value::Local(local_id),
-                    offset: offset as i32,
+                    addr: Value::Local(*local_id),
+                    offset,
                     ty: field_ty,
                 });
                 None

@@ -1,4 +1,11 @@
 
+@define x 0
+
+struct Node {
+    data: int;
+    next: Node*;
+}
+
 def main() :: int {
     let x: int = 0;
     return 0;

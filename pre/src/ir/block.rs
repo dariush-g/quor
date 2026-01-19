@@ -174,16 +174,17 @@ pub struct IRFunction {
 
 #[derive(Debug, Clone, Default)]
 pub struct IRProgram {
-    pub functions: Vec<IRFunction>,
+    pub functions: HashMap<String, IRFunction>,
     pub global_consts: Vec<GlobalDef>,
-    pub structs: Vec<StructDef>,
+    pub structs: HashMap<String, StructDef>,
+    pub imports: Vec<(String, bool)>, // name, is_local
 }
 
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub name: String,
     pub fields: Vec<(String, Type)>,
-    pub offsets: HashMap<String, usize>,
+    pub offsets: HashMap<String, i32>,
     pub is_union: bool,
 }
 
@@ -201,5 +202,6 @@ pub enum GlobalValue {
     Float(f64),
     Bool(bool),
     Zeroed(usize),
+    Char(char),
     Struct(Expr),
 }

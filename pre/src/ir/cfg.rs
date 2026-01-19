@@ -105,7 +105,8 @@ impl IRGenerator {
     pub fn new_global(&mut self, name: String, ty: Type, value: GlobalValue) {
         let id = self.global_gen.fresh();
         let def = GlobalDef { id, ty, value };
-        self.globals.insert(name, def);
+        self.globals.insert(name, def.clone());
+        self.ir_program.global_consts.push(def);
     }
 
     pub fn new_static_string(&mut self, value: String) {
@@ -139,7 +140,25 @@ impl IRGenerator {
         Ok(ir_generator.ir_program)
     }
 
-    fn generate_struct(&mut self, _stmt: &Stmt) -> Result<(), String> {
+    fn generate_struct(&mut self, stmt: &Stmt) -> Result<(), String> {
+        if let Stmt::StructDecl {
+            name,
+            instances,
+            union,
+        } = stmt.clone()
+        {
+            let offsets = self.get_field_offsets(&instances, union);
+
+            let def = StructDef {
+                name: name.clone(),
+                fields: instances,
+                offsets,
+                is_union: union,
+            };
+
+            self.ir_program.structs.insert(name, def);
+        }
+
         Ok(())
     }
 
@@ -149,32 +168,42 @@ impl IRGenerator {
         _next_stmt: Option<&Stmt>,
     ) -> Result<(), String> {
         if let Stmt::AtDecl(decl, param, val, _content) = stmt {
-            let _declaration = match decl.as_str() {
+            match decl.as_str() {
                 "import" => {
                     let path = param.as_ref().unwrap();
                     if path.ends_with('!') {
                         let mut path = path.clone();
                         path.pop();
-                        AtDecl::Import { path, local: false }
+                        self.ir_program.imports.push((path, false));
                     } else {
-                        AtDecl::Import {
-                            path: path.clone(),
-                            local: true,
-                        }
+                        self.ir_program.imports.push((path.clone(), true));
                     }
                 }
-                "asm" | "_asm_" | "__asm__" => AtDecl::InlineAssembly {
-                    content: param.as_ref().unwrap().clone(),
-                },
-                "trust_ret" => AtDecl::TrustRet,
-                "define" => AtDecl::Define {
-                    name: param.as_ref().unwrap().clone(),
-                    ty: val.as_ref().unwrap().get_type(),
-                    val: val.as_ref().unwrap().clone(),
-                },
-                _ => panic!("Unknown AtDecl: {decl}"),
+                "define" => {
+                    let const_value = match val.clone().unwrap() {
+                        Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
+                        Expr::LongLiteral(l) => GlobalValue::Int(l),
+                        Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
+                        Expr::BoolLiteral(b) => GlobalValue::Bool(b),
+                        Expr::StringLiteral(s) => GlobalValue::Bytes(s.as_bytes().to_vec()),
+                        Expr::CharLiteral(c) => GlobalValue::Char(c),
+                        Expr::StructInit { .. } => GlobalValue::Struct(val.clone().unwrap()),
+                        _ => {
+                            panic!(
+                                "Global constants should only be a single expression of a number, character, string, boolean, or struct literal"
+                            )
+                        }
+                    };
+                    self.new_global(
+                        param.clone().unwrap(),
+                        val.as_ref().unwrap().get_type(),
+                        const_value,
+                    );
+                }
+                _ => {}
             };
         }
+
         Ok(())
     }
 
@@ -223,7 +252,7 @@ impl IRGenerator {
             };
             self.scope_handler.closed.clear();
 
-            self.ir_program.functions.push(ir_func);
+            self.ir_program.functions.insert(name.to_string(), ir_func);
         }
 
         Ok(())

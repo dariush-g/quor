@@ -1,6 +1,4 @@
 use quor::analyzer::TypeChecker;
-use quor::backend::x86_64::CodeGen;
-use quor::ir::cfg::IRGenerator;
 use quor::lexer::Lexer;
 use quor::parser::Parser;
 
@@ -186,11 +184,11 @@ fn main() {
         Err(_) => src_path,
     };
 
-    let workdir = src_path
+    let _workdir = src_path
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let out_name = src_path
+    let _out_name = src_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("out");
@@ -203,7 +201,7 @@ fn main() {
         }
     };
 
-    let keep_asm = source.contains("@keep_asm");
+    let _keep_asm = source.contains("@keep_asm");
 
     let mut lexer = Lexer::new(source);
     let tokens = match lexer.tokenize() {
