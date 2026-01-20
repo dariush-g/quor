@@ -9,6 +9,10 @@ use crate::{
 };
 
 impl IRGenerator {
+    pub fn allocate_struct_on_stack(&mut self, local: Value, instances: Vec<(String, Type)>) {
+        
+    }
+
     pub fn get_field_offsets(
         &self,
         fields: &Vec<(String, Type)>,
@@ -217,7 +221,11 @@ impl IRGenerator {
                 Some((Value::Reg(vreg), field_type))
             }
             Expr::Variable(name, ty) => {
-                let id = self.var_map.get(&name).expect("variable not found").1;
+                let id = self
+                    .var_map
+                    .get(&name)
+                    .unwrap_or_else(|| panic!("variable: {name} not found"))
+                    .1;
                 let reg = self.vreg_gen.fresh();
                 self.scope_handler.instructions.push(IRInstruction::Load {
                     reg,

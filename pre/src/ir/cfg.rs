@@ -145,6 +145,16 @@ impl IRGenerator {
             }
         }
 
+        ir_generator.blocks = ir_generator
+            .blocks
+            .clone()
+            .iter()
+            .filter_map(|block| match block.terminator {
+                Terminator::TemporaryNone => None,
+                _ => Some(block.clone()),
+            })
+            .collect::<Vec<_>>();
+
         Ok(ir_generator.ir_program)
     }
 
@@ -224,8 +234,20 @@ impl IRGenerator {
         } = func
         {
             let mut params = Vec::with_capacity(func_params.len());
-            for _ in 0..func_params.len() {
-                params.push(self.vreg_gen.fresh());
+            for (param_name, param_ty) in func_params.clone() {
+                let reg = self.vreg_gen.fresh();
+                let val = self.add_new_var(param_name, param_ty.clone());
+                if let Type::Struct { instances, .. } = param_ty.clone() {
+                    self.allocate_struct_on_stack(val, instances);
+                } else {
+                    self.scope_handler.instructions.push(IRInstruction::Store {
+                        value: Value::Reg(reg),
+                        addr: val,
+                        offset: 0,
+                        ty: param_ty,
+                    });
+                }
+                params.push(reg);
             }
 
             let entry = self.new_block();
@@ -238,7 +260,7 @@ impl IRGenerator {
                 .iter()
                 .map(|id| self.blocks[id.0].clone())
                 .collect();
-            
+
             self.scope_handler.closed = HashSet::new();
 
             if let Some(last) = blocks.last_mut()
@@ -260,6 +282,7 @@ impl IRGenerator {
                     .collect(),
             };
 
+            self.var_map = HashMap::new();
             self.ir_program.functions.insert(name.to_string(), ir_func);
         }
 

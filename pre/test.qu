@@ -3,9 +3,15 @@
 def main() :: int {
     let y: int = 10;
     print("%d", y);
+    let person: Person = new_person("bob", 20);
     return 0;
 }
 
-@union struct Node {
+struct Person {
+    name: char*;
+    age: int;
+}
 
+def new_person(name_: char*, age_: int) :: Person {
+    return Person { name: name_, age: age_ };
 }
