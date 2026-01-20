@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{
-        block::{GlobalDef, GlobalValue, IRInstruction, StructDef, Value},
+        block::{GlobalValue, IRInstruction, Value},
         cfg::IRGenerator,
     },
     lexer::ast::{BinaryOp, Expr, Type, UnaryOp},

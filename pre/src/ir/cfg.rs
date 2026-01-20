@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{ir::block::*, lexer::ast::*};
 
@@ -21,7 +21,7 @@ impl BlockIdGen {
 
 #[derive(Clone, Debug, Default)]
 pub struct ScopeHandler {
-    pub closed: Vec<BlockId>,
+    pub closed: HashSet<BlockId>,
     pub break_stack: VecDeque<BlockId>,
     pub continue_stack: VecDeque<BlockId>,
     pub instructions: Vec<IRInstruction>,
@@ -87,7 +87,7 @@ impl IRGenerator {
             .instructions
             .append(&mut self.scope_handler.instructions);
 
-        self.scope_handler.closed.push(self.scope_handler.current);
+        self.scope_handler.closed.insert(self.scope_handler.current);
         self.scope_handler.current = block;
     }
 
@@ -98,6 +98,7 @@ impl IRGenerator {
             instructions: Vec::new(),
             terminator: Terminator::TemporaryNone,
         };
+        self.scope_handler.closed.insert(id);
         self.blocks.push(block);
         id
     }
@@ -176,14 +177,14 @@ impl IRGenerator {
         if let Stmt::AtDecl(decl, param, val, _content) = stmt {
             match decl.as_str() {
                 "import" => {
-                    let path = param.as_ref().unwrap();
-                    if path.ends_with('!') {
-                        let mut path = path.clone();
-                        path.pop();
-                        self.ir_program.imports.push((path, false));
-                    } else {
-                        self.ir_program.imports.push((path.clone(), true));
-                    }
+                    // let path = param.as_ref().unwrap();
+                    // if path.ends_with('!') {
+                    //     let mut path = path.clone();
+                    //     path.pop();
+                    //     self.ir_program.imports.push((path, false));
+                    // } else {
+                    //     self.ir_program.imports.push((path.clone(), true));
+                    // }
                 }
                 "define" => {
                     let const_value = match val.clone().unwrap() {
@@ -237,6 +238,8 @@ impl IRGenerator {
                 .iter()
                 .map(|id| self.blocks[id.0].clone())
                 .collect();
+            
+            self.scope_handler.closed = HashSet::new();
 
             if let Some(last) = blocks.last_mut()
                 && *return_type == Type::Void
@@ -256,7 +259,6 @@ impl IRGenerator {
                     .filter_map(|attr| AtDecl::parse_attribute(attr.as_str()))
                     .collect(),
             };
-            self.scope_handler.closed.clear();
 
             self.ir_program.functions.insert(name.to_string(), ir_func);
         }

@@ -1,17 +1,11 @@
 @import::<io.qu>
 
-struct Node {
-    data: int;
-}
-
-@define x Node { data: 0 }
-
-def print_int(i: int) :: void {
-    
-}
-
 def main() :: int {
-    let y: int = x.data;
-    print_int(y);
+    let y: int = 10;
+    print("%d", y);
     return 0;
+}
+
+@union struct Node {
+
 }

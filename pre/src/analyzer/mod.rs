@@ -992,6 +992,13 @@ impl TypeChecker {
                     .clone();
 
                 if *self.classes.get(name).unwrap() {
+                    if self.class_fields.get(name).unwrap().is_empty() {
+                        // TODO: add warning here for making a union with no fields -> pointless
+                        return Ok(Type::Struct {
+                            name: name.clone(),
+                            instances: vec![],
+                        });
+                    }
                     if params.len() != 1 {
                         return Err("Expected one parameter for union init".to_string());
                     }
@@ -1012,7 +1019,7 @@ impl TypeChecker {
                     } else {
                         return Err(format!(
                             "Unexpected parameter for union init: {:?}",
-                            params[0]
+                            params.first()
                         ));
                     }
                 }

@@ -236,8 +236,7 @@ fn main() {
     // println!("{typed:?}");
 
     let cfg = quor::ir::cfg::IRGenerator::generate(typed);
-    println!("{cfg:?}");
-
+    println!("{:?}", cfg.unwrap().functions);
     // let codegen = CodeGen::generate(&typed);
 
     // let asm = codegen;
