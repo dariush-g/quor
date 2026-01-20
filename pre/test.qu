@@ -1,17 +1,23 @@
-@import::<io.qu>
+
+struct Node {
+    data: Data;
+}
+
+struct Data {
+    x: int;
+}
 
 def main() :: int {
-    let y: int = 10;
-    print("%d", y);
-    let person: Person = new_person("bob", 20);
+    let node: Node = Node { 
+        data: Data { 
+            x: 10 
+        } 
+    };
+    n(node);
     return 0;
 }
 
-struct Person {
-    name: char*;
-    age: int;
+def n(node: Node) :: void {
+
 }
 
-def new_person(name_: char*, age_: int) :: Person {
-    return Person { name: name_, age: age_ };
-}

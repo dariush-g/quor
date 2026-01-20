@@ -2,15 +2,86 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{
-        block::{GlobalValue, IRInstruction, Value},
+        block::{GlobalValue, IRInstruction, Value, VReg},
         cfg::IRGenerator,
     },
     lexer::ast::{BinaryOp, Expr, Type, UnaryOp},
 };
 
 impl IRGenerator {
-    pub fn allocate_struct_on_stack(&mut self, local: Value, instances: Vec<(String, Type)>) {
-        
+    pub fn allocate_struct_on_stack(&mut self, local: Value, param_reg: VReg, struct_name: String) {
+        let fields = {
+            let struct_def = self
+                .ir_program
+                .structs
+                .get(&struct_name)
+                .expect("struct definition not found for parameter");
+            struct_def.fields.clone()
+        };
+
+        self.copy_struct_fields(
+            Value::Reg(param_reg),
+            local,
+            &fields,
+        );
+    }
+
+    fn copy_struct_fields(
+        &mut self,
+        src: Value,
+        dst: Value,
+        fields: &HashMap<String, (i32, Type)>,
+    ) {
+        self.copy_struct_fields_with_base_offset(src, dst, fields, 0);
+    }
+
+    fn copy_struct_fields_with_base_offset(
+        &mut self,
+        src: Value,
+        dst: Value,
+        fields: &HashMap<String, (i32, Type)>,
+        base_offset: i32,
+    ) {
+        for (_field_name, (field_offset, field_ty)) in fields {
+            let total_offset = base_offset + *field_offset;
+            
+            match field_ty {
+                Type::Struct { name: nested_struct_name, .. } => {
+                    let nested_fields = {
+                        let nested_struct_def = self
+                            .ir_program
+                            .structs
+                            .get(nested_struct_name)
+                            .expect("nested struct definition not found");
+                        nested_struct_def.fields.clone()
+                    };
+
+                    self.copy_struct_fields_with_base_offset(
+                        src.clone(),
+                        dst.clone(),
+                        &nested_fields,
+                        total_offset,
+                    );
+                }
+                _ => {
+                    let temp_reg = self.vreg_gen.fresh();
+                    
+                    self.scope_handler.instructions.push(IRInstruction::Load {
+                        reg: temp_reg,
+                        addr: src.clone(),
+                        offset: total_offset,
+                        ty: field_ty.clone(),
+                    });
+
+                    self.scope_handler.instructions.push(IRInstruction::Store {
+                        value: Value::Reg(temp_reg),
+                        addr: dst.clone(),
+                        offset: total_offset,
+                        ty: field_ty.clone(),
+                    });
+                }
+            }
+        }
     }
 
     pub fn get_field_offsets(

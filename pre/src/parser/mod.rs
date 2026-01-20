@@ -1147,6 +1147,10 @@ impl Parser {
 
                     if !self.check(&TokenType::RightBrace) {
                         loop {
+                            if let TokenType::Newline = self.peek().token_type {
+                                self.advance();
+                            }
+
                             let fname_tok = self
                                 .consume(TokenType::Identifier("".into()), "Expected field name")?;
                             let fname = if let TokenType::Identifier(n) = &fname_tok.token_type {
@@ -1163,6 +1167,10 @@ impl Parser {
                                 break;
                             }
                         }
+                    }
+
+                    if let TokenType::Newline = self.peek().token_type {
+                        self.advance();
                     }
 
                     self.consume(

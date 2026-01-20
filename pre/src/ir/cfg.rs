@@ -233,25 +233,30 @@ impl IRGenerator {
             attributes,
         } = func
         {
+            let entry = self.new_block();
+            self.set_current(entry);
+
             let mut params = Vec::with_capacity(func_params.len());
             for (param_name, param_ty) in func_params.clone() {
-                let reg = self.vreg_gen.fresh();
-                let val = self.add_new_var(param_name, param_ty.clone());
-                if let Type::Struct { instances, .. } = param_ty.clone() {
-                    self.allocate_struct_on_stack(val, instances);
+                let param_reg = self.vreg_gen.fresh();
+                let local_val = self.add_new_var(param_name, param_ty.clone());
+                
+                if let Type::Struct { name: struct_name, .. } = param_ty.clone() {
+                    self.allocate_struct_on_stack(local_val, param_reg, struct_name);
                 } else {
                     self.scope_handler.instructions.push(IRInstruction::Store {
-                        value: Value::Reg(reg),
-                        addr: val,
+                        value: Value::Reg(param_reg),
+                        addr: local_val,
                         offset: 0,
                         ty: param_ty,
                     });
                 }
-                params.push(reg);
+                params.push(param_reg);
             }
 
-            let entry = self.new_block();
-            self.set_current(entry);
+            self.blocks[self.scope_handler.current.0]
+                .instructions
+                .append(&mut self.scope_handler.instructions);
             self.lower_block(body);
 
             let mut blocks: Vec<IRBlock> = self
