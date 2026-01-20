@@ -166,12 +166,14 @@ pub fn build_link_run(
 }
 
 fn main() {
-    // CLI: quor <source-file>
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
+
+    if args.len() < 2 {
         eprintln!("Usage: quor <source-file>");
         std::process::exit(1);
     }
+
+    let compiler_args = &args[2..args.len()];
 
     let mut src_path = PathBuf::from(&args[1]);
     if src_path.is_relative() {
@@ -179,6 +181,7 @@ fn main() {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(&src_path);
     }
+
     let src_path = match fs::canonicalize(&src_path) {
         Ok(p) => p,
         Err(_) => src_path,
@@ -235,11 +238,23 @@ fn main() {
 
     // println!("{typed:?}");
 
+    if compiler_args.contains(&"--emit-typed".to_string()) {
+        println!("{:?}", typed);
+    }
+
     let cfg = quor::ir::cfg::IRGenerator::generate(typed);
-    println!("{:?}", cfg.unwrap().functions);
+
+    if compiler_args.contains(&"--emit-ir".to_string()) {
+        println!("{:?}", cfg);
+    }
+
     // let codegen = CodeGen::generate(&typed);
 
     // let asm = codegen;
+
+    // if compiler_args.contains(&"--emit-asm".to_string()) {
+    //     println!("{:?}", asm);
+    // }
 
     // for st in codegen.1 {
     //     gen_asm(st, asm.clone());

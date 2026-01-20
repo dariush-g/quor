@@ -67,6 +67,7 @@ pub enum IRInstruction {
         left: Value,
         right: Value,
     },
+
     Gt {
         reg: VReg,
         left: Value,
@@ -122,7 +123,7 @@ pub enum IRInstruction {
 #[derive(Clone, Debug)]
 pub enum AtDecl {
     Import { path: String, local: bool },
-    Define { name: String, ty: Type, val: Expr },
+    Const { name: String, ty: Type, val: Expr },
     TrustRet,
     InlineAssembly { content: String },
 }

@@ -146,7 +146,7 @@ impl TypeChecker {
 
         for (i, stmt) in program.clone().iter().enumerate() {
             if let Stmt::AtDecl(decl, param, val, _) = stmt {
-                if decl.as_str() == "define" || decl.as_str() == "defines" {
+                if decl.as_str() == "const" || decl.as_str() == "const" {
                     let param = param
                         .clone()
                         .unwrap_or_else(|| panic!("Unable to locate define name"));
@@ -1241,7 +1241,7 @@ impl TypeChecker {
         match stmt {
             Stmt::AtDecl(decl, _, _, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
-                "define" | "defines" => Ok(stmt.clone()),
+                "const" | "const" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
                 "keep_asm" => Ok(stmt.clone()),
                 "trust_ret" => Ok(stmt.clone()),

@@ -104,6 +104,11 @@ impl Parser {
             //     }
             // }
 
+            if let TokenType::Equal = self.peek().token_type {
+                self.advance();
+                let expr = self.advance();
+            }
+
             if let TokenType::DoubleColon = self.peek().token_type {
                 self.advance();
                 if let TokenType::Less = self.peek().token_type {
@@ -166,7 +171,25 @@ impl Parser {
             if let TokenType::Identifier(name) = &self.peek().clone().token_type {
                 self.advance();
 
+                if let TokenType::Equal = &self.peek().token_type {
+                    self.advance();
+                    let expr = self.expression().unwrap_or_else(|_| panic!());
+                    return Ok(Stmt::AtDecl(
+                        decl.to_string(),
+                        Some(name.to_string()),
+                        Some(expr),
+                        None,
+                    ));
+                }
+
                 let expr = self.expression().unwrap_or_else(|_| panic!());
+                // let token_type = self.peek().token_type;
+                // TODO: FOR @define replace all "name" with the value of the token
+                // match token_type {
+                //     TokenType::IntLiteral(i) => {}
+                //     TokenType::CharLiteral(c) => {}
+                //     _ => {}
+                // }
 
                 return Ok(Stmt::AtDecl(
                     decl.to_string(),

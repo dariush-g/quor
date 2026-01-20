@@ -1,23 +1,6 @@
-
-struct Node {
-    data: Data;
-}
-
-struct Data {
-    x: int;
-}
+@const x = 10
 
 def main() :: int {
-    let node: Node = Node { 
-        data: Data { 
-            x: 10 
-        } 
-    };
-    n(node);
+    
     return 0;
 }
-
-def n(node: Node) :: void {
-
-}
-

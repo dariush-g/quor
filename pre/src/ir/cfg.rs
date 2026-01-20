@@ -196,7 +196,7 @@ impl IRGenerator {
                     //     self.ir_program.imports.push((path.clone(), true));
                     // }
                 }
-                "define" => {
+                "const" => {
                     let const_value = match val.clone().unwrap() {
                         Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
                         Expr::LongLiteral(l) => GlobalValue::Int(l),
