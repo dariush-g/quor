@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{
-        block::{GlobalValue, IRInstruction, Value, VReg},
+        block::{GlobalValue, IRInstruction, VReg, Value},
         cfg::IRGenerator,
     },
     lexer::ast::{BinaryOp, Expr, Type, UnaryOp},
@@ -19,11 +19,7 @@ impl IRGenerator {
             struct_def.fields.clone()
         };
 
-        self.copy_struct_fields(
-            Value::Reg(param_reg),
-            local,
-            &fields,
-        );
+        self.copy_struct_fields(Value::Reg(param_reg), local, &fields);
     }
 
     fn copy_struct_fields(
@@ -42,11 +38,14 @@ impl IRGenerator {
         fields: &HashMap<String, (i32, Type)>,
         base_offset: i32,
     ) {
-        for (_field_name, (field_offset, field_ty)) in fields {
+        for (field_offset, field_ty) in fields.values() {
             let total_offset = base_offset + *field_offset;
-            
+
             match field_ty {
-                Type::Struct { name: nested_struct_name, .. } => {
+                Type::Struct {
+                    name: nested_struct_name,
+                    ..
+                } => {
                     let nested_fields = {
                         let nested_struct_def = self
                             .ir_program
@@ -65,7 +64,7 @@ impl IRGenerator {
                 }
                 _ => {
                     let temp_reg = self.vreg_gen.fresh();
-                    
+
                     self.scope_handler.instructions.push(IRInstruction::Load {
                         reg: temp_reg,
                         addr: src.clone(),
