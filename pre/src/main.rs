@@ -215,8 +215,10 @@ fn main() {
         }
     };
 
-    // println!("{tokens:?}");
-
+    if compiler_args.contains(&"--emit-tokens".to_string()) {
+        println!("{:?}", tokens);
+    }
+    
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {
         Ok(p) => p,

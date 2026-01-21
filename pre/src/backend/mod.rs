@@ -37,8 +37,6 @@ impl Codegen {
             asm: AsmEmitter::default(),
         };
 
-
-
         codegen.asm.output
     }
 }

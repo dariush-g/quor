@@ -50,7 +50,7 @@ def main() :: int {
 ### Structs
 
 ```quor
-@import::<io.qu>
+@import <io.qu>
 
 struct Person {
     name: char*;
@@ -99,8 +99,8 @@ def get_time_int() :: int {
 ### Global constants
 
 ```quor
-@import::<io.qu>
-@define ONE_HUNDRED 100
+@import <io.qu>
+@const XYZ = 100
 def main() :: int {
 	print("%d", ONE_HUNDRED);
 	return 0;
@@ -111,5 +111,5 @@ def main() :: int {
 ### 6 parameter functions 
 ### No bitwise operations yet
 ### No pointer indexing yet
-### No type inference yet
+### No local variable type inference yet
 

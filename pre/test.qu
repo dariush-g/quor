@@ -1,6 +1,7 @@
-@const x = 10
+@import <io.qu>
+@import "import.qu"
 
 def main() :: int {
-    
+    imports();
     return 0;
 }

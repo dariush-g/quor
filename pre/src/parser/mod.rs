@@ -76,6 +76,49 @@ impl Parser {
         false
     }
 
+    fn parse_import(&mut self) -> Result<Stmt, ParseError> {
+        let mut epilogue = "";
+
+        let path = match &self.peek().token_type {
+            TokenType::StringLiteral(s) => {
+                let s = s.clone();
+                self.advance();
+                s
+            }
+            TokenType::Less => {
+                self.advance(); // <
+                let mut path = String::new();
+                epilogue = "!";
+                loop {
+                    match &self.peek().token_type {
+                        TokenType::Identifier(s) => {
+                            path.push_str(s);
+                            self.advance();
+                        }
+                        TokenType::Period => {
+                            path.push('.');
+                            self.advance();
+                        }
+                        TokenType::Greater => {
+                            self.advance();
+                            break;
+                        }
+                        _ => {
+                            return Err(ParseError::UnexpectedToken(self.peek().clone()));
+                        }
+                    }
+                }
+
+                path
+            }
+
+            _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
+        };
+
+        let path = format!("{path}{epilogue}");
+        Ok(Stmt::AtDecl("import".to_string(), Some(path), None, None))
+    }
+
     fn at_declaration(&mut self) -> Result<Stmt, ParseError> {
         if let TokenType::Identifier(decl) = &self.peek().token_type.clone() {
             self.advance();
@@ -104,68 +147,51 @@ impl Parser {
             //     }
             // }
 
-            if let TokenType::Equal = self.peek().token_type {
-                self.advance();
-                let expr = self.advance();
-            }
+            // if let TokenType::DoubleColon = self.peek().token_type {
+            //     self.advance();
+            // if let TokenType::Less = self.peek().token_type {
+            //     self.advance(); // consume '('
+            //     let mut param = if let TokenType::Identifier(s) = &self.peek().token_type {
+            //         let val = s.clone();
+            //         self.advance(); // consume string
+            //         val
+            //     } else {
+            //         return Err(ParseError::Expected {
+            //             expected: TokenType::Identifier("".to_string()),
+            //             found: self.peek().clone(),
+            //             message: "Expected identifier in @import".to_owned(),
+            //         });
+            //     };
 
-            if let TokenType::DoubleColon = self.peek().token_type {
-                self.advance();
-                if let TokenType::Less = self.peek().token_type {
-                    self.advance(); // consume '('
-                    let mut param = if let TokenType::Identifier(s) = &self.peek().token_type {
-                        let val = s.clone();
-                        self.advance(); // consume string
-                        val
-                    } else {
-                        return Err(ParseError::Expected {
-                            expected: TokenType::Identifier("".to_string()),
-                            found: self.peek().clone(),
-                            message: "Expected identifier in @import".to_owned(),
-                        });
-                    };
+            //     if let TokenType::Period = self.peek().token_type {
+            //         param.push('.');
+            //         self.advance();
+            //         if let TokenType::Identifier(qu) = &self.peek().token_type {
+            //             param.push_str(qu);
+            //             self.advance();
+            //         }
+            //     }
 
-                    if let TokenType::Period = self.peek().token_type {
-                        param.push('.');
-                        self.advance();
-                        if let TokenType::Identifier(qu) = &self.peek().token_type {
-                            param.push_str(qu);
-                            self.advance();
-                        }
-                    }
+            //     param.push('!');
 
-                    param.push('!');
+            //     self.consume(TokenType::Greater, "Expected '>'")?;
+            //     return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None, None));
+            // }
+            // // if let TokenType::LeftParen = self.peek().token_type {
+            // // self.advance(); // consume '('
+            // if let TokenType::StringLiteral(s) = &self.peek().clone().token_type {
+            //     self.advance();
 
-                    self.consume(TokenType::Greater, "Expected '>'")?;
-                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None, None));
-                }
-                if let TokenType::LeftParen = self.peek().token_type {
-                    self.advance(); // consume '('
-                    let mut param = if let TokenType::StringLiteral(s) = &self.peek().token_type {
-                        let val = s.clone();
-                        self.advance(); // consume string
-                        val
-                    } else {
-                        return Err(ParseError::Expected {
-                            expected: TokenType::Identifier("".to_string()),
-                            found: self.peek().clone(),
-                            message: "Expected identifier in @import".to_owned(),
-                        });
-                    };
+            //     return Ok(Stmt::AtDecl(
+            //         decl.to_string(),
+            //         Some(s.to_string()),
+            //         None,
+            //         None,
+            //     ));
+            // }
 
-                    if let TokenType::Period = self.peek().token_type {
-                        param.push('.');
-                        self.advance();
-                        if let TokenType::Identifier(qu) = &self.peek().token_type {
-                            param.push_str(qu);
-                            self.advance();
-                        }
-                    }
-
-                    self.consume(TokenType::RightParen, "Expected ')'")?;
-
-                    return Ok(Stmt::AtDecl(decl.to_string(), Some(param), None, None));
-                }
+            if decl == "import" {
+                return self.parse_import();
             }
 
             if let TokenType::Identifier(name) = &self.peek().clone().token_type {
