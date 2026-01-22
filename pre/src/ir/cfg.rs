@@ -202,7 +202,7 @@ impl IRGenerator {
                         Expr::LongLiteral(l) => GlobalValue::Int(l),
                         Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
                         Expr::BoolLiteral(b) => GlobalValue::Bool(b),
-                        Expr::StringLiteral(s) => GlobalValue::Bytes(s.as_bytes().to_vec()),
+                        Expr::StringLiteral(s) => GlobalValue::String(s),
                         Expr::CharLiteral(c) => GlobalValue::Char(c),
                         Expr::StructInit { .. } => GlobalValue::Struct(val.clone().unwrap()),
                         _ => {

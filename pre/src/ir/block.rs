@@ -198,6 +198,7 @@ pub struct GlobalDef {
 #[derive(Debug, Clone)]
 pub enum GlobalValue {
     Bytes(Vec<u8>),
+    String(String),
     Int(i64),
     Float(f64),
     Bool(bool),

@@ -1,7 +1,8 @@
 @import <io.qu>
-@import "import.qu"
+
+@const example_static_string = "hello world"
 
 def main() :: int {
-    imports();
+    
     return 0;
 }

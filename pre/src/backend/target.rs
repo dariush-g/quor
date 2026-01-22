@@ -10,11 +10,25 @@ pub enum Target {
 }
 
 pub trait TargetEmitter: std::fmt::Debug {
-    fn add_global_const(&mut self, constant: GlobalDef) {}
+    fn t_add_global_const(&mut self, constant: GlobalDef) -> String;
 
-    fn prologue(&mut self, frame: &FrameLayout, func: &IRFunction);
-    fn epilogue(&mut self, frame: &FrameLayout, func: &IRFunction);
+    fn t_prologue(&mut self, frame: &FrameLayout, func: &IRFunction) -> String;
+    fn t_epilogue(&mut self, frame: &FrameLayout, func: &IRFunction) -> String;
 
-    fn emit_inst(&mut self, inst: &IRInstruction, frame: &FrameLayout, ctx: &mut CodegenCtx);
-    fn emit_term(&mut self, term: &Terminator, frame: &FrameLayout, ctx: &mut CodegenCtx);
+    fn t_emit_inst(
+        &mut self,
+        inst: &IRInstruction,
+        frame: &FrameLayout,
+        ctx: &mut CodegenCtx,
+    ) -> String;
+    
+    fn t_emit_term(
+        &mut self,
+        term: &Terminator,
+        frame: &FrameLayout,
+        ctx: &mut CodegenCtx,
+    ) -> String;
+
+    fn generate_stack_frame(&mut self, func: &IRFunction) -> FrameLayout;
+    fn generate_function(&mut self, func: &IRFunction) -> String;
 }

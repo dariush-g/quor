@@ -28,7 +28,7 @@ impl Codegen {
         #[cfg(target_arch = "x86_64")]
         let target = Target::X86;
 
-        let codegen = Codegen {
+        let mut codegen = Codegen {
             target,
             emitter: match target {
                 Target::ARM => Box::new(ARMEmitter::default()),
@@ -37,19 +37,73 @@ impl Codegen {
             asm: AsmEmitter::default(),
         };
 
-        codegen.asm.output
-    }
-}
+        for constant in ir_program.global_consts {
+            let constant_ = codegen.emitter.t_add_global_const(constant.clone());
+            if let GlobalValue::String(_) = constant.value {
+                codegen.add_line(AsmSection::CSTRING, &constant_);
+            } else {
+                codegen.add_line(AsmSection::RODATA, &constant_);
+            }
+        }
 
-impl Codegen {
-    pub fn add_line(&mut self, line: &str) {
-        self.asm.output.push_str(&format!("{line}\n"));
+        codegen.emit()
+    }
+
+    pub fn add_line(&mut self, section: AsmSection, line: &str) {
+        match section {
+            AsmSection::BSS => self.asm.bss.push_str(&format!("{line}\n")),
+            AsmSection::RODATA => self.asm.rodata.push_str(&format!("{line}\n")),
+            AsmSection::DATA => self.asm.data.push_str(&format!("{line}\n")),
+            AsmSection::TEXT => self.asm.text.push_str(&format!("{line}\n")),
+            AsmSection::CSTRING => self.asm.cstrings.push_str(&format!("{line}\n")),
+        }
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    fn emit(&self) -> String {
+        let rodata = format!(".section __TEXT,__const\n{}", self.asm.rodata);
+        let cstrings = format!(".section __TEXT,__cstring\n{}", self.asm.cstrings);
+        let data = format!(".section __DATA,__data\n{}", self.asm.data);
+        let bss = format!(".section __DATA,__bss\n{}", self.asm.bss);
+        let text = format!(".section __TEXT,__text\n{}", self.asm.text);
+
+        format!("{cstrings}{rodata}{data}{bss}{text}")
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    fn emit(&self) -> String {
+        let rodata = format!(".section .rodata\n{}", self.asm.rodata);
+        let data = format!(".section .data\n{}", self.asm.data);
+        let bss = format!(".section .bss\n{}", self.asm.bss);
+        let text = format!(".section .text\n{}", self.asm.text);
+
+        format!("{rodata}{data}{bss}{text}")
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    fn emit(&self) -> String {
+        String::new()
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct AsmEmitter {
-    pub output: String,
+    pub text: String,
+    pub data: String,
+    pub rodata: String,
+    pub bss: String,
+    #[cfg(target_os = "macos")]
+    pub cstrings: String,
+}
+
+#[derive(Clone, Debug, Copy)]
+pub enum AsmSection {
+    BSS,
+    RODATA,
+    DATA,
+    TEXT,
+    #[cfg(target_os = "macos")]
+    CSTRING,
 }
 
 #[derive(Clone, Debug)]

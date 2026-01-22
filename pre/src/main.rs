@@ -1,4 +1,6 @@
 use quor::analyzer::TypeChecker;
+use quor::backend::Codegen;
+use quor::ir::cfg::IRGenerator;
 use quor::lexer::Lexer;
 use quor::parser::Parser;
 
@@ -218,7 +220,7 @@ fn main() {
     if compiler_args.contains(&"--emit-tokens".to_string()) {
         println!("{:?}", tokens);
     }
-    
+
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {
         Ok(p) => p,
@@ -244,19 +246,24 @@ fn main() {
         println!("{:?}", typed);
     }
 
-    let cfg = quor::ir::cfg::IRGenerator::generate(typed);
+    let cfged = match IRGenerator::generate(typed) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Type error: {e:?}");
+            std::process::exit(1);
+        }
+    };
 
     if compiler_args.contains(&"--emit-ir".to_string()) {
-        println!("{:?}", cfg);
+        println!("{:?}", cfged);
     }
 
-    // let codegen = CodeGen::generate(&typed);
+    let codegen = Codegen::generate(cfged);
+    let asm = codegen;
 
-    // let asm = codegen;
-
-    // if compiler_args.contains(&"--emit-asm".to_string()) {
-    //     println!("{:?}", asm);
-    // }
+    if compiler_args.contains(&"--emit-asm".to_string()) {
+        println!("{}", asm);
+    }
 
     // for st in codegen.1 {
     //     gen_asm(st, asm.clone());
