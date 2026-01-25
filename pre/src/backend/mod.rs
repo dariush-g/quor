@@ -111,7 +111,7 @@ pub struct CodegenCtx<'a> {
     // codegen ctx is ephemeral
     pub func: &'a IRFunction,
     pub frame: &'a FrameLayout,
-    pub block_labels: HashMap<BlockId, IRBlock>,
+    pub block_labels: HashMap<BlockId, &'a IRBlock>,
     pub current_block: BlockId,
     pub next_tmp_label: usize,
 }
