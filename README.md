@@ -1,5 +1,3 @@
-# Quor ℺
-
 ## Quor is a small, experimental programming language that compiles directly to x86_64 assembly (System V ABI)
 
 ### Current Features
