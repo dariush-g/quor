@@ -291,11 +291,10 @@ impl IRGenerator {
                 Some((Value::Reg(vreg), field_type))
             }
             Expr::Variable(name, ty) => {
-                let id = self
-                    .var_map
-                    .get(&name)
-                    .unwrap_or_else(|| panic!("variable: {name} not found"))
-                    .1;
+                let id = match self.var_map.get(&name) {
+                    Some(var_info) => var_info.1,
+                    None => self.globals.get(&name).expect("variable not found").id,
+                };
                 let reg = self.vreg_gen.fresh();
                 self.scope_handler.instructions.push(IRInstruction::Load {
                     reg,

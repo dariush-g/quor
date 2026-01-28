@@ -46,6 +46,10 @@ impl Codegen {
             }
         }
 
+        for (_, function) in ir_program.functions {
+            codegen.emitter.generate_function(&function);
+        }
+
         codegen.emit()
     }
 

@@ -27,7 +27,10 @@ impl TargetEmitter for ARMEmitter {
     }
 
     fn t_prologue(&mut self, frame: &super::FrameLayout, func: &IRFunction) -> String {
-        todo!()
+        format!(
+            "push {{r11, lr}}\nadd r11, sp, #0\nsub sp, sp, #{}",
+            frame.frame_size
+        )
     }
 
     fn t_epilogue(&mut self, frame: &super::FrameLayout, func: &IRFunction) -> String {
@@ -66,7 +69,7 @@ impl TargetEmitter for ARMEmitter {
                 };
             }
         }
-        
+
         super::FrameLayout {
             local_off,
             vreg_off: HashMap::new(),
@@ -78,8 +81,8 @@ impl TargetEmitter for ARMEmitter {
     fn generate_function(&mut self, func: &IRFunction) -> String {
         let mut assembly_function = String::new();
         let frame = self.generate_stack_frame(func);
+        println!("{frame:?}");
         assembly_function.push_str(&self.t_prologue(&frame, func));
-
         let block_labels: HashMap<BlockId, &IRBlock> =
             func.blocks.iter().map(|block| (block.id, block)).collect();
 
