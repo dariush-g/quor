@@ -1,0 +1,28 @@
+@import::<io.qu>
+
+struct Person {
+    name: char*;
+    age: int;
+}
+
+def get_name(self: Person*) :: char* {
+    return self.name;
+}
+
+struct Example {
+    x: int;
+}
+
+def main() :: int {
+    let example: Example* = malloc(sizeof(Example)) as Example*;
+
+    example.x = 42;
+
+    print("%d", example.x);
+
+	free(example);
+
+	let person: Person = Person { name: "bob", age: 10 };
+
+    return 0;
+}

@@ -1,0 +1,18 @@
+@keep_asm
+
+@__asm_bss__ {
+    ts_sec resq 1 // int time val
+}
+
+// returns the current time as an integer
+@trust_ret
+def timei() :: int {
+    @__asm__ {
+        mov rax, 228           ; syscall: clock_gettime
+        mov rdi, 0             ; CLOCK_REALTIME = 0
+        lea rsi, [ts_sec]
+        syscall
+
+        mov rax, [ts_sec]      ; put time into return reg
+    }
+}

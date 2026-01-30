@@ -1,0 +1,19 @@
+@import::<string.qu>;
+
+def main() :: int {
+    let filename: char* = "test.qu";
+    
+    // Print each character individually
+    let i: int = 0;
+    while (i < 6) {
+        let c: char = char_at(filename, i);
+        print_str("char_at(filename, ");
+        print_int(i);
+        print_str(") = '");
+        print_char(c);
+        print_str("'\n");
+        i = i + 1;
+    }
+
+    return 0;
+}

@@ -1,3 +1,8 @@
-def main() :: void {
-    print("hello\n");
+@import <io.qu>
+
+@const example_static_string = "hello world"
+
+def main() :: int {
+    let string: char* = example_static_string;
+    return 0;
 }
