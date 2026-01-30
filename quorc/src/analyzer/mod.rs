@@ -1,8 +1,6 @@
-use crate::{
-    lexer::{
-        Lexer,
-        ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
-    },
+use crate::frontend::{
+    ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+    lexer::Lexer,
     parser::Parser,
 };
 

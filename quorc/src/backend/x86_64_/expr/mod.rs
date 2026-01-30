@@ -5,8 +5,7 @@ use crate::{
         CodeGen, align_up,
         regs::{reg8, reg32},
         size_align_of,
-    },
-    lexer::ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+    }, frontend::ast::*,
 };
 
 impl CodeGen {

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::{mir::block::*, lexer::ast::*};
+use crate::{mir::block::*, frontend::ast::*};
 
 #[derive(Default, Debug, Clone)]
 pub struct BlockIdGen {

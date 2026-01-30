@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::format};
 
 use crate::{
-    backend::{CodegenCtx, target::TargetEmitter},
+    backend::{target::TargetEmitter, *},
     mir::block::*,
 };
 
@@ -26,7 +26,7 @@ impl TargetEmitter for ARMEmitter {
         global
     }
 
-    fn t_prologue(&mut self, frame: &super::FrameLayout, func: &IRFunction) -> String {
+    fn t_prologue(&mut self, frame: &FrameLayout, func: &IRFunction) -> String {
         #[cfg(target_os = "macos")]
         let function_name = format!("_{}", func.name.clone());
         #[cfg(not(target_os = "macos"))]
@@ -37,7 +37,7 @@ impl TargetEmitter for ARMEmitter {
         )
     }
 
-    fn t_epilogue(&mut self, frame: &super::FrameLayout, func: &IRFunction) -> String {
+    fn t_epilogue(&mut self, frame: &FrameLayout, func: &IRFunction) -> String {
         format!(
             "add sp, sp, #{}\nldp x29, x30, [sp], #16\nret\n",
             frame.frame_size
@@ -47,8 +47,8 @@ impl TargetEmitter for ARMEmitter {
     fn t_emit_inst(
         &mut self,
         inst: &IRInstruction,
-        frame: &super::FrameLayout,
-        ctx: &mut super::CodegenCtx,
+        frame: &FrameLayout,
+        ctx: &mut CodegenCtx,
     ) -> String {
         match inst {
             IRInstruction::Add { reg, left, right } => todo!(),
@@ -95,13 +95,13 @@ impl TargetEmitter for ARMEmitter {
     fn t_emit_term(
         &mut self,
         term: &Terminator,
-        frame: &super::FrameLayout,
-        ctx: &mut super::CodegenCtx,
+        frame: &FrameLayout,
+        ctx: &mut CodegenCtx,
     ) -> String {
         todo!()
     }
 
-    fn generate_stack_frame(&mut self, func: &IRFunction) -> super::FrameLayout {
+    fn generate_stack_frame(&mut self, func: &IRFunction) -> FrameLayout {
         let mut off = 0_i32;
         let mut local_off = HashMap::new();
         for block in func.blocks.clone() {
@@ -120,7 +120,7 @@ impl TargetEmitter for ARMEmitter {
             off += 16 - (off % 16);
         }
 
-        super::FrameLayout {
+        FrameLayout {
             local_off,
             vreg_off: HashMap::new(),
             frame_size: off,

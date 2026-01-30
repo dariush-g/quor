@@ -5,7 +5,7 @@ use crate::{
         block::{GlobalValue, IRInstruction, VReg, Value},
         cfg::IRGenerator,
     },
-    lexer::ast::{BinaryOp, Expr, Type, UnaryOp},
+    frontend::ast::{BinaryOp, Expr, Type, UnaryOp},
 };
 
 impl IRGenerator {

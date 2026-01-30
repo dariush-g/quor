@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    lexer::ast::Type,
+    frontend::ast::Type,
     mir::block::{BlockId, IRFunction, VReg},
 };
 
@@ -133,8 +133,16 @@ pub trait TargetRegs {
     fn is_caller_saved(r: Self::Reg) -> bool;
     fn is_callee_saved(r: Self::Reg) -> bool;
 
+    fn fp_is_caller_saved(r: Self::FpReg) -> bool;
+    fn fp_is_callee_saved(r: Self::FpReg) -> bool;
+
     fn reg32(reg: Self::Reg) -> &'static str;
     fn reg64(reg: Self::Reg) -> &'static str;
+
+    fn float128(reg: Self::FpReg) -> &'static str;
+
+    fn fp_caller_saved() -> &'static [Self::FpReg];
+    fn fp_callee_saved() -> &'static [Self::FpReg];
 }
 
 pub struct Allocation<R: Copy + Eq + std::fmt::Debug + std::hash::Hash> {

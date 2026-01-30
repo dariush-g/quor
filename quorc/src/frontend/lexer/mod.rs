@@ -1,6 +1,6 @@
-use crate::lexer::token::{Token, TokenType};
+use crate::frontend::lexer::token::*;
 
-pub mod ast;
+
 pub mod token;
 
 pub struct Lexer {

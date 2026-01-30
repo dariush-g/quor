@@ -1,8 +1,7 @@
 use quorc::analyzer::TypeChecker;
 use quorc::backend::Codegen;
+use quorc::frontend::{lexer::Lexer, parser::Parser};
 use quorc::mir::cfg::IRGenerator;
-use quorc::lexer::Lexer;
-use quorc::parser::Parser;
 
 use std::env;
 use std::fs;

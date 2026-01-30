@@ -2,19 +2,17 @@ use std::collections::HashMap;
 
 use crate::{
     backend::{
-        aarch64::ARMEmitter,
+        emitter::aarch64::ARMEmitter,
+        emitter::x86_64::X86Emitter,
         target::{Target, TargetEmitter},
-        x86_64::X86Emitter,
     },
     mir::block::*,
 };
 
-pub mod aarch64;
-pub mod target;
-pub mod x86_64;
-pub mod x86_64_;
+pub mod emitter;
 pub mod lir;
-
+pub mod target;
+pub mod x86_64_;
 
 #[derive(Debug)]
 pub struct Codegen {

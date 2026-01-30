@@ -4,7 +4,7 @@ use crate::{
         CodeGen,
         regs::{reg8, reg32},
     },
-    lexer::ast::{Expr, Stmt, Type, UnaryOp},
+    frontend::ast::{Expr, Stmt, Type, UnaryOp},
 };
 
 impl CodeGen {

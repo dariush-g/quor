@@ -1,7 +1,4 @@
-use crate::lexer::{
-    ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
-    token::{Token, TokenType},
-};
+use crate::frontend::{ast::*, lexer::token::*};
 
 pub struct Parser {
     tokens: Vec<Token>,

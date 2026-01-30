@@ -4,7 +4,7 @@ use crate::{
         regs::{reg8, reg32},
         r#struct::fields::layout_fields,
     },
-    lexer::ast::{Stmt, Type},
+    frontend::ast::{Stmt, Type},
 };
 
 pub mod fields;

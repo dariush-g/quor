@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::lexer::ast::{Expr, Type};
+use crate::frontend::ast::{Expr, Type};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VReg(pub usize);

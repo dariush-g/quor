@@ -3,7 +3,7 @@ use crate::{
         block::{AtDecl, BlockId, IRInstruction, Terminator},
         cfg::IRGenerator,
     },
-    lexer::ast::{Expr, Stmt},
+    frontend::ast::{Expr, Stmt},
 };
 
 impl IRGenerator {

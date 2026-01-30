@@ -3,7 +3,7 @@ use crate::{
         CodeGen,
         regs::{reg8, reg32},
     },
-    lexer::ast::{Stmt, Type},
+    frontend::ast::{Stmt, Type},
 };
 
 impl CodeGen {

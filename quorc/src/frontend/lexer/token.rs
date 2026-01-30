@@ -1,4 +1,4 @@
-use crate::lexer::ast::Type;
+use crate::frontend::ast::Type;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
