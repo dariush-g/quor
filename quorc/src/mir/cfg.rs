@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::{mir::block::*, frontend::ast::*};
+use crate::{frontend::ast::*, mir::block::*};
 
 #[derive(Default, Debug, Clone)]
 pub struct BlockIdGen {
@@ -73,7 +73,7 @@ pub struct IRGenerator {
     pub block_gen: BlockIdGen,
     pub var_gen: VarGenerator,
     pub global_gen: GlobalGenerator,
-    pub var_map: HashMap<String, (Type, usize)>,
+    pub var_map: HashMap<String, (Type, Value)>,
     pub blocks: Vec<IRBlock>,
     pub globals: HashMap<String, GlobalDef>,
     pub static_strings: HashMap<String, GlobalDef>,
@@ -118,12 +118,6 @@ impl IRGenerator {
             value: GlobalValue::Bytes(value.as_bytes().to_vec()),
         };
         self.static_strings.insert(value, def);
-    }
-
-    pub fn add_new_var(&mut self, name: String, ty: Type) -> Value {
-        let id = self.var_gen.fresh();
-        self.var_map.insert(name, (ty, id));
-        Value::Local(id)
     }
 
     pub fn generate(stmts: Vec<Stmt>) -> Result<IRProgram, String> {
@@ -197,20 +191,39 @@ impl IRGenerator {
                     // }
                 }
                 "const" => {
-                    let const_value = match val.clone().unwrap() {
-                        Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
-                        Expr::LongLiteral(l) => GlobalValue::Int(l),
-                        Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
-                        Expr::BoolLiteral(b) => GlobalValue::Bool(b),
-                        Expr::StringLiteral(s) => GlobalValue::String(s),
-                        Expr::CharLiteral(c) => GlobalValue::Char(c),
-                        Expr::StructInit { .. } => GlobalValue::Struct(val.clone().unwrap()),
-                        _ => {
-                            panic!(
-                                "Global constants should only be a single expression of a number, character, string, boolean, or struct literal"
-                            )
-                        }
-                    };
+                    // let const_value = match val.clone().unwrap() {
+                    //     Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
+                    //     Expr::LongLiteral(l) => GlobalValue::Int(l),
+                    //     Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
+                    //     Expr::BoolLiteral(b) => GlobalValue::Bool(b),
+                    //     Expr::StringLiteral(s) => GlobalValue::String(s),
+                    //     Expr::CharLiteral(c) => GlobalValue::Char(c),
+                    //     Expr::StructInit { .. } => GlobalValue::Struct(val.clone().unwrap()),
+                    //     Expr::Array(exprs, _) => { 
+                    //         GlobalValue::Array(exprs.into_iter().map(|e| {
+                    //             match e {
+                    //                 Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
+                    //                 Expr::LongLiteral(l) => GlobalValue::Int(l),
+                    //                 Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
+                    //                 Expr::BoolLiteral(b) => GlobalValue::Bool(b),
+                    //                 Expr::StringLiteral(s) => GlobalValue::String(s),
+                    //                 Expr::CharLiteral(c) => GlobalValue::Char(c),
+                    //                 Expr::StructInit { .. } => GlobalValue::Struct(e),
+                    //                 _ => {
+                    //                     panic!(
+                    //                         "Global constants should only be a single expression of a number, character, string, boolean, array, or struct literal"
+                    //                     )
+                    //                 }
+                    //             }
+                    //         }).collect())
+                    //     },
+                    //     _ => {
+                    //         panic!(
+                    //             "Global constants should only be a single expression of a number, character, string, boolean, or struct literal"
+                    //         )
+                    //     }
+                    // };
+                    let const_value = Self::get_const_value(val.clone().unwrap());
                     self.new_global(
                         param.clone().unwrap(),
                         val.as_ref().unwrap().get_type(),
@@ -222,6 +235,29 @@ impl IRGenerator {
         }
 
         Ok(())
+    }
+
+    fn get_const_value(expr: Expr) -> GlobalValue {
+        match expr {
+            Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
+            Expr::LongLiteral(l) => GlobalValue::Int(l),
+            Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
+            Expr::BoolLiteral(b) => GlobalValue::Bool(b),
+            Expr::StringLiteral(s) => GlobalValue::String(s),
+            Expr::CharLiteral(c) => GlobalValue::Char(c),
+            Expr::StructInit { .. } => GlobalValue::Struct(expr.clone()),
+            Expr::Array(exprs, _) => { 
+                    GlobalValue::Array(exprs.into_iter().map(|e| {
+                                Self::get_const_value(e)
+                            }).collect())
+                        },
+            _ => {
+                panic!(
+                    "Global constants should only be a single expression of a number, character, string, or boolean literal"
+                )
+            }
+        }
+
     }
 
     fn generate_function(&mut self, func: &Stmt) -> Result<(), String> {
@@ -239,18 +275,52 @@ impl IRGenerator {
             let mut params = Vec::with_capacity(func_params.len());
             for (param_name, param_ty) in func_params.clone() {
                 let param_reg = self.vreg_gen.fresh();
-                let local_val = self.add_new_var(param_name, param_ty.clone());
-                
-                if let Type::Struct { name: struct_name, .. } = param_ty.clone() {
-                    self.allocate_struct_on_stack(local_val, param_reg, struct_name);
+                if param_ty.fits_in_register() {
+                    // Primitive or pointer: keep in VReg, no stack allocation needed
+                    self.var_map
+                        .insert(param_name, (param_ty.clone(), Value::Reg(param_reg)));
+                } else if let Type::Struct {
+                    name: struct_name, ..
+                } = &param_ty
+                {
+                    // Struct: allocate stack slot and copy from param (param_reg holds address)
+                    let local = self.var_gen.fresh();
+                    self.var_map
+                        .insert(param_name.clone(), (param_ty.clone(), Value::Local(local)));
+                    self.allocate_struct_on_stack(
+                        Value::Local(local),
+                        param_reg,
+                        struct_name.clone(),
+                    );
+                // } else {
+                //     // array or other: allocate stack slot and copy
+                //     let local = self.var_gen.fresh();
+                //     self.var_map
+                //         .insert(param_name.clone(), (param_ty.clone(), Value::Local(local)));
+
+                //     self.scope_handler.instructions.push(IRInstruction::Store {
+                //         value: Value::Reg(param_reg),
+                //         addr: Value::Local(local),
+                //         offset: 0,
+                //         ty: param_ty,
+                //     });
+                // }
                 } else {
-                    self.scope_handler.instructions.push(IRInstruction::Store {
-                        value: Value::Reg(param_reg),
-                        addr: local_val,
-                        offset: 0,
-                        ty: param_ty,
+                    let local = self.var_gen.fresh();
+                    self.var_map
+                        .insert(param_name.clone(), (param_ty.clone(), Value::Local(local)));
+
+                    let src_addr = Value::Reg(param_reg);
+                    let dst_addr = Value::Local(local);
+
+                    self.scope_handler.instructions.push(IRInstruction::Memcpy {
+                        dst: dst_addr,
+                        src: src_addr,
+                        size: param_ty.size(),
+                        align: param_ty.align(),
                     });
                 }
+
                 params.push(param_reg);
             }
 

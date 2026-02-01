@@ -20,11 +20,8 @@ pub enum Type {
     },
 
     StructLiteral(String),
-
     Void,
-
     Unknown,
-
     Pointer(Box<Type>),
 }
 
@@ -44,6 +41,49 @@ impl Type {
         }
     }
 
+    pub fn align(&self) -> usize {
+        match self {
+            Type::int => 4,
+            Type::float => 4,
+            Type::Char => 1,
+            Type::Bool => 1,
+            Type::Pointer(_) => 8,
+            Type::Long => 8,
+            Type::Array(elem, _) => elem.align(),
+            Type::Struct { instances, .. } => {
+                instances.iter().map(|(_, t)| t.align()).max().unwrap_or(1)
+            }
+            _ => 1,
+        }
+    }
+
+    // pub fn size(&self) -> usize {
+    //     match self {
+    //         Type::int => 4,
+    //         Type::float => 4,
+    //         Type::Char => 1,
+    //         Type::Bool => 1,
+    //         Type::Pointer(_) => 8,
+    //         Type::Array(elem, len) => elem.size() * len.unwrap_or(0),
+    //         Type::Struct { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
+    //         Type::Long => 8,
+    //         _ => 0,
+    //     }
+    // }
+
+    /// Returns true if the type fits in a single register (primitive or pointer).
+    pub fn fits_in_register(&self) -> bool {
+        matches!(
+            self,
+            Type::int
+                | Type::float
+                | Type::Long
+                | Type::Char
+                | Type::Bool
+                | Type::Pointer(_)
+        )
+    }
+
     pub fn size(&self) -> usize {
         match self {
             Type::int => 4,
@@ -51,12 +91,33 @@ impl Type {
             Type::Char => 1,
             Type::Bool => 1,
             Type::Pointer(_) => 8,
-            Type::Array(elem, len) => elem.size() * len.unwrap_or(0),
-            Type::Struct { instances, .. } => instances.iter().map(|f| f.1.size()).sum(),
             Type::Long => 8,
+
+            Type::Array(elem, Some(n)) => elem.size() * (*n),
+            Type::Array(_, None) => 0, // unsized; avoid allocating this as a local
+
+            Type::Struct { instances, .. } => {
+                let mut off = 0usize;
+                let mut max_align = 1usize;
+
+                for (_, ty) in instances {
+                    let a = ty.align();
+                    max_align = max_align.max(a);
+                    off = round_up(off, a);
+                    off += ty.size();
+                }
+
+                round_up(off, max_align)
+            }
+
             _ => 0,
         }
     }
+}
+
+fn round_up(x: usize, align: usize) -> usize {
+    debug_assert!(align.is_power_of_two());
+    (x + align - 1) & !(align - 1)
 }
 
 #[derive(Debug, Clone)]

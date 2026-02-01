@@ -1,12 +1,17 @@
 use std::collections::HashMap;
 
 use crate::{
+    frontend::ast::{BinaryOp, Expr, Type, UnaryOp},
     mir::{
         block::{GlobalValue, IRInstruction, VReg, Value},
         cfg::IRGenerator,
     },
-    frontend::ast::{BinaryOp, Expr, Type, UnaryOp},
 };
+
+fn round_up(x: usize, align: usize) -> usize {
+    debug_assert!(align.is_power_of_two());
+    (x + align - 1) & !(align - 1)
+}
 
 impl IRGenerator {
     pub fn allocate_struct_on_stack(&mut self, local: Value, param_reg: VReg, struct_name: String) {
@@ -89,22 +94,27 @@ impl IRGenerator {
         is_union: bool,
     ) -> HashMap<String, (i32, Type)> {
         let mut map = HashMap::new();
+
         if is_union {
-            for field in fields {
-                map.insert(field.0.clone(), (0, field.1.clone()));
+            for (name, ty) in fields {
+                map.insert(name.clone(), (0, ty.clone()));
             }
-        } else {
-            let mut offset_compound = 0;
-            for field in fields {
-                map.insert(field.0.clone(), (offset_compound as i32, field.1.clone()));
-                offset_compound += field.1.size();
-            }
+            return map;
+        }
+
+        let mut off: usize = 0;
+
+        for (name, ty) in fields {
+            let a = ty.align();
+            off = round_up(off, a);
+            map.insert(name.clone(), (off as i32, ty.clone()));
+            off += ty.size();
         }
 
         map
     }
 
-    pub fn emit_into_local(&mut self, addr: Value, expr: Expr) {
+    pub fn emit_into_local(&mut self, var_name: String, ty: Type, expr: Expr) {
         match expr {
             Expr::StructInit { name, params } => {
                 let def = self
@@ -114,28 +124,68 @@ impl IRGenerator {
                     .expect("no known struct: '{name}'");
 
                 let layout = def.fields.clone();
+                let local = self.var_gen.fresh();
+
+                self.var_map
+                    .insert(var_name, (ty.clone(), Value::Local(local)));
 
                 for (field_name, field_expr) in params.iter() {
                     let (field_off, field_ty) = &layout.get(field_name).unwrap();
 
-                    let (value, _ty) = self.first_pass_parse_expr(field_expr.clone()).unwrap();
+                    let (value, field_expr_ty) =
+                        self.first_pass_parse_expr(field_expr.clone()).unwrap();
+                    let value = self.ensure_rvalue(value, &field_expr_ty);
 
                     self.scope_handler.instructions.push(IRInstruction::Store {
                         value,
-                        addr: addr.clone(),
+                        addr: Value::Local(local),
                         offset: *field_off,
                         ty: field_ty.clone(),
                     });
                 }
             }
             other => {
-                let (v, ty) = self.first_pass_parse_expr(other).unwrap();
-                self.scope_handler.instructions.push(IRInstruction::Store {
-                    value: v,
-                    addr,
-                    offset: 0,
-                    ty,
-                });
+                let (v, expr_ty) = self.first_pass_parse_expr(other).unwrap();
+
+                if expr_ty.fits_in_register() {
+                    // primitive or pointer: use vReg
+                    let vreg = self.vreg_gen.fresh();
+                    self.var_map
+                        .insert(var_name, (ty.clone(), Value::Reg(vreg)));
+                    let v = self.ensure_rvalue(v, &expr_ty);
+                    self.scope_handler.instructions.push(IRInstruction::Move {
+                        dest: vreg,
+                        from: v,
+                    });
+                } else {
+                    // struct or array: use stack local, copy fields
+                    let local = self.var_gen.fresh();
+                    self.var_map
+                        .insert(var_name, (ty.clone(), Value::Local(local)));
+
+                    if let Type::Struct {
+                        name: struct_name, ..
+                    } = &expr_ty
+                    {
+                        let fields = self
+                            .ir_program
+                            .structs
+                            .get(struct_name)
+                            .expect("struct not found")
+                            .fields
+                            .clone();
+                        self.copy_struct_fields(v, Value::Local(local), &fields);
+                    } else {
+                        // Array or other aggregate: single store
+                        let v = self.ensure_rvalue(v, &expr_ty);
+                        self.scope_handler.instructions.push(IRInstruction::Store {
+                            value: v,
+                            addr: Value::Local(local),
+                            offset: 0,
+                            ty: expr_ty,
+                        });
+                    }
+                }
             }
         }
     }
@@ -162,8 +212,8 @@ impl IRGenerator {
             Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::Bool)),
             Expr::LongLiteral(i) => Some((Value::Const(i), Type::Bool)),
             Expr::Variable(name, ty) => {
-                let id = self.var_map.get(&name).unwrap().1;
-                Some((Value::Local(id), ty))
+                let value = self.var_map.get(&name).unwrap().1.clone();
+                Some((value, ty))
             }
             Expr::StringLiteral(s) => {
                 let mut g = self.static_strings.get(&s);
@@ -181,8 +231,8 @@ impl IRGenerator {
                 value: _,
             } => None,
             Expr::InstanceVar(struct_name, _field) => {
-                let (ty, local_id) = self.var_map.get(&struct_name).unwrap();
-                Some((Value::Local(*local_id), ty.clone()))
+                let (ty, local) = self.var_map.get(&struct_name).unwrap();
+                Some((local.clone(), ty.clone()))
             }
             Expr::FieldAssign {
                 class_name: _,
@@ -268,7 +318,7 @@ impl IRGenerator {
                         field_type = struct_def.fields.get(&field_name).unwrap().1.clone();
                         self.scope_handler.instructions.push(IRInstruction::Load {
                             reg: vreg,
-                            addr: Value::Local(*id),
+                            addr: id.clone(),
                             offset,
                             ty: field_type.clone(),
                         });
@@ -291,35 +341,85 @@ impl IRGenerator {
                 Some((Value::Reg(vreg), field_type))
             }
             Expr::Variable(name, ty) => {
-                let id = match self.var_map.get(&name) {
-                    Some(var_info) => var_info.1,
-                    None => self.globals.get(&name).expect("variable not found").id,
+                let (value, _stored_ty) = match self.var_map.get(&name) {
+                    Some(var_info) => (var_info.1.clone(), var_info.0.clone()),
+                    None => {
+                        let g = self.globals.get(&name).expect("variable not found");
+                        (Value::Global(g.id), g.ty.clone())
+                    }
                 };
-                let reg = self.vreg_gen.fresh();
-                self.scope_handler.instructions.push(IRInstruction::Load {
-                    reg,
-                    addr: Value::Local(id),
-                    offset: 0,
-                    ty: ty.clone(),
-                });
-                Some((Value::Reg(reg), ty))
+
+                if ty.fits_in_register() {
+                    // Primitive or pointer: ensure we have a reg (load if in memory)
+                    match &value {
+                        Value::Reg(_) => Some((value, ty)),
+                        Value::Local(_) | Value::Global(_) => {
+                            let reg = self.vreg_gen.fresh();
+                            self.scope_handler.instructions.push(IRInstruction::Load {
+                                reg,
+                                addr: value,
+                                offset: 0,
+                                ty: ty.clone(),
+                            });
+                            Some((Value::Reg(reg), ty))
+                        }
+                        _ => Some((value, ty)),
+                    }
+                } else {
+                    // Struct or array: pass address/value as-is (no load into reg)
+                    Some((value, ty))
+                }
             }
             Expr::Assign { name, value } => {
-                let (local_id, var_ty) = {
+                let (lhs_value, var_ty) = {
                     let var_info = self
                         .var_map
                         .get(&name)
                         .expect("variable not found in assignment");
-                    (var_info.1, var_info.0.clone())
+                    (var_info.1.clone(), var_info.0.clone())
                 };
                 let (rhs, rhs_ty) = self.first_pass_parse_expr(*value).unwrap();
-                let rhs = self.ensure_rvalue(rhs, &rhs_ty);
-                self.scope_handler.instructions.push(IRInstruction::Store {
-                    value: rhs,
-                    addr: Value::Local(local_id),
-                    offset: 0,
-                    ty: var_ty,
-                });
+
+                if var_ty.fits_in_register() {
+                    let rhs = self.ensure_rvalue(rhs, &rhs_ty);
+                    match lhs_value {
+                        Value::Local(_) | Value::Global(_) => {
+                            self.scope_handler.instructions.push(IRInstruction::Store {
+                                value: rhs,
+                                addr: lhs_value,
+                                offset: 0,
+                                ty: var_ty,
+                            });
+                        }
+                        Value::Reg(reg) => {
+                            self.scope_handler.instructions.push(IRInstruction::Move {
+                                dest: reg,
+                                from: rhs,
+                            });
+                        }
+                        _ => {}
+                    }
+                } else if let Type::Struct {
+                    name: struct_name, ..
+                } = &var_ty
+                {
+                    let fields = self
+                        .ir_program
+                        .structs
+                        .get(struct_name)
+                        .expect("struct not found")
+                        .fields
+                        .clone();
+                    self.copy_struct_fields(rhs, lhs_value, &fields);
+                } else {
+                    let rhs = self.ensure_rvalue(rhs, &rhs_ty);
+                    self.scope_handler.instructions.push(IRInstruction::Store {
+                        value: rhs,
+                        addr: lhs_value,
+                        offset: 0,
+                        ty: var_ty,
+                    });
+                }
                 None
             }
             Expr::Binary {
@@ -481,7 +581,7 @@ impl IRGenerator {
                     .iter()
                     .map(|arg| {
                         let (v, ty) = self.first_pass_parse_expr(arg.clone()).unwrap();
-                        self.ensure_rvalue(v, &ty)
+                        self.materialize_call_arg(v, &ty)
                     })
                     .collect();
 
@@ -639,7 +739,7 @@ impl IRGenerator {
 
                 self.scope_handler.instructions.push(IRInstruction::Store {
                     value: rhs,
-                    addr: Value::Local(*local_id),
+                    addr: local_id.clone(),
                     offset,
                     ty: field_ty,
                 });
@@ -657,19 +757,45 @@ impl IRGenerator {
         }
     }
 
+    /// Materialize an argument for a function call. Primitives/pointers go in regs;
+    /// structs/arrays are passed by address, so we put the address in a reg.
+    fn materialize_call_arg(&mut self, v: Value, ty: &Type) -> Value {
+        if ty.fits_in_register() {
+            self.ensure_rvalue(v, ty)
+        } else {
+            // Struct/array: pass by reference - put address in reg
+            match &v {
+                Value::Local(_) | Value::Global(_) => {
+                    let reg = self.vreg_gen.fresh();
+                    self.scope_handler
+                        .instructions
+                        .push(IRInstruction::AddressOf { dest: reg, src: v });
+                    Value::Reg(reg)
+                }
+                Value::Reg(_) => v, // already an address in reg
+                _ => v,
+            }
+        }
+    }
+
     fn ensure_rvalue(&mut self, v: Value, ty: &Type) -> Value {
         match v {
+            Value::Reg(_) | Value::Const(_) | Value::ConstFloat(_) => v,
             Value::Local(_) | Value::Global(_) => {
-                let r = self.vreg_gen.fresh();
-                self.scope_handler.instructions.push(IRInstruction::Load {
-                    reg: r,
-                    addr: v,
-                    offset: 0,
-                    ty: ty.clone(),
-                });
-                Value::Reg(r)
+                if ty.fits_in_register() {
+                    let r = self.vreg_gen.fresh();
+                    self.scope_handler.instructions.push(IRInstruction::Load {
+                        reg: r,
+                        addr: v,
+                        offset: 0,
+                        ty: ty.clone(),
+                    });
+                    Value::Reg(r)
+                } else {
+                    // Struct/array: keep as address, can't load into single reg
+                    v
+                }
             }
-            _ => v,
         }
     }
 }

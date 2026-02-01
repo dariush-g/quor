@@ -117,6 +117,13 @@ pub enum IRInstruction {
         src: Value, // src must be Local or Global
     },
 
+    Memcpy {
+        dst: Value, // addressable (Local/Global/Addr)
+        src: Value, // addressable
+        size: usize,
+        align: usize,
+    },
+
     Declaration(AtDecl), // holds things line inline assembly and imports, not function attributes or struct attributes
 }
 
@@ -204,5 +211,6 @@ pub enum GlobalValue {
     Bool(bool),
     Zeroed(usize),
     Char(char),
+    Array(Vec<GlobalValue>),
     Struct(Expr),
 }

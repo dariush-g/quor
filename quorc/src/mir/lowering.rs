@@ -144,8 +144,7 @@ impl IRGenerator {
                     value,
                     var_type,
                 } => {
-                    let val = self.add_new_var(name.to_string(), var_type.clone());
-                    self.emit_into_local(val, value.clone());
+                    self.emit_into_local(name.clone(), var_type.clone(), value.clone());
                 }
                 Stmt::FunDecl { name, .. } => {
                     eprintln!("warning :: function {name} defined inside a block")

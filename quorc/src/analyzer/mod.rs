@@ -157,6 +157,7 @@ impl TypeChecker {
                         Expr::StringLiteral(_) => {}
                         Expr::CharLiteral(_) => {}
                         Expr::StructInit { .. } => {}
+                        Expr::Array(..) => {}
                         _ => {
                             panic!("Expected literal value for global definition")
                         }

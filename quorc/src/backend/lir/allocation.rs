@@ -1,27 +1,53 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use crate::{
     frontend::ast::Type,
     mir::block::{BlockId, IRFunction, VReg},
 };
 
+impl IRFunction {
+    pub fn to_lir<
+        R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+        F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    >(
+        &self,
+    ) -> LFunction<R, F> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum RegRef<
+    R: Eq + Copy + std::fmt::Debug + Copy + Hash,
+    F: Eq + Copy + std::fmt::Debug + Copy + Hash,
+> {
+    GprReg(R),
+    FprReg(F),
+}
+
 #[derive(Debug)]
-pub enum Loc<R: Eq + std::fmt::Debug + std::hash::Hash> {
-    PhysReg(R),
+pub enum Loc<
+    R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+> {
+    PhysReg(RegRef<R, F>),
     Stack(i32),
     ImmI64(i64), // integer constant
     ImmF64(f64), // float constant
 }
 
 #[derive(Debug)]
-pub enum Addr<R: Eq + std::hash::Hash + std::fmt::Debug> {
+pub enum Addr<
+    R: Copy + Eq + std::hash::Hash + std::fmt::Debug,
+    F: Copy + Eq + std::hash::Hash + std::fmt::Debug,
+> {
     BaseOff {
-        base: Loc<R>,
+        base: Loc<R, F>,
         off: i32,
     }, // [base + off]
     BaseIndex {
-        base: Loc<R>,
-        index: Loc<R>,
+        base: Loc<R, F>,
+        index: Loc<R, F>,
         scale: u8,
         off: i32,
     }, // [base + index*scale + off]
@@ -32,70 +58,73 @@ pub enum Addr<R: Eq + std::hash::Hash + std::fmt::Debug> {
 }
 
 #[derive(Debug)]
-pub enum LInst<R: Eq + std::hash::Hash + std::fmt::Debug> {
+pub enum LInst<
+    R: Eq + std::hash::Hash + std::fmt::Debug + Copy,
+    F: Eq + std::hash::Hash + std::fmt::Debug + Copy,
+> {
     Add {
-        dst: Loc<R>,
-        a: Loc<R>,
-        b: Loc<R>,
+        dst: Loc<R, F>,
+        a: Loc<R, F>,
+        b: Loc<R, F>,
     },
     Sub {
-        dst: Loc<R>,
-        a: Loc<R>,
-        b: Loc<R>,
+        dst: Loc<R, F>,
+        a: Loc<R, F>,
+        b: Loc<R, F>,
     },
     Mul {
-        dst: Loc<R>,
-        a: Loc<R>,
-        b: Loc<R>,
+        dst: Loc<R, F>,
+        a: Loc<R, F>,
+        b: Loc<R, F>,
     },
     Div {
-        dst: Loc<R>,
-        a: Loc<R>,
-        b: Loc<R>,
+        dst: Loc<R, F>,
+        a: Loc<R, F>,
+        b: Loc<R, F>,
     },
     Mod {
-        dst: Loc<R>,
-        a: Loc<R>,
-        b: Loc<R>,
+        dst: Loc<R, F>,
+        a: Loc<R, F>,
+        b: Loc<R, F>,
     },
 
     CmpSet {
-        dst: Loc<R>,
+        dst: Loc<R, F>,
         op: CmpOp,
-        a: Loc<R>,
-        b: Loc<R>,
+        a: Loc<R, F>,
+        b: Loc<R, F>,
     },
 
     Cast {
-        dst: Loc<R>,
-        src: Loc<R>,
+        dst: Loc<R, F>,
+        src: Loc<R, F>,
         ty: Type,
     },
 
     Load {
-        dst: Loc<R>,
-        addr: Addr<R>,
+        dst: Loc<R, F>,
+        addr: Addr<R, F>,
         ty: Type,
     },
     Store {
-        src: Loc<R>,
-        addr: Addr<R>,
+        src: Loc<R, F>,
+        addr: Addr<R, F>,
         ty: Type,
     },
 
     Call {
-        dst: Option<Loc<R>>,
+        dst: Option<Loc<R, F>>,
         func: String,
-        args: Vec<Loc<R>>,
+        args: Vec<Loc<R, F>>,
     },
 
     Mov {
-        dst: Loc<R>,
-        src: Loc<R>,
+        dst: Loc<R, F>,
+        src: Loc<R, F>,
     },
     Lea {
-        dst: Loc<R>,
-        addr: Addr<R>,
+        dst: Loc<R, F>,
+        addr: Addr<R, F>,
     }, // address-of in one op
 }
 
@@ -145,39 +174,45 @@ pub trait TargetRegs {
     fn fp_callee_saved() -> &'static [Self::FpReg];
 }
 
-pub struct Allocation<R: Copy + Eq + std::fmt::Debug + std::hash::Hash> {
-    pub vreg_loc: HashMap<VReg, Loc<R>>,
+pub struct Allocation<
+    R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+> {
+    pub vreg_loc: HashMap<VReg, Loc<R, F>>,
     pub used_callee_saved: Vec<R>,
 }
 
-pub struct LFunction<R: Copy + Eq + std::fmt::Debug + std::hash::Hash> {
+pub struct LFunction<
+    R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+> {
     pub name: String,
-    pub blocks: Vec<LBlock<R>>,
+    pub blocks: Vec<LBlock<R, F>>,
     pub entry: BlockId,
 }
 
-pub struct LBlock<R: Copy + Eq + std::fmt::Debug + std::hash::Hash> {
+pub struct LBlock<
+    R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+> {
     pub id: BlockId,
-    pub insts: Vec<LInst<R>>,
-    pub term: LTerm<R>,
+    pub insts: Vec<LInst<R, F>>,
+    pub term: LTerm<R, F>,
 }
 
-pub enum LTerm<R: Copy + Eq + std::fmt::Debug + std::hash::Hash> {
+pub enum LTerm<
+    R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+> {
     Ret {
-        value: Option<Loc<R>>,
+        value: Option<Loc<R, F>>,
     },
     Jump {
         target: BlockId,
     },
     Branch {
-        condition: Loc<R>,
+        condition: Loc<R, F>,
         if_true: BlockId,
         if_false: BlockId,
     },
-}
-
-pub trait RegAlloc<R: Copy + Eq + std::fmt::Debug + std::hash::Hash> {
-    fn allocate(func: &IRFunction) -> LFunction<R> {
-        unimplemented!()
-    }
 }

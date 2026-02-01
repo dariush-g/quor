@@ -253,7 +253,7 @@ fn main() {
         }
     };
 
-    if compiler_args.contains(&"--emit-ir".to_string()) {
+    if compiler_args.contains(&"--emit-mir".to_string()) {
         println!("{:?}", cfged);
     }
 

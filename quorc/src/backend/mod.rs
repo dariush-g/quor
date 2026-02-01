@@ -17,7 +17,10 @@ pub mod x86_64_;
 #[derive(Debug)]
 pub struct Codegen {
     pub target: Target,
-    pub emitter: Box<dyn TargetEmitter>,
+    #[cfg(target_arch = "aarch64")]
+    pub emitter: ARMEmitter,
+    #[cfg(target_arch = "x86_64")]
+    pub emitter: X86Emitter,
     pub asm: AsmEmitter,
 }
 
@@ -30,10 +33,10 @@ impl Codegen {
 
         let mut codegen = Codegen {
             target,
-            emitter: match target {
-                Target::ARM => Box::new(ARMEmitter::default()),
-                Target::X86 => Box::new(X86Emitter::default()),
-            },
+            #[cfg(target_arch = "aarch64")]
+            emitter: ARMEmitter::default(),
+            #[cfg(target_arch = "x86_64")]
+            emitter: X86Emitter::default(),
             asm: AsmEmitter::default(),
         };
 
@@ -47,7 +50,7 @@ impl Codegen {
         }
 
         for (_, function) in ir_program.functions {
-            codegen.emitter.generate_function(&function);
+            codegen.emitter.generate_function(&function.to_lir());
         }
 
         codegen.emit()

@@ -1,8 +1,7 @@
 @import <io.qu>
 
-@const example_static_string = "hello world"
+@const example_static_string = 5
 
 def main() :: int {
-    let string: char* = example_static_string;
     return 0;
 }
