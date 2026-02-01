@@ -24,9 +24,11 @@ impl IRGenerator {
             self.scope_handler.current,
             Terminator::Jump { block: cond_block },
         );
+
         self.set_current(cond_block);
 
-        let (cond_value, _) = self.lower_place(cond).unwrap();
+        let (cond_value, cond_ty) = self.first_pass_parse_expr(cond).unwrap();
+        let cond_value = self.ensure_rvalue(cond_value, &cond_ty);
 
         self.set_terminator(
             cond_block,
@@ -60,7 +62,8 @@ impl IRGenerator {
         let if_false_block = else_.map(|_else_| self.new_block());
         let continue_block = self.new_block();
 
-        let (value, _) = self.lower_place(cond).unwrap();
+        let (value, cond_ty) = self.first_pass_parse_expr(cond).unwrap();
+        let value = self.ensure_rvalue(value, &cond_ty);
 
         self.set_terminator(
             self.scope_handler.current,

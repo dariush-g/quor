@@ -757,13 +757,11 @@ impl IRGenerator {
         }
     }
 
-    /// Materialize an argument for a function call. Primitives/pointers go in regs;
-    /// structs/arrays are passed by address, so we put the address in a reg.
+
     fn materialize_call_arg(&mut self, v: Value, ty: &Type) -> Value {
         if ty.fits_in_register() {
             self.ensure_rvalue(v, ty)
         } else {
-            // Struct/array: pass by reference - put address in reg
             match &v {
                 Value::Local(_) | Value::Global(_) => {
                     let reg = self.vreg_gen.fresh();
@@ -772,13 +770,13 @@ impl IRGenerator {
                         .push(IRInstruction::AddressOf { dest: reg, src: v });
                     Value::Reg(reg)
                 }
-                Value::Reg(_) => v, // already an address in reg
+                Value::Reg(_) => v, 
                 _ => v,
             }
         }
     }
 
-    fn ensure_rvalue(&mut self, v: Value, ty: &Type) -> Value {
+    pub fn ensure_rvalue(&mut self, v: Value, ty: &Type) -> Value {
         match v {
             Value::Reg(_) | Value::Const(_) | Value::ConstFloat(_) => v,
             Value::Local(_) | Value::Global(_) => {
@@ -792,7 +790,6 @@ impl IRGenerator {
                     });
                     Value::Reg(r)
                 } else {
-                    // Struct/array: keep as address, can't load into single reg
                     v
                 }
             }

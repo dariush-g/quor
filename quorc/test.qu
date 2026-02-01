@@ -1,7 +1,13 @@
 @import <io.qu>
 
-@const example_static_string = 5
+@const example_static_string = [1, 2 ,3]
 
 def main() :: int {
+    let x: int = 0;
+    while (x < 10) {
+        print("hello");
+        x = x + 1;
+    }
+
     return 0;
 }

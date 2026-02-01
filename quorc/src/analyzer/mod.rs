@@ -162,7 +162,7 @@ impl TypeChecker {
                             panic!("Expected literal value for global definition")
                         }
                     }
-
+                    type_checker.type_check_expr(&val.clone().unwrap())?;
                     let ty = val.clone().unwrap().get_type();
 
                     type_checker.globals.insert(param, ty);
@@ -1240,7 +1240,7 @@ impl TypeChecker {
         match stmt {
             Stmt::AtDecl(decl, _, _, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
-                "const" | "const" => Ok(stmt.clone()),
+                "const" | "CONST" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
                 "keep_asm" => Ok(stmt.clone()),
                 "trust_ret" => Ok(stmt.clone()),

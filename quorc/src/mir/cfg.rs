@@ -199,7 +199,7 @@ impl IRGenerator {
                     //     Expr::StringLiteral(s) => GlobalValue::String(s),
                     //     Expr::CharLiteral(c) => GlobalValue::Char(c),
                     //     Expr::StructInit { .. } => GlobalValue::Struct(val.clone().unwrap()),
-                    //     Expr::Array(exprs, _) => { 
+                    //     Expr::Array(exprs, _) => {
                     //         GlobalValue::Array(exprs.into_iter().map(|e| {
                     //             match e {
                     //                 Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
@@ -246,18 +246,15 @@ impl IRGenerator {
             Expr::StringLiteral(s) => GlobalValue::String(s),
             Expr::CharLiteral(c) => GlobalValue::Char(c),
             Expr::StructInit { .. } => GlobalValue::Struct(expr.clone()),
-            Expr::Array(exprs, _) => { 
-                    GlobalValue::Array(exprs.into_iter().map(|e| {
-                                Self::get_const_value(e)
-                            }).collect())
-                        },
+            Expr::Array(exprs, _) => {
+                GlobalValue::Array(exprs.into_iter().map(Self::get_const_value).collect())
+            }
             _ => {
                 panic!(
                     "Global constants should only be a single expression of a number, character, string, or boolean literal"
                 )
             }
         }
-
     }
 
     fn generate_function(&mut self, func: &Stmt) -> Result<(), String> {
