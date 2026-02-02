@@ -1,7 +1,7 @@
 use crate::{
     backend::{
         CodegenCtx, FrameLayout,
-        lir::allocation::{LFunction, LInst, LTerm},
+        lir::regalloc::{LFunction, LInst, LTerm},
     },
     mir::block::{GlobalDef, IRFunction, IRInstruction, Terminator},
 };

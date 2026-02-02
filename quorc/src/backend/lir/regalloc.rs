@@ -153,6 +153,7 @@ pub trait TargetRegs {
     fn callee_saved_regs() -> &'static [Self::Reg];
 
     fn arg_regs() -> &'static [Self::Reg];
+    fn fp_arg_regs() -> &'static [Self::FpReg];
     fn ret_reg() -> Self::Reg;
 
     fn scratch_regs() -> &'static [Self::Reg];

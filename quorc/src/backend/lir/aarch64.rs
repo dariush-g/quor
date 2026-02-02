@@ -1,4 +1,4 @@
-use crate::backend::lir::allocation::TargetRegs;
+use crate::backend::lir::regalloc::TargetRegs;
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub enum A64RegGpr {
@@ -37,6 +37,17 @@ pub enum A64RegGpr {
 }
 
 impl A64RegFpr {
+    pub const ARG_REGS: &'static [A64RegFpr] = &[
+        A64RegFpr::V0,
+        A64RegFpr::V1,
+        A64RegFpr::V2,
+        A64RegFpr::V3,
+        A64RegFpr::V4,
+        A64RegFpr::V5,
+        A64RegFpr::V6,
+        A64RegFpr::V7,
+    ];
+
     pub const FP_CALLER_SAVED: &'static [A64RegFpr] = &[
         A64RegFpr::V0,
         A64RegFpr::V1,
@@ -98,9 +109,31 @@ impl A64RegFpr {
         A64RegFpr::V30,
         A64RegFpr::V31,
     ];
+
+    const FP_CALLEE_SAVED: &'static [A64RegFpr] = &[
+        A64RegFpr::V8,
+        A64RegFpr::V9,
+        A64RegFpr::V10,
+        A64RegFpr::V11,
+        A64RegFpr::V12,
+        A64RegFpr::V13,
+        A64RegFpr::V14,
+        A64RegFpr::V15,
+    ];
 }
 
 impl A64RegGpr {
+    pub const ARG_REGS: &'static [A64RegGpr] = &[
+        A64RegGpr::X0,
+        A64RegGpr::X1,
+        A64RegGpr::X2,
+        A64RegGpr::X3,
+        A64RegGpr::X4,
+        A64RegGpr::X5,
+        A64RegGpr::X6,
+        A64RegGpr::X7,
+    ];
+
     pub const ALL: &'static [A64RegGpr] = &[
         A64RegGpr::X0,
         A64RegGpr::X1,
@@ -276,11 +309,56 @@ impl TargetRegs for A64RegGpr {
     }
 
     fn is_callee_saved(r: Self::Reg) -> bool {
-        todo!()
+        matches!(
+            r,
+            A64RegGpr::X19
+                | A64RegGpr::X20
+                | A64RegGpr::X21
+                | A64RegGpr::X22
+                | A64RegGpr::X23
+                | A64RegGpr::X24
+                | A64RegGpr::X25
+                | A64RegGpr::X26
+                | A64RegGpr::X27
+                | A64RegGpr::X28
+        )
     }
 
     fn reg32(reg: Self::Reg) -> &'static str {
-        todo!()
+        match reg {
+            A64RegGpr::X0 => "w0",
+            A64RegGpr::X1 => "w1",
+            A64RegGpr::X2 => "w2",
+            A64RegGpr::X3 => "w3",
+            A64RegGpr::X4 => "w4",
+            A64RegGpr::X5 => "w5",
+            A64RegGpr::X6 => "w6",
+            A64RegGpr::X7 => "w7",
+            A64RegGpr::X8 => "w8",
+            A64RegGpr::X9 => "w9",
+            A64RegGpr::X10 => "w10",
+            A64RegGpr::X11 => "w11",
+            A64RegGpr::X12 => "w12",
+            A64RegGpr::X13 => "w13",
+            A64RegGpr::X14 => "w14",
+            A64RegGpr::X15 => "w15",
+            A64RegGpr::X16 => "w16",
+            A64RegGpr::X17 => "w17",
+            A64RegGpr::X18 => "w18",
+            A64RegGpr::X19 => "w19",
+            A64RegGpr::X20 => "w20",
+            A64RegGpr::X21 => "w21",
+            A64RegGpr::X22 => "w22",
+            A64RegGpr::X23 => "w23",
+            A64RegGpr::X24 => "w24",
+            A64RegGpr::X25 => "w25",
+            A64RegGpr::X26 => "w26",
+            A64RegGpr::X27 => "w27",
+            A64RegGpr::X28 => "w28",
+            A64RegGpr::FP => "w29",
+            A64RegGpr::LR => "w30",
+            A64RegGpr::SP => "sp",
+        }
     }
 
     fn reg64(reg: Self::Reg) -> &'static str {
@@ -392,7 +470,17 @@ impl TargetRegs for A64RegGpr {
     }
 
     fn fp_is_callee_saved(r: Self::FpReg) -> bool {
-        todo!()
+        matches!(
+            r,
+            A64RegFpr::V8
+                | A64RegFpr::V9
+                | A64RegFpr::V10
+                | A64RegFpr::V11
+                | A64RegFpr::V12
+                | A64RegFpr::V13
+                | A64RegFpr::V14
+                | A64RegFpr::V15
+        )
     }
 
     fn fp_caller_saved() -> &'static [Self::FpReg] {
@@ -400,6 +488,10 @@ impl TargetRegs for A64RegGpr {
     }
 
     fn fp_callee_saved() -> &'static [Self::FpReg] {
-        todo!()
+        A64RegFpr::FP_CALLEE_SAVED
+    }
+
+    fn fp_arg_regs() -> &'static [Self::FpReg] {
+        A64RegFpr::ARG_REGS
     }
 }

@@ -4,7 +4,7 @@ use crate::{
     backend::{
         lir::{
             aarch64::A64RegFpr,
-            allocation::{LFunction, LInst, LTerm},
+            regalloc::{LFunction, LInst, LTerm},
         },
         target::TargetEmitter,
         *,

@@ -14,7 +14,7 @@ impl TargetEmitter for X86Emitter {
     fn t_prologue(
         &mut self,
         frame: &crate::backend::FrameLayout,
-        func: &crate::backend::lir::allocation::LFunction<Self::Reg, Self::FpReg>,
+        func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         todo!()
     }
@@ -22,14 +22,14 @@ impl TargetEmitter for X86Emitter {
     fn t_epilogue(
         &mut self,
         frame: &crate::backend::FrameLayout,
-        func: &crate::backend::lir::allocation::LFunction<Self::Reg, Self::FpReg>,
+        func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         todo!()
     }
 
     fn t_emit_inst(
         &mut self,
-        inst: &crate::backend::lir::allocation::LInst<Self::Reg, Self::FpReg>,
+        inst: &crate::backend::lir::regalloc::LInst<Self::Reg, Self::FpReg>,
         frame: &crate::backend::FrameLayout,
         ctx: &mut crate::backend::CodegenCtx,
     ) -> String {
@@ -38,7 +38,7 @@ impl TargetEmitter for X86Emitter {
 
     fn t_emit_term(
         &mut self,
-        term: &crate::backend::lir::allocation::LTerm<Self::Reg, Self::FpReg>,
+        term: &crate::backend::lir::regalloc::LTerm<Self::Reg, Self::FpReg>,
         frame: &crate::backend::FrameLayout,
         ctx: &mut crate::backend::CodegenCtx,
     ) -> String {
@@ -47,14 +47,14 @@ impl TargetEmitter for X86Emitter {
 
     fn generate_stack_frame(
         &mut self,
-        func: &crate::backend::lir::allocation::LFunction<Self::Reg, Self::FpReg>,
+        func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> crate::backend::FrameLayout {
         todo!()
     }
 
     fn generate_function(
         &mut self,
-        func: &crate::backend::lir::allocation::LFunction<Self::Reg, Self::FpReg>,
+        func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         todo!()
     }
