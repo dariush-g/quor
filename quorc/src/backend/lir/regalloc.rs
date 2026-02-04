@@ -193,12 +193,10 @@ pub trait TargetRegs {
     fn fp_caller_saved() -> &'static [Self::FpReg];
     fn fp_callee_saved() -> &'static [Self::FpReg];
 
-    fn regalloc() -> Allocation<Self::Reg, Self::FpReg> {
+    fn regalloc(func: &IRFunction) -> Allocation<Self::Reg, Self::FpReg> {
         let vreg_loc = HashMap::new();
         let used_callee_saved = Vec::new();
         let used_callee_saved_fp = Vec::new();
-
-        
 
         Allocation {
             vreg_loc,

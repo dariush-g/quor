@@ -494,11 +494,27 @@ impl TypeChecker {
 
         let mut remove_indices = Vec::new();
         for (i, stmt) in checked_program.iter().enumerate() {
-            if let Stmt::FunDecl { name, .. } = stmt.clone()
+            if let Stmt::FunDecl { name, params, .. } = stmt.clone()
                 && !type_checker.called.contains(&name)
-                && name != "main"
             {
-                remove_indices.push(i);
+                if name != "main" {
+                    remove_indices.push(i);
+                } else {
+                    if !matches!(params.len(), 0 | 2) {
+                        panic!(
+                            "Warning: Function '{name}' may not contain such sequence of parameters."
+                        );
+                    }
+                    if (params.len() == 2)
+                        && params[1].1
+                            != Type::Pointer(Box::new(Type::Pointer(Box::new(Type::Char))))
+                        || params[0].1 != Type::int
+                    {
+                        panic!(
+                            "Warning: Function '{name}' parameters do not match expected signature (int, char**)."
+                        );
+                    }
+                }
             }
         }
 
