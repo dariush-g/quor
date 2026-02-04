@@ -20,6 +20,8 @@ add line numbers to errors and improve error warnings in general
 
 features todo:
     type inference
+    namespaces:
+        @import <io.qu> | io
     generics -> monomorph / static dispatch
     traits -> dynamic dispatch
     closures

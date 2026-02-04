@@ -1,9 +1,9 @@
 @import <io.qu>
 
-
 @const example_static_string = [1, 2 ,3]
 
 def main(argc: int, argv: char**) :: int {
     print("%d", argc);
     return 0;
 }
+
