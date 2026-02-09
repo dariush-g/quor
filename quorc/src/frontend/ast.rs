@@ -1,4 +1,5 @@
-#[allow(non_camel_case_types)]
+#![allow(non_camel_case_types)]
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     int,
@@ -219,7 +220,7 @@ impl Expr {
     pub fn get_type(&self) -> Type {
         match self {
             Expr::StructInit { name, params } => Type::Struct {
-                name: name.to_string(),
+                name: name.clone(),
                 instances: params
                     .iter()
                     .map(|(name, expr)| (name.clone(), expr.get_type()))

@@ -1,18 +1,16 @@
 use crate::{
-    analyzer::alias::{AliasManager, CanonicalFile},
     frontend::{
         ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
         lexer::Lexer,
         parser::Parser,
     },
+    midend::alias::AliasManager,
 };
 
 use std::{
     collections::{HashMap, HashSet},
     fs,
 };
-
-pub mod alias;
 
 // TODO: Make a classes, globals, aliases, and class_fields for each ModuleId for namespace lookups
 
@@ -81,7 +79,6 @@ impl TypeChecker {
         let mut ret = Vec::new();
         eprintln!("Analyzing {current_file:?}");
 
-
         let current_dir = current_file.parent().unwrap_or_else(|| {
             eprintln!("Cannot determine parent directory of {current_file:?}");
             std::process::exit(1);
@@ -105,7 +102,7 @@ impl TypeChecker {
 
                     let abs_path = canonicalize_path(&path, current_dir);
                     if imported_files.contains(&abs_path) {
-                        continue; // Skip this import, don't add it to ret
+                        continue;
                     }
                     imported_files.insert(abs_path.clone());
 
