@@ -178,7 +178,7 @@ impl IRGenerator {
         stmt: &Stmt,
         _next_stmt: Option<&Stmt>,
     ) -> Result<(), String> {
-        if let Stmt::AtDecl(decl, param, val, _content) = stmt {
+        if let Stmt::AtDecl(decl, param, val, _content, ..) = stmt {
             match decl.as_str() {
                 "import" => {
                     // let path = param.as_ref().unwrap();

@@ -1,7 +1,10 @@
-use crate::frontend::{
-    ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
-    lexer::Lexer,
-    parser::Parser,
+use crate::{
+    analyzer::alias::{AliasManager, CanonicalFile},
+    frontend::{
+        ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+        lexer::Lexer,
+        parser::Parser,
+    },
 };
 
 use std::{
@@ -9,12 +12,17 @@ use std::{
     fs,
 };
 
+pub mod alias;
+
+// TODO: Make a classes, globals, aliases, and class_fields for each ModuleId for namespace lookups
+
 pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
     functions: HashMap<String, (Vec<Type>, Type, Vec<String>)>,
     classes: HashMap<String, bool>,
     globals: HashMap<String, Type>,
-    //                  class name, instances
+    aliases: AliasManager,
+    //                  struct name, instances
     class_fields: HashMap<String, Vec<(String, Type)>>,
     current_return_type: Option<Type>,
     in_loop: bool,
@@ -32,6 +40,7 @@ impl Default for TypeChecker {
             current_return_type: None,
             in_loop: false,
             called: Vec::new(),
+            aliases: AliasManager::default(),
         }
     }
 }
@@ -42,13 +51,11 @@ pub fn canonicalize_path(path: &str, base_dir: &Path) -> PathBuf {
     let path_buf = PathBuf::from(path);
 
     if path_buf.is_absolute() {
-        // If the path is already absolute, canonicalize it directly
         path_buf.canonicalize().unwrap_or_else(|e| {
             eprintln!("Failed to canonicalize absolute path {path:?}: {e}");
             std::process::exit(1);
         })
     } else {
-        // If the path is relative, resolve it against the base directory
         let full_path = base_dir.join(path_buf);
         full_path.canonicalize().unwrap_or_else(|e| {
             eprintln!(
@@ -59,91 +66,94 @@ pub fn canonicalize_path(path: &str, base_dir: &Path) -> PathBuf {
     }
 }
 
-pub fn process_program(program: &mut Vec<Stmt>, path_: &Path) -> Vec<Stmt> {
-    let mut imported_files: HashSet<PathBuf> = HashSet::new();
-    rec_import_walk(program, &mut imported_files, path_)
-}
+impl TypeChecker {
+    pub fn process_program(&mut self, program: &mut Vec<Stmt>, path_: &Path) -> Vec<Stmt> {
+        let mut imported_files: HashSet<PathBuf> = HashSet::new();
+        self.rec_import_walk(program, &mut imported_files, path_)
+    }
 
-fn rec_import_walk(
-    stmts: &Vec<Stmt>,
-    imported_files: &mut HashSet<PathBuf>,
-    current_file: &Path,
-) -> Vec<Stmt> {
-    let mut ret = Vec::new();
-    eprintln!("Analyzing {current_file:?}");
+    fn rec_import_walk(
+        &mut self,
+        stmts: &Vec<Stmt>,
+        imported_files: &mut HashSet<PathBuf>,
+        current_file: &Path,
+    ) -> Vec<Stmt> {
+        let mut ret = Vec::new();
+        eprintln!("Analyzing {current_file:?}");
 
-    let current_dir = current_file.parent().unwrap_or_else(|| {
-        eprintln!("Cannot determine parent directory of {current_file:?}");
-        std::process::exit(1);
-    });
 
-    for stmt in stmts {
-        if let Stmt::AtDecl(decl, param, _, _) = stmt {
-            if decl.as_str() == "import" {
-                let mut param = param
-                    .clone()
-                    .unwrap_or_else(|| panic!("Unable to locate import"));
-                let path = if param.ends_with('!') {
-                    // stdlib import
-                    param.pop(); // remove '!'
-                    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-                    format!("{manifest_dir}/lib/{param}")
+        let current_dir = current_file.parent().unwrap_or_else(|| {
+            eprintln!("Cannot determine parent directory of {current_file:?}");
+            std::process::exit(1);
+        });
+
+        for stmt in stmts {
+            if let Stmt::AtDecl(decl, param, _, _, _) = stmt {
+                if decl.as_str() == "import" {
+                    let mut param = param
+                        .clone()
+                        .unwrap_or_else(|| panic!("Unable to locate import"));
+                    let path = if param.ends_with('!') {
+                        // stdlib import
+                        param.pop(); // remove '!'
+                        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+                        format!("{manifest_dir}/lib/{param}")
+                    } else {
+                        // local import
+                        param.clone()
+                    };
+
+                    let abs_path = canonicalize_path(&path, current_dir);
+                    if imported_files.contains(&abs_path) {
+                        continue; // Skip this import, don't add it to ret
+                    }
+                    imported_files.insert(abs_path.clone());
+
+                    let source = match fs::read_to_string(&abs_path) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Failed to read {abs_path:?}: {e}");
+                            std::process::exit(1);
+                        }
+                    };
+                    let mut lexer = Lexer::new(source);
+                    let tokens = match lexer.tokenize() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("Lexer error: {e:?}");
+                            std::process::exit(1);
+                        }
+                    };
+
+                    let mut parser = Parser::new(tokens);
+
+                    let program_new = match parser.parse() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Parser error: {e:?}");
+                            std::process::exit(1);
+                        }
+                    };
+
+                    let mut imported_stmts =
+                        self.rec_import_walk(&program_new, imported_files, &abs_path);
+
+                    ret.append(&mut imported_stmts);
                 } else {
-                    // local import
-                    param.clone()
-                };
-
-                let abs_path = canonicalize_path(&path, current_dir);
-                if imported_files.contains(&abs_path) {
-                    continue; // Skip this import, don't add it to ret
+                    ret.push(stmt.clone());
                 }
-                imported_files.insert(abs_path.clone());
-
-                let source = match fs::read_to_string(&abs_path) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("Failed to read {abs_path:?}: {e}");
-                        std::process::exit(1);
-                    }
-                };
-                let mut lexer = Lexer::new(source);
-                let tokens = match lexer.tokenize() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        eprintln!("Lexer error: {e:?}");
-                        std::process::exit(1);
-                    }
-                };
-
-                let mut parser = Parser::new(tokens);
-
-                let program_new = match parser.parse() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("Parser error: {e:?}");
-                        std::process::exit(1);
-                    }
-                };
-
-                let mut imported_stmts = rec_import_walk(&program_new, imported_files, &abs_path);
-
-                ret.append(&mut imported_stmts);
             } else {
                 ret.push(stmt.clone());
             }
-        } else {
-            ret.push(stmt.clone());
         }
+        ret
     }
-    ret
-}
 
-impl TypeChecker {
     pub fn analyze_program(mut program: Vec<Stmt>, path: &Path) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
 
         for (i, stmt) in program.clone().iter().enumerate() {
-            if let Stmt::AtDecl(decl, param, val, _) = stmt {
+            if let Stmt::AtDecl(decl, param, val, ..) = stmt {
                 if decl.as_str() == "const" || decl.as_str() == "const" {
                     let param = param
                         .clone()
@@ -183,221 +193,6 @@ impl TypeChecker {
                 }
             }
         }
-
-        // for stmt in program.clone() {
-        //     if let Stmt::AtDecl(decl, param) = stmt {
-        //         // if decl.as_str() == "import" {
-        //         //     let path = param.unwrap_or_else(|| panic!("error reading import"));
-
-        //         //     let source = match fs::read_to_string(&path) {
-        //         //         Ok(s) => s,
-        //         //         Err(e) => {
-        //         //             eprintln!("Failed to read {path}: {e}");
-        //         //             std::process::exit(1);
-        //         //         }
-        //         //     };
-
-        //         //     let mut lexer = Lexer::new(source);
-        //         //     let tokens = match lexer.tokenize() {
-        //         //         Ok(t) => t,
-        //         //         Err(e) => {
-        //         //             eprintln!("Lexer error: {e:?}");
-        //         //             std::process::exit(1);
-        //         //         }
-        //         //     };
-
-        //         //     let mut parser = Parser::new(tokens);
-        //         //     let mut program_new = match parser.parse() {
-        //         //         Ok(p) => p,
-        //         //         Err(e) => {
-        //         //             eprintln!("Parser error: {e:?}");
-        //         //             std::process::exit(1);
-        //         //         }
-        //         //     };
-
-        //         //     program_new.append(&mut program);
-        //         //     program = program_new
-        //         // }
-
-        //         if decl.as_str() == "import" {
-        //             let mut param = param
-        //                 .clone()
-        //                 .unwrap_or_else(|| panic!("Unable to locate import"));
-
-        //             if param.ends_with('!') {
-        //                 param.remove(param.len() - 1);
-
-        //                 let manifest_dir = env!("CARGO_MANIFEST_DIR");
-
-        //                 let dir = format!("{manifest_dir}/src/stdlib/{param}");
-
-        //                 // let path = fs::read_to_string(dir)
-        //                 //     .unwrap_or_else(|_| panic!("Unable to find file {param}"));
-
-        //                 let source = match fs::read_to_string(&dir) {
-        //                     Ok(s) => s,
-        //                     Err(e) => {
-        //                         eprintln!("Failed to read {dir}: {e}");
-        //                         std::process::exit(1);
-        //                     }
-        //                 };
-
-        //                 let mut lexer = Lexer::new(source);
-        //                 let tokens = match lexer.tokenize() {
-        //                     Ok(t) => t,
-        //                     Err(e) => {
-        //                         eprintln!("Lexer error: {e:?}");
-        //                         std::process::exit(1);
-        //                     }
-        //                 };
-
-        //                 let mut parser = Parser::new(tokens);
-        //                 let mut program_new = match parser.parse() {
-        //                     Ok(p) => p,
-        //                     Err(e) => {
-        //                         eprintln!("Parser error: {e:?}");
-        //                         std::process::exit(1);
-        //                     }
-        //                 };
-
-        //                 program_new.append(&mut program);
-        //                 program = program_new
-        //             } else {
-        //                 // let path = fs::read_to_string(param.clone())
-        //                 //     .unwrap_or_else(|_| panic!("Unable to find file {param}"));
-
-        //                 let source = match fs::read_to_string(&param) {
-        //                     Ok(s) => s,
-        //                     Err(e) => {
-        //                         eprintln!("Failed to read {param}: {e}");
-        //                         std::process::exit(1);
-        //                     }
-        //                 };
-
-        //                 let mut lexer = Lexer::new(source);
-        //                 let tokens = match lexer.tokenize() {
-        //                     Ok(t) => t,
-        //                     Err(e) => {
-        //                         eprintln!("Lexer error: {e:?}");
-        //                         std::process::exit(1);
-        //                     }
-        //                 };
-
-        //                 let mut parser = Parser::new(tokens);
-        //                 let mut program_new = match parser.parse() {
-        //                     Ok(p) => p,
-        //                     Err(e) => {
-        //                         eprintln!("Parser error: {e:?}");
-        //                         std::process::exit(1);
-        //                     }
-        //                 };
-
-        //                 program_new.append(&mut program);
-        //                 program = program_new
-        //             }
-        //         }
-        //     }
-        // }
-
-        let mut program = process_program(&mut program, path);
-
-        // for (i, stmt) in program.clone().iter().enumerate() {
-        //     if let Stmt::AtDecl(decl, param, val, _) = stmt {
-        //         if decl.as_str() == "define" || decl.as_str() == "defines" {
-        //             let param = param
-        //                 .clone()
-        //                 .unwrap_or_else(|| panic!("Unable to locate define name"));
-
-        //             let ty = type_checker
-        //                 .type_check_expr(&val.clone().unwrap())
-        //                 .unwrap_or_else(|e| panic!("Invalid define '{param}': {e}"));
-        //             type_checker.globals.insert(param, ty);
-        //         }
-        //         if decl.as_str() == "union" {
-        //             if let Stmt::StructDecl {
-        //                 name, instances, ..
-        //             } = program.get(i + 1).unwrap()
-        //             {
-        //                 program[i + 1] = Stmt::StructDecl {
-        //                     name: name.to_string(),
-        //                     instances: instances.to_vec(),
-        //                     union: true,
-        //                 }
-        //             } else {
-        //                 return Err("expected struct after union declaration".to_string());
-        //             }
-        //         }
-        //     }
-        // }
-
-        // type_checker
-        //     .declare_fn(
-        //         "print",
-        //         vec![Type::Pointer(Box::new(Type::Void))],
-        //         Type::Void,
-        //     )
-        //     .map_err(|e| format!("Global scope error: {e}"))?;c
-
-        // type_checker
-        //     .declare_fn(
-        //         "print_str",
-        //         vec![Type::Pointer(Box::new(Type::Struct {
-        //             name: "string".to_owned(),
-        //             instances: vec![
-        //                 // ("size".to_owned(), Type::int),
-        //                 // ("data".to_owned(), Type::Pointer(Box::new(Type::Char))),
-        //             ],
-        //         }))],
-        //         Type::Void,
-        //     )
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn("print_long", vec![Type::Long], Type::Void)
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn(
-        //         "write_file",
-        //         vec![
-        //             Type::Pointer(Box::new(Type::Char)),
-        //             Type::Pointer(Box::new(Type::Char)),
-        //         ],
-        //         Type::Void,
-        //     )
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn(
-        //         "read_file",
-        //         vec![Type::Pointer(Box::new(Type::Char))],
-        //         Type::Pointer(Box::new(Type::Char)),
-        //     )
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn(
-        //         "file_size",
-        //         vec![Type::Pointer(Box::new(Type::Char))],
-        //         Type::Long,
-        //     )
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn(
-        //         "print_str",
-        //         vec![Type::Pointer(Box::new(Type::Char))],
-        //         Type::Void,
-        //     )
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn("print_bool", vec![Type::Bool], Type::Void)
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
-
-        // type_checker
-        //     .declare_fn("print_char", vec![Type::Char], Type::Void)
-        //     .map_err(|e| format!("Global scope error: {e}"))?;
 
         type_checker
             .declare_fn("exit", vec![Type::int], Type::Void, Vec::new())
@@ -1254,7 +1049,7 @@ impl TypeChecker {
 
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
-            Stmt::AtDecl(decl, _, _, _) => match decl.as_str() {
+            Stmt::AtDecl(decl, ..) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
                 "const" | "CONST" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
@@ -1567,31 +1362,6 @@ impl TypeChecker {
                         }
                     }
                 }
-
-                // for (i, stmt) in funcs.clone().iter().enumerate() {
-                //     match stmt {
-                //         Stmt::FunDecl { name, .. } => {
-                //             let name1 = name;
-                //             for (j, stmt1) in funcs.iter().enumerate() {
-                //                 match stmt1 {
-                //                     Stmt::FunDecl { name, .. } => {
-                //                         if name1 == name && i != j {
-                //                             return Err(
-                //                                 "Functions may not share a name".to_string()
-                //                             );
-                //                         }
-                //                     }
-                //                     _ => {
-                //                         return Err("Struct functions must be functions".to_string());
-                //                     }
-                //                 }
-                //             }
-                //         }
-                //         _ => {
-                //             return Err("Struct functions must be functions".to_string());
-                //         }
-                //     }
-                // }
 
                 Ok(Stmt::StructDecl {
                     name: name.to_string(),

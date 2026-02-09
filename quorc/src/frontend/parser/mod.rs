@@ -112,8 +112,27 @@ impl Parser {
             _ => return Err(ParseError::UnexpectedToken(self.peek().clone())),
         };
 
+        let alias = if let TokenType::Pipe = &self.peek().token_type {
+            self.advance();
+            if let TokenType::Identifier(s) = &self.peek().token_type {
+                let s = s.clone();
+                self.advance();
+                Some(s)
+            } else {
+                return Err(ParseError::UnexpectedToken(self.peek().clone()));
+            }
+        } else {
+            None
+        };
+
         let path = format!("{path}{epilogue}");
-        Ok(Stmt::AtDecl("import".to_string(), Some(path), None, None))
+        Ok(Stmt::AtDecl(
+            "import".to_string(),
+            Some(path),
+            None,
+            None,
+            alias,
+        ))
     }
 
     fn at_declaration(&mut self) -> Result<Stmt, ParseError> {
@@ -202,6 +221,7 @@ impl Parser {
                         Some(name.to_string()),
                         Some(expr),
                         None,
+                        None,
                     ));
                 }
 
@@ -218,6 +238,7 @@ impl Parser {
                     decl.to_string(),
                     Some(name.to_string()),
                     Some(expr),
+                    None,
                     None,
                 ));
             }
@@ -394,10 +415,11 @@ impl Parser {
                     Some(assembly_code),
                     None,
                     None,
+                    None,
                 ));
             }
 
-            return Ok(Stmt::AtDecl(decl.to_string(), None, None, None));
+            return Ok(Stmt::AtDecl(decl.to_string(), None, None, None, None));
         }
 
         Err(ParseError::Expected {
@@ -1182,8 +1204,28 @@ impl Parser {
                 Ok(Expr::Array(elements, element_type))
             }
             TokenType::Identifier(name) => {
-                let name = name.clone();
+                let mut name = name.clone();
                 self.advance();
+
+                if self.peek().token_type == TokenType::DoubleColon {
+                    let namespace = name.clone();
+                    self.advance();
+                    let actual_name = self.consume(
+                        TokenType::Identifier("".into()),
+                        "Expected identifier after '::'",
+                    )?;
+                    let name_str = format!(
+                        "{}::{}",
+                        namespace,
+                        if let TokenType::Identifier(n) = &actual_name.token_type {
+                            n.clone()
+                        } else {
+                            return Err(ParseError::UnexpectedToken(actual_name.clone()));
+                        }
+                    );
+
+                    name = name_str;
+                }
 
                 if self.peek().token_type == TokenType::LeftBrace {
                     let mut inits: Vec<(String, Expr)> = Vec::new();

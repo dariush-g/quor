@@ -105,6 +105,7 @@ pub enum TokenType {
     Semicolon,
     Period,
     Colon,
+    Pipe,
 
     SingleQuote,
     DoubleQuote,

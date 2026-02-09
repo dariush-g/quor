@@ -75,12 +75,7 @@ impl Type {
     pub fn fits_in_register(&self) -> bool {
         matches!(
             self,
-            Type::int
-                | Type::float
-                | Type::Long
-                | Type::Char
-                | Type::Bool
-                | Type::Pointer(_)
+            Type::int | Type::float | Type::Long | Type::Char | Type::Bool | Type::Pointer(_)
         )
     }
 
@@ -307,7 +302,13 @@ impl Stmt {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    AtDecl(String, Option<String>, Option<Expr>, Option<Box<Stmt>>),
+    AtDecl(
+        String,
+        Option<String>,
+        Option<Expr>,
+        Option<Box<Stmt>>,
+        Option<String>,
+    ),
     VarDecl {
         name: String,
         var_type: Type,

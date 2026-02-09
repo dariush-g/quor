@@ -1,6 +1,5 @@
 use crate::frontend::lexer::token::*;
 
-
 pub mod token;
 
 pub struct Lexer {
@@ -183,7 +182,8 @@ impl Lexer {
                 if self.match_char('|') {
                     tokens.push(self.make_token(TokenType::Or));
                 } else {
-                    return Err(LexError::InvalidCharacter(c, self.line, self.column));
+                    tokens.push(self.make_token(TokenType::Pipe));
+                    // return Err(LexError::InvalidCharacter(c, self.line, self.column));
                 }
             }
 
