@@ -1,0 +1,6 @@
+@import <uses_malloc.qu> | um
+
+def main(argc: int, argv: char**) :: int {
+    let p: int* = um::alloc_int();
+    return 0;
+}

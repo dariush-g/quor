@@ -229,9 +229,15 @@ fn main() {
         }
     };
 
-    // println!("{program:?}");
+    // Expand imports and run alias pass so names are qualified (e.g. new_string.0, main.1).
+    let mut type_checker = TypeChecker::default();
+    let (program, module_count) = type_checker.process_program(program, &src_path);
 
-    let typed = match TypeChecker::analyze_program(program, &src_path) {
+    let typed = match TypeChecker::analyze_program(
+        program,
+        &src_path,
+        module_count,
+    ) {
         Ok(tp) => tp,
         Err(e) => {
             eprintln!("Type error: {e:?}");

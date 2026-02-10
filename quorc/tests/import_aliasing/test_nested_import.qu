@@ -1,0 +1,6 @@
+@import <a.qu> | a
+
+def main(argc: int, argv: char**) :: int {
+    let x: int = a::from_a();
+    return x;
+}

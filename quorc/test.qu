@@ -1,7 +1,8 @@
+@import <string.qu> | s
 
 
 def main(argc: int, argv: char**) :: int {
-    let x: float = math::sin {};
+    let str: string = s::new_string();
     return 0;
 }
 

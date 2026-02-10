@@ -1,3 +1,15 @@
+
+struct string {
+    ptr: char*;
+    len: int;
+    capacity: int;
+}
+
+def new_string() :: string {
+    let cap: int = 10;
+    return string { ptr: malloc(cap) as char*, len: 0, capacity: cap };
+}
+
 def char_at(str: char*, index: int) :: char {
     let ret: char* = str + index;
     return *ret;
@@ -16,62 +28,6 @@ def is_alphabetic(c: char) :: bool {
 def is_alphanumeric(c: char) :: bool {
     if (is_alphabetic(c) || (c > '0' && c < '9')) {
         return true;
-    }
-    return false;
-}
-
-def concat(str: char*, str1: char*) :: char* {
-    let len: int = strlen(str);
-    let len1: int = strlen(str1);
-    let new: char* = malloc(len + len1 + 1) as char*;
-
-    let ret: char* = new;
-
-    let count: int = 0;
-    while (count < len) {
-        *new = *str;
-        new = new + 1;
-        str = str + 1;
-        count = count + 1;
-    }
-
-    count = 0;
-    while (count < len1) {
-        *new = *str1;
-        new = new + 1;
-        str1 = str1 + 1;
-        count = count + 1;
-    }
-
-    *new = '\0';
-
-    return ret;
-}
-
-def substring(str: char*, i: int, ii: int) :: char* {
-    let new: char* = malloc(ii - i + 1) as char*;
-    let ret: char* = new;
-    str = str + i;
-
-    let count: int = 0;
-    for (count < ii - i :: count++) {
-        *new = *str;
-        new = new + 1;
-        str = str + 1;
-    }
-    *new = '\0';
-
-    return ret;
-}
-
-def contains_char(str: char*, c: char) :: bool {
-    let len: int = strlen(str);
-    let count: int = 0;
-    while (count < len) {
-        if (char_at(str, count) == c) {
-            return true;
-        }
-        count = count + 1;
     }
     return false;
 }

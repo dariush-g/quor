@@ -1,0 +1,8 @@
+@import <math.qu> | m
+@import <other.qu> | o
+
+def main(argc: int, argv: char**) :: int {
+    let a: int = m::add(1, 2);
+    let b: int = o::greet();
+    return a + b;
+}

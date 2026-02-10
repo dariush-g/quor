@@ -1,0 +1,8 @@
+@import <math.qu> | m
+
+def main(argc: int, argv: char**) :: int {
+    let add: int = 10;
+    let sum: int = add + 1;
+    let product: int = m::mul(2, 3);
+    return sum + product;
+}
