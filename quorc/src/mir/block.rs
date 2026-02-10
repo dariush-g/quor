@@ -185,7 +185,6 @@ pub struct IRProgram {
     pub functions: HashMap<String, IRFunction>,
     pub global_consts: Vec<GlobalDef>,
     pub structs: HashMap<String, StructDef>,
-    // pub imports: Vec<(String, bool)>, // name, is_local
 }
 
 #[derive(Debug, Clone)]

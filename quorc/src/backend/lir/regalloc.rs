@@ -3,8 +3,10 @@ use std::{collections::HashMap, hash::Hash};
 use crate::{
     backend::lir::{SymId, aarch64::A64RegGpr},
     frontend::ast::Type,
-    mir::block::{BlockId, IRFunction, VReg},
+    mir::block::{BlockId, GlobalDef, GlobalValue, IRFunction, IRProgram, VReg},
 };
+
+pub fn mir_to_lir(mir: IRProgram) {}
 
 impl IRFunction {
     pub fn to_lir<
@@ -26,7 +28,7 @@ pub enum RegRef<
     FprReg(F),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Loc<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
@@ -35,7 +37,7 @@ pub enum Loc<
     Stack(i32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Operand<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
@@ -53,7 +55,7 @@ impl<R: Copy + Eq + Hash + std::fmt::Debug, F: Copy + Eq + Hash + std::fmt::Debu
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Addr<R: Copy + Eq + std::hash::Hash + std::fmt::Debug> {
     BaseOff {
         base: R,
@@ -77,7 +79,7 @@ pub enum CallTarget<R> {
     Indirect(R),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LInst<R: Copy + Eq + Hash + std::fmt::Debug, F: Copy + Eq + Hash + std::fmt::Debug> {
     Add {
         dst: Loc<R, F>,
@@ -198,6 +200,8 @@ pub trait TargetRegs {
         let used_callee_saved = Vec::new();
         let used_callee_saved_fp = Vec::new();
 
+        
+
         Allocation {
             vreg_loc,
             used_callee_saved,
@@ -206,6 +210,7 @@ pub trait TargetRegs {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Allocation<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
@@ -215,6 +220,7 @@ pub struct Allocation<
     pub used_callee_saved_fp: Vec<R>,
 }
 
+#[derive(Debug, Clone)]
 pub struct LFunction<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
@@ -224,6 +230,7 @@ pub struct LFunction<
     pub entry: BlockId,
 }
 
+#[derive(Debug, Clone)]
 pub struct LBlock<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
@@ -233,6 +240,7 @@ pub struct LBlock<
     pub term: LTerm<R, F>,
 }
 
+#[derive(Debug, Clone)]
 pub enum LTerm<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
@@ -248,4 +256,27 @@ pub enum LTerm<
         if_true: BlockId,
         if_false: BlockId,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct LProgram<
+    R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+> {
+    pub functions: Vec<LFunction<R, F>>,
+    // pub structs: Vec<LStructDef>,
+    pub globals: Vec<LGlobalDef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LStructDef {
+    pub name: String,
+    pub fields: HashMap<String, (i32, Type)>,
+    pub is_union: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct LGlobalDef {
+    pub id: usize,
+    pub value: GlobalValue,
 }

@@ -505,10 +505,10 @@ impl TypeChecker {
                             "Warning: Function '{name}' may not contain such sequence of parameters."
                         );
                     }
-                    if (params.len() == 2)
-                        && params[1].1
+                    if params.len() == 2
+                        && (params[1].1
                             != Type::Pointer(Box::new(Type::Pointer(Box::new(Type::Char))))
-                        || params[0].1 != Type::int
+                            || params[0].1 != Type::int)
                     {
                         panic!(
                             "Warning: Function '{name}' parameters do not match expected signature (int, char**)."

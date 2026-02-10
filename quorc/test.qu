@@ -1,9 +1,11 @@
-@import <io.qu>
+struct X {
+    data: int;
+    name: char*;
+}
 
-@const example_static_string = [1, 2 ,3]
-
-def main(argc: int, argv: char**) :: int {
-    print("%d", argc);
+def main() :: int {
+    let x: X = X { data: 10, name: "hello" };
+    
     return 0;
 }
 
