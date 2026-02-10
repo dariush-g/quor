@@ -1,3 +1,0 @@
-def from_c() :: int {
-    return 3;
-}

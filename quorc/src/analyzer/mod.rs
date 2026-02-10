@@ -1,10 +1,7 @@
-use crate::{
-    frontend::{
-        ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
-        lexer::Lexer,
-        parser::Parser,
-    },
-    midend::alias::AliasManager,
+use crate::frontend::{
+    ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
+    lexer::Lexer,
+    parser::Parser,
 };
 
 use std::{
@@ -12,21 +9,16 @@ use std::{
     fs,
 };
 
-// TODO: Make a classes, globals, aliases, and class_fields for each ModuleId for namespace lookups
-
 pub struct TypeChecker {
     variables: Vec<HashMap<String, Type>>,
     functions: HashMap<String, (Vec<Type>, Type, Vec<String>)>,
     classes: HashMap<String, bool>,
     globals: HashMap<String, Type>,
-    pub aliases: AliasManager,
-    //                  struct name, instances
+    //                  class name, instances
     class_fields: HashMap<String, Vec<(String, Type)>>,
     current_return_type: Option<Type>,
     in_loop: bool,
     called: Vec<String>,
-    /// Number of modules (0..module_count); used to try qualified lookups for unqualified names.
-    module_count: usize,
 }
 
 impl Default for TypeChecker {
@@ -40,8 +32,6 @@ impl Default for TypeChecker {
             current_return_type: None,
             in_loop: false,
             called: Vec::new(),
-            aliases: AliasManager::default(),
-            module_count: 1,
         }
     }
 }
@@ -52,11 +42,13 @@ pub fn canonicalize_path(path: &str, base_dir: &Path) -> PathBuf {
     let path_buf = PathBuf::from(path);
 
     if path_buf.is_absolute() {
+        // If the path is already absolute, canonicalize it directly
         path_buf.canonicalize().unwrap_or_else(|e| {
             eprintln!("Failed to canonicalize absolute path {path:?}: {e}");
             std::process::exit(1);
         })
     } else {
+        // If the path is relative, resolve it against the base directory
         let full_path = base_dir.join(path_buf);
         full_path.canonicalize().unwrap_or_else(|e| {
             eprintln!(
@@ -67,88 +59,46 @@ pub fn canonicalize_path(path: &str, base_dir: &Path) -> PathBuf {
     }
 }
 
-impl TypeChecker {
-    /// Expands imports, runs alias first+second pass so all names are qualified (`name.module_id`),
-    /// and returns (flattened program, number of modules). Builtins must be registered for each module id in 0..module_count.
-    pub fn process_program(&mut self, program: Vec<Stmt>, path_: &Path) -> (Vec<Stmt>, usize) {
-        let entry_canonical = path_.canonicalize().unwrap_or_else(|e| {
-            eprintln!("Failed to canonicalize entry path {path_:?}: {e}");
-            std::process::exit(1);
-        });
-        let mut imported: HashSet<PathBuf> = HashSet::new();
-        let files = self.collect_files(program, &entry_canonical, &mut imported);
+pub fn process_program(program: &mut Vec<Stmt>, path_: &Path) -> Vec<Stmt> {
+    let mut imported_files: HashSet<PathBuf> = HashSet::new();
+    rec_import_walk(program, &mut imported_files, path_)
+}
 
-        for (path, _) in &files {
-            let canonical = path.to_string_lossy().into_owned();
-            if !self.aliases.module_registry.contains_key(&canonical) {
-                self.aliases.register_module(canonical);
-            }
-        }
+fn rec_import_walk(
+    stmts: &Vec<Stmt>,
+    imported_files: &mut HashSet<PathBuf>,
+    current_file: &Path,
+) -> Vec<Stmt> {
+    let mut ret = Vec::new();
+    eprintln!("Analyzing {current_file:?}");
 
-        let module_count = self.aliases.module_registry.len();
+    let current_dir = current_file.parent().unwrap_or_else(|| {
+        eprintln!("Cannot determine parent directory of {current_file:?}");
+        std::process::exit(1);
+    });
 
-        let mut first_passed: Vec<(PathBuf, Vec<Stmt>)> = files
-            .into_iter()
-            .map(|(path, stmts)| {
-                let canonical = path.to_string_lossy().into_owned();
-                let quor = self.aliases.get_module_mut(&canonical).unwrap();
-                let new_stmts = quor.determine_symbols_stmts_first_pass(stmts);
-                (path, new_stmts)
-            })
-            .collect();
-
-        let mut result = Vec::new();
-        for (path, stmts) in &mut first_passed {
-            let canonical = path.to_string_lossy().into_owned();
-            let quor = self.aliases.get_module(&canonical).unwrap();
-            let stmts_to_use: Vec<Stmt> = if path == &entry_canonical {
-                stmts
-                    .iter()
-                    .filter(|s| !matches!(s, Stmt::AtDecl(d, ..) if d.as_str() == "import"))
-                    .cloned()
-                    .collect()
-            } else {
-                stmts.clone()
-            };
-            let mut scope = HashSet::new();
-            result.extend(quor.determine_symbols_stmts_second_pass(
-                stmts_to_use,
-                &mut scope,
-                &self.aliases,
-            ));
-        }
-        (result, module_count)
-    }
-
-    /// Collects (canonical_path, stmts) for the current file and all imports (depth-first).
-    fn collect_files(
-        &self,
-        stmts: Vec<Stmt>,
-        current_file: &Path,
-        imported_files: &mut HashSet<PathBuf>,
-    ) -> Vec<(PathBuf, Vec<Stmt>)> {
-        let current_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
-        let mut result = Vec::new();
-
-        for stmt in &stmts {
-            if let Stmt::AtDecl(decl, param, _, _, _) = stmt {
-                if decl.as_str() != "import" {
-                    continue;
-                }
-                let mut path_param = param
+    for stmt in stmts {
+        if let Stmt::AtDecl(decl, param, _, _) = stmt {
+            if decl.as_str() == "import" {
+                let mut param = param
                     .clone()
-                    .unwrap_or_else(|| panic!("import without path"));
-                let path_str = if path_param.ends_with('!') {
-                    path_param.pop();
+                    .unwrap_or_else(|| panic!("Unable to locate import"));
+                let path = if param.ends_with('!') {
+                    // stdlib import
+                    param.pop(); // remove '!'
                     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-                    format!("{manifest_dir}/lib/{path_param}")
+                    format!("{manifest_dir}/lib/{param}")
                 } else {
-                    path_param
+                    // local import
+                    param.clone()
                 };
-                let abs_path = canonicalize_path(&path_str, current_dir);
-                if !imported_files.insert(abs_path.clone()) {
-                    continue;
+
+                let abs_path = canonicalize_path(&path, current_dir);
+                if imported_files.contains(&abs_path) {
+                    continue; // Skip this import, don't add it to ret
                 }
+                imported_files.insert(abs_path.clone());
+
                 let source = match fs::read_to_string(&abs_path) {
                     Ok(s) => s,
                     Err(e) => {
@@ -156,133 +106,340 @@ impl TypeChecker {
                         std::process::exit(1);
                     }
                 };
-                let tokens = match Lexer::new(source).tokenize() {
+                let mut lexer = Lexer::new(source);
+                let tokens = match lexer.tokenize() {
                     Ok(t) => t,
                     Err(e) => {
                         eprintln!("Lexer error: {e:?}");
                         std::process::exit(1);
                     }
                 };
-                let program_new = match Parser::new(tokens).parse() {
+
+                let mut parser = Parser::new(tokens);
+
+                let program_new = match parser.parse() {
                     Ok(p) => p,
                     Err(e) => {
                         eprintln!("Parser error: {e:?}");
                         std::process::exit(1);
                     }
                 };
-                let mut sub = self.collect_files(program_new, &abs_path, imported_files);
-                result.append(&mut sub);
+
+                let mut imported_stmts = rec_import_walk(&program_new, imported_files, &abs_path);
+
+                ret.append(&mut imported_stmts);
+            } else {
+                ret.push(stmt.clone());
             }
-        }
-        result.push((current_file.to_path_buf(), stmts));
-        result
-    }
-
-    fn qualified_base_name(name: &str) -> &str {
-        name.rsplit_once('.').map(|(base, _)| base).unwrap_or(name)
-    }
-
-    /// For special-case checks (sizeof, malloc): "new_string.0" -> "new_string", "s::new_string" -> "new_string".
-    fn call_base_name(name: &str) -> &str {
-        if let Some((_, after)) = name.split_once("::") {
-            after
         } else {
-            Self::qualified_base_name(name)
+            ret.push(stmt.clone());
         }
     }
+    ret
+}
 
-    pub fn analyze_program(
-        mut program: Vec<Stmt>,
-        path: &Path,
-        module_count: usize,
-    ) -> Result<Vec<Stmt>, String> {
+impl TypeChecker {
+    pub fn analyze_program(mut program: Vec<Stmt>, path: &Path) -> Result<Vec<Stmt>, String> {
         let mut type_checker = TypeChecker::default();
-        type_checker.module_count = module_count;
 
-        // Register builtins for every module so that e.g. string.qu (module 0) and test.qu (module 1) can both call malloc.
-        for module_id in 0..module_count {
-            let builtin = |name: &str| format!("{name}.{module_id}");
+        for (i, stmt) in program.clone().iter().enumerate() {
+            if let Stmt::AtDecl(decl, param, val, _) = stmt {
+                if decl.as_str() == "const" || decl.as_str() == "const" {
+                    let param = param
+                        .clone()
+                        .unwrap_or_else(|| panic!("Unable to locate define name"));
 
-            for (i, stmt) in program.clone().iter().enumerate() {
-                if let Stmt::AtDecl(decl, param, val, ..) = stmt {
-                    if decl.as_str() == "const" || decl.as_str() == "const" {
-                        let param = param
-                            .clone()
-                            .unwrap_or_else(|| panic!("Unable to locate define name"));
-
-                        match val.clone().unwrap() {
-                            Expr::IntLiteral(_) => {}
-                            Expr::LongLiteral(_) => {}
-                            Expr::FloatLiteral(_) => {}
-                            Expr::BoolLiteral(_) => {}
-                            Expr::StringLiteral(_) => {}
-                            Expr::CharLiteral(_) => {}
-                            Expr::StructInit { .. } => {}
-                            Expr::Array(..) => {}
-                            _ => {
-                                panic!("Expected literal value for global definition")
-                            }
+                    match val.clone().unwrap() {
+                        Expr::IntLiteral(_) => {}
+                        Expr::LongLiteral(_) => {}
+                        Expr::FloatLiteral(_) => {}
+                        Expr::BoolLiteral(_) => {}
+                        Expr::StringLiteral(_) => {}
+                        Expr::CharLiteral(_) => {}
+                        Expr::StructInit { .. } => {}
+                        Expr::Array(..) => {}
+                        _ => {
+                            panic!("Expected literal value for global definition")
                         }
-                        type_checker.type_check_expr(&val.clone().unwrap())?;
-                        let ty = val.clone().unwrap().get_type();
-
-                        type_checker.globals.insert(param, ty);
                     }
-                    if decl.as_str() == "union" {
-                        if let Stmt::StructDecl {
-                            name, instances, ..
-                        } = program.get(i + 1).unwrap()
-                        {
-                            program[i + 1] = Stmt::StructDecl {
-                                name: name.to_string(),
-                                instances: instances.to_vec(),
-                                union: true,
-                            }
-                        } else {
-                            return Err("expected struct after union declaration".to_string());
+                    type_checker.type_check_expr(&val.clone().unwrap())?;
+                    let ty = val.clone().unwrap().get_type();
+
+                    type_checker.globals.insert(param, ty);
+                }
+                if decl.as_str() == "union" {
+                    if let Stmt::StructDecl {
+                        name, instances, ..
+                    } = program.get(i + 1).unwrap()
+                    {
+                        program[i + 1] = Stmt::StructDecl {
+                            name: name.to_string(),
+                            instances: instances.to_vec(),
+                            union: true,
                         }
+                    } else {
+                        return Err("expected struct after union declaration".to_string());
                     }
                 }
             }
-
-            type_checker
-                .declare_fn(&builtin("exit"), vec![Type::int], Type::Void, Vec::new())
-                .map_err(|e| format!("Global scope error: {e}"))?;
-
-            type_checker
-                .declare_fn(
-                    &builtin("free"),
-                    vec![Type::Pointer(Box::new(Type::Void))],
-                    Type::Void,
-                    Vec::new(),
-                )
-                .map_err(|e| format!("Global scope error: {e}"))?;
-            type_checker
-                .declare_fn(
-                    &builtin("malloc"),
-                    vec![Type::int],
-                    Type::Pointer(Box::new(Type::Void)),
-                    Vec::new(),
-                )
-                .map_err(|e| format!("Global scope error: {e}"))?;
-            type_checker
-                .declare_fn(
-                    &builtin("sizeof"),
-                    vec![Type::Pointer(Box::new(Type::Void))],
-                    Type::int,
-                    Vec::new(),
-                )
-                .map_err(|e| format!("Global scope error: {e}"))?;
-
-            type_checker
-                .declare_fn(
-                    &builtin("strlen"),
-                    vec![Type::Pointer(Box::new(Type::Void))],
-                    Type::int,
-                    Vec::new(),
-                )
-                .map_err(|e| format!("Global scope error: {e}"))?;
         }
+
+        // for stmt in program.clone() {
+        //     if let Stmt::AtDecl(decl, param) = stmt {
+        //         // if decl.as_str() == "import" {
+        //         //     let path = param.unwrap_or_else(|| panic!("error reading import"));
+
+        //         //     let source = match fs::read_to_string(&path) {
+        //         //         Ok(s) => s,
+        //         //         Err(e) => {
+        //         //             eprintln!("Failed to read {path}: {e}");
+        //         //             std::process::exit(1);
+        //         //         }
+        //         //     };
+
+        //         //     let mut lexer = Lexer::new(source);
+        //         //     let tokens = match lexer.tokenize() {
+        //         //         Ok(t) => t,
+        //         //         Err(e) => {
+        //         //             eprintln!("Lexer error: {e:?}");
+        //         //             std::process::exit(1);
+        //         //         }
+        //         //     };
+
+        //         //     let mut parser = Parser::new(tokens);
+        //         //     let mut program_new = match parser.parse() {
+        //         //         Ok(p) => p,
+        //         //         Err(e) => {
+        //         //             eprintln!("Parser error: {e:?}");
+        //         //             std::process::exit(1);
+        //         //         }
+        //         //     };
+
+        //         //     program_new.append(&mut program);
+        //         //     program = program_new
+        //         // }
+
+        //         if decl.as_str() == "import" {
+        //             let mut param = param
+        //                 .clone()
+        //                 .unwrap_or_else(|| panic!("Unable to locate import"));
+
+        //             if param.ends_with('!') {
+        //                 param.remove(param.len() - 1);
+
+        //                 let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+        //                 let dir = format!("{manifest_dir}/src/stdlib/{param}");
+
+        //                 // let path = fs::read_to_string(dir)
+        //                 //     .unwrap_or_else(|_| panic!("Unable to find file {param}"));
+
+        //                 let source = match fs::read_to_string(&dir) {
+        //                     Ok(s) => s,
+        //                     Err(e) => {
+        //                         eprintln!("Failed to read {dir}: {e}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut lexer = Lexer::new(source);
+        //                 let tokens = match lexer.tokenize() {
+        //                     Ok(t) => t,
+        //                     Err(e) => {
+        //                         eprintln!("Lexer error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut parser = Parser::new(tokens);
+        //                 let mut program_new = match parser.parse() {
+        //                     Ok(p) => p,
+        //                     Err(e) => {
+        //                         eprintln!("Parser error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 program_new.append(&mut program);
+        //                 program = program_new
+        //             } else {
+        //                 // let path = fs::read_to_string(param.clone())
+        //                 //     .unwrap_or_else(|_| panic!("Unable to find file {param}"));
+
+        //                 let source = match fs::read_to_string(&param) {
+        //                     Ok(s) => s,
+        //                     Err(e) => {
+        //                         eprintln!("Failed to read {param}: {e}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut lexer = Lexer::new(source);
+        //                 let tokens = match lexer.tokenize() {
+        //                     Ok(t) => t,
+        //                     Err(e) => {
+        //                         eprintln!("Lexer error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 let mut parser = Parser::new(tokens);
+        //                 let mut program_new = match parser.parse() {
+        //                     Ok(p) => p,
+        //                     Err(e) => {
+        //                         eprintln!("Parser error: {e:?}");
+        //                         std::process::exit(1);
+        //                     }
+        //                 };
+
+        //                 program_new.append(&mut program);
+        //                 program = program_new
+        //             }
+        //         }
+        //     }
+        // }
+
+        let mut program = process_program(&mut program, path);
+
+        // for (i, stmt) in program.clone().iter().enumerate() {
+        //     if let Stmt::AtDecl(decl, param, val, _) = stmt {
+        //         if decl.as_str() == "define" || decl.as_str() == "defines" {
+        //             let param = param
+        //                 .clone()
+        //                 .unwrap_or_else(|| panic!("Unable to locate define name"));
+
+        //             let ty = type_checker
+        //                 .type_check_expr(&val.clone().unwrap())
+        //                 .unwrap_or_else(|e| panic!("Invalid define '{param}': {e}"));
+        //             type_checker.globals.insert(param, ty);
+        //         }
+        //         if decl.as_str() == "union" {
+        //             if let Stmt::StructDecl {
+        //                 name, instances, ..
+        //             } = program.get(i + 1).unwrap()
+        //             {
+        //                 program[i + 1] = Stmt::StructDecl {
+        //                     name: name.to_string(),
+        //                     instances: instances.to_vec(),
+        //                     union: true,
+        //                 }
+        //             } else {
+        //                 return Err("expected struct after union declaration".to_string());
+        //             }
+        //         }
+        //     }
+        // }
+
+        // type_checker
+        //     .declare_fn(
+        //         "print",
+        //         vec![Type::Pointer(Box::new(Type::Void))],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;c
+
+        // type_checker
+        //     .declare_fn(
+        //         "print_str",
+        //         vec![Type::Pointer(Box::new(Type::Struct {
+        //             name: "string".to_owned(),
+        //             instances: vec![
+        //                 // ("size".to_owned(), Type::int),
+        //                 // ("data".to_owned(), Type::Pointer(Box::new(Type::Char))),
+        //             ],
+        //         }))],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn("print_long", vec![Type::Long], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn(
+        //         "write_file",
+        //         vec![
+        //             Type::Pointer(Box::new(Type::Char)),
+        //             Type::Pointer(Box::new(Type::Char)),
+        //         ],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn(
+        //         "read_file",
+        //         vec![Type::Pointer(Box::new(Type::Char))],
+        //         Type::Pointer(Box::new(Type::Char)),
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn(
+        //         "file_size",
+        //         vec![Type::Pointer(Box::new(Type::Char))],
+        //         Type::Long,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn(
+        //         "print_str",
+        //         vec![Type::Pointer(Box::new(Type::Char))],
+        //         Type::Void,
+        //     )
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn("print_bool", vec![Type::Bool], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn("print_char", vec![Type::Char], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn("exit", vec![Type::int], Type::Void, Vec::new())
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        // type_checker
+        //     .declare_fn("print_fp", vec![Type::float], Type::Void)
+        //     .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "free",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::Void,
+                Vec::new(),
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn(
+                "malloc",
+                vec![Type::int],
+                Type::Pointer(Box::new(Type::Void)),
+                Vec::new(),
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+        type_checker
+            .declare_fn(
+                "sizeof",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::int,
+                Vec::new(),
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
+
+        type_checker
+            .declare_fn(
+                "strlen",
+                vec![Type::Pointer(Box::new(Type::Void))],
+                Type::int,
+                Vec::new(),
+            )
+            .map_err(|e| format!("Global scope error: {e}"))?;
 
         // println!("{program:?}");
 
@@ -436,9 +593,8 @@ impl TypeChecker {
             }
             Expr::Assign { value, .. } => self.fill_expr_types(value),
             Expr::Call { name, args, .. } => {
-                let base = TypeChecker::qualified_base_name(name);
                 for arg in args {
-                    if base == "sizeof" {
+                    if name == "sizeof" {
                         let param = &arg;
                         if let Expr::Variable(name, _) = param
                             && self.classes.contains_key(name)
@@ -512,51 +668,7 @@ impl TypeChecker {
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&(Vec<Type>, Type, Vec<String>)> {
-        if let Some(f) = self.functions.get(name) {
-            return Some(f);
-        }
-        // Namespace-qualified (e.g. s::new_string): resolve alias to module and try base_name.module_id
-        if name.contains("::") {
-            let parts: Vec<&str> = name.split("::").collect();
-            if let [namespace, base_name] = parts.as_slice() {
-                for (_canonical, quor_file) in &self.aliases.module_registry {
-                    if let Some(target_canonical) = quor_file.aliases.get(*namespace) {
-                        if let Some(&module_id) = self.aliases.module_ids.get(target_canonical) {
-                            let key = format!("{base_name}.{module_id}");
-                            if let Some(f) = self.functions.get(&key) {
-                                return Some(f);
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        // Unqualified: try name.0, name.1, ... so builtins and cross-module calls resolve
-        if !name.contains('.') {
-            for id in 0..self.module_count {
-                if let Some(f) = self.functions.get(&format!("{name}.{id}")) {
-                    return Some(f);
-                }
-            }
-        }
-        None
-    }
-
-    /// Resolve a struct/class name (e.g. "string.1" when only "string.0" exists) by trying
-    /// name, then name.0, name.1, ... so types from imported modules resolve.
-    fn resolve_struct_name(&self, name: &str) -> Option<String> {
-        if self.class_fields.contains_key(name) {
-            return Some(name.to_string());
-        }
-        let base = Self::qualified_base_name(name);
-        for id in 0..self.module_count {
-            let key = format!("{base}.{id}");
-            if self.class_fields.contains_key(&key) {
-                return Some(key);
-            }
-        }
-        None
+        self.functions.get(name)
     }
 
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
@@ -709,24 +821,29 @@ impl TypeChecker {
                 }
             }
             Expr::Call { name, args, .. } => {
-                let base = Self::call_base_name(name);
+                // match name.as_str() {
+                //     "print_int" => return Ok(Type::Void),
+                //     "print_char" => return Ok(Type::Void),
+                //     "print_bool" => return Ok(Type::Void),
+                //     "write" => return Ok(Type::Void),
+                //     // "malloc" => return Ok(Type::Void),
+                //     _ => {}
+                // }
 
-                if base == "sizeof" {
+                if name == "sizeof" {
                     let param = &args[0];
                     if let Expr::Variable(name1, _) = param
                         && self.classes.contains_key(name1)
                     {
                         self.variables.last_mut().unwrap().remove(name);
+                        // return Ok(Type::StructLiteral(name1.to_string()));
                         return Ok(Type::int);
                     }
                 }
 
                 let (param_types, ret_type, attributes) = self
                     .lookup_fn(name)
-                    .ok_or_else(|| {
-                        let name = Self::call_base_name(name);
-                        format!("Undefined function '{name}'")
-                    })?
+                    .ok_or_else(|| format!("Undefined function '{name}'"))?
                     .clone();
 
                 if param_types.len() != args.len()
@@ -751,14 +868,19 @@ impl TypeChecker {
                         continue; // allow any pointer as void*
                     }
 
-                    if base == "sizeof" {
+                    if name == "sizeof" {
                         return Ok(Type::int);
                     }
 
+                    // if name == "print" {
+                    //     return Ok(Type::Void);
+                    // }
+
                     if arg_type != *expected_type {
-                        if base == "malloc"
+                        if name == "malloc"
                             && let Type::StructLiteral(_) = arg_type
                         {
+                            // return Ok(Type::StructLiteral(struname.to_string()));
                             return Ok(Type::Pointer(Box::new(Type::Void)));
                         }
                         return Err(format!(
@@ -878,8 +1000,6 @@ impl TypeChecker {
                 }
             }
             Expr::StructInit { name, params } => {
-                let _base = Self::qualified_base_name(name);
-
                 let class_fields = self
                     .class_fields
                     .get(name)
@@ -1134,7 +1254,7 @@ impl TypeChecker {
 
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
-            Stmt::AtDecl(decl, ..) => match decl.as_str() {
+            Stmt::AtDecl(decl, _, _, _) => match decl.as_str() {
                 "import" => Ok(stmt.clone()),
                 "const" | "CONST" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
@@ -1160,15 +1280,12 @@ impl TypeChecker {
                 } = &var_type
                 {
                     if instances.is_empty() {
-                        let resolved = self
-                            .resolve_struct_name(class_name)
-                            .ok_or_else(|| format!("Undefined class: '{class_name}'"))?;
                         let class_fields = self
                             .class_fields
-                            .get(&resolved)
+                            .get(class_name)
                             .ok_or_else(|| format!("Undefined class: '{class_name}'"))?;
                         Type::Struct {
-                            name: resolved,
+                            name: class_name.clone(),
                             instances: class_fields.clone(),
                         }
                     } else {
@@ -1450,6 +1567,31 @@ impl TypeChecker {
                         }
                     }
                 }
+
+                // for (i, stmt) in funcs.clone().iter().enumerate() {
+                //     match stmt {
+                //         Stmt::FunDecl { name, .. } => {
+                //             let name1 = name;
+                //             for (j, stmt1) in funcs.iter().enumerate() {
+                //                 match stmt1 {
+                //                     Stmt::FunDecl { name, .. } => {
+                //                         if name1 == name && i != j {
+                //                             return Err(
+                //                                 "Functions may not share a name".to_string()
+                //                             );
+                //                         }
+                //                     }
+                //                     _ => {
+                //                         return Err("Struct functions must be functions".to_string());
+                //                     }
+                //                 }
+                //             }
+                //         }
+                //         _ => {
+                //             return Err("Struct functions must be functions".to_string());
+                //         }
+                //     }
+                // }
 
                 Ok(Stmt::StructDecl {
                     name: name.to_string(),

@@ -12,6 +12,7 @@ use crate::{
 pub mod emitter;
 pub mod lir;
 pub mod target;
+pub mod x86_64_;
 
 #[derive(Debug)]
 pub struct Codegen {

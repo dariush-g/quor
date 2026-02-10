@@ -1,7 +1,0 @@
-@import <math.qu> | m
-
-def main(argc: int, argv: char**) :: int {
-    let x: int = m::add(3, 4);
-    let y: int = m::mul(2, 5);
-    return x + y;
-}

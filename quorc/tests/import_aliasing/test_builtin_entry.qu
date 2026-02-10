@@ -1,4 +1,0 @@
-def main(argc: int, argv: char**) :: int {
-    let p: char* = malloc(8);
-    return 0;
-}

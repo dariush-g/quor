@@ -1,8 +1,9 @@
-@import <string.qu> | s
+@import <io.qu>
 
+@const example_static_string = [1, 2 ,3]
 
 def main(argc: int, argv: char**) :: int {
-    let str: string = s::new_string();
+    print("%d", argc);
     return 0;
 }
 

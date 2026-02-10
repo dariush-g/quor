@@ -1,8 +1,0 @@
-struct point {
-    x: int;
-    y: int;
-}
-
-def make_point(x: int, y: int) :: point {
-    return point { x: x, y: y };
-}

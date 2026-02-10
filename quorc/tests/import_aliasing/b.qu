@@ -1,5 +1,0 @@
-@import <c.qu> | c
-
-def from_b() :: int {
-    return 2 + c::from_c();
-}

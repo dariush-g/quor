@@ -1,8 +1,0 @@
-@import <foo.qu> | foo
-@import <bar.qu> | bar
-
-def main(argc: int, argv: char**) :: int {
-    let a: int = foo::x();
-    let b: int = bar::x();
-    return a + b;
-}

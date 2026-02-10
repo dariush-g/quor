@@ -1,3 +1,0 @@
-def greet() :: int {
-    return 42;
-}

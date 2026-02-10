@@ -1,3 +1,0 @@
-def x() :: int {
-    return 2;
-}

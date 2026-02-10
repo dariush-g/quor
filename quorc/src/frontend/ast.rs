@@ -1,5 +1,4 @@
-#![allow(non_camel_case_types)]
-
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     int,
@@ -76,7 +75,12 @@ impl Type {
     pub fn fits_in_register(&self) -> bool {
         matches!(
             self,
-            Type::int | Type::float | Type::Long | Type::Char | Type::Bool | Type::Pointer(_)
+            Type::int
+                | Type::float
+                | Type::Long
+                | Type::Char
+                | Type::Bool
+                | Type::Pointer(_)
         )
     }
 
@@ -220,7 +224,7 @@ impl Expr {
     pub fn get_type(&self) -> Type {
         match self {
             Expr::StructInit { name, params } => Type::Struct {
-                name: name.clone(),
+                name: name.to_string(),
                 instances: params
                     .iter()
                     .map(|(name, expr)| (name.clone(), expr.get_type()))
@@ -303,13 +307,7 @@ impl Stmt {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    AtDecl(
-        String,
-        Option<String>,
-        Option<Expr>,
-        Option<Box<Stmt>>,
-        Option<String>,
-    ),
+    AtDecl(String, Option<String>, Option<Expr>, Option<Box<Stmt>>),
     VarDecl {
         name: String,
         var_type: Type,

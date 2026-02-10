@@ -1,6 +1,0 @@
-@import <point.qu> | pt
-
-def main(argc: int, argv: char**) :: int {
-    let p: int = pt::make_point(1, 2).x;
-    return p;
-}

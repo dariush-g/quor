@@ -1,4 +1,0 @@
-def alloc_int() :: int* {
-    let p: int* = malloc(4) as int*;
-    return p;
-}

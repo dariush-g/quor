@@ -1,6 +1,0 @@
-@import <math.qu>
-
-def main(argc: int, argv: char**) :: int {
-    let x: int = math::add(1, 2);
-    return x;
-}
