@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    cmp::max,
+    collections::{HashMap, HashSet, VecDeque},
+};
 
 use crate::{frontend::ast::*, mir::block::*};
 
@@ -161,10 +164,29 @@ impl IRGenerator {
         {
             let offsets = self.get_field_offsets(&instances, union);
 
+            let (max, max_typ) = offsets
+                .values()
+                .max_by_key(|(offset, _)| *offset)
+                .map(|(offset, ty)| (*offset, ty.clone()))
+                .unwrap_or((0, Type::Unknown));
+
+            if let Type::Unknown = max_typ {
+                let def = StructDef {
+                    name: name.clone(),
+                    fields: HashMap::new(),
+                    is_union: union,
+                    size: 0,
+                };
+
+                self.ir_program.structs.insert(name, def);
+                return Ok(());
+            }
+
             let def = StructDef {
                 name: name.clone(),
                 fields: offsets,
                 is_union: union,
+                size: max as usize + max_typ.size(),
             };
 
             self.ir_program.structs.insert(name, def);

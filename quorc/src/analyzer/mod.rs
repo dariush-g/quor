@@ -1299,6 +1299,15 @@ impl TypeChecker {
 
                 // println!("{value_type:?}, {resolved_type:?}");
 
+                if resolved_type == Type::Inferred {
+                    self.declare_var(name, resolved_type.clone())?;
+                    return Ok(Stmt::VarDecl {
+                        name: name.clone(),
+                        var_type: value_type,
+                        value: value.clone(),
+                    });
+                }
+
                 if value_type != resolved_type {
                     if let Type::Array(ty1, _) = value_type.clone() {
                         match resolved_type.clone() {

@@ -19,12 +19,8 @@ start ARM codegen
 add line numbers to errors and improve error warnings in general
 
 features todo:
-    type inference
-<<<<<<< HEAD
     namespaces, but make it purely semantic and syntactic:
         @import <io.qu> | io
-=======
->>>>>>> parent of a7db1a3 (starting namespaces here)
     generics -> monomorph / static dispatch
     traits -> dynamic dispatch
     closures

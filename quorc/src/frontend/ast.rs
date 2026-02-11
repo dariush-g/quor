@@ -23,6 +23,7 @@ pub enum Type {
     Void,
     Unknown,
     Pointer(Box<Type>),
+    Inferred,
 }
 
 impl Type {
@@ -75,12 +76,7 @@ impl Type {
     pub fn fits_in_register(&self) -> bool {
         matches!(
             self,
-            Type::int
-                | Type::float
-                | Type::Long
-                | Type::Char
-                | Type::Bool
-                | Type::Pointer(_)
+            Type::int | Type::float | Type::Long | Type::Char | Type::Bool | Type::Pointer(_)
         )
     }
 

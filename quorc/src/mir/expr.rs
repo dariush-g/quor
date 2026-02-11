@@ -577,18 +577,29 @@ impl IRGenerator {
                     Some(self.vreg_gen.fresh())
                 };
 
-                let args: Vec<Value> = args
-                    .iter()
-                    .map(|arg| {
-                        let (v, ty) = self.first_pass_parse_expr(arg.clone()).unwrap();
-                        self.materialize_call_arg(v, &ty)
-                    })
-                    .collect();
+                let mut value_args: Vec<Value> = vec![];
+
+                if "sizeof" == name
+                    && let Expr::Variable(name, _) = &args[0]
+                    && self.ir_program.structs.contains_key(name)
+                {
+                    value_args.push(Value::Const(
+                        self.ir_program.structs.get(name).unwrap().size as i64,
+                    ));
+                } else {
+                    value_args = args
+                        .iter()
+                        .map(|arg| {
+                            let (v, ty) = self.first_pass_parse_expr(arg.clone()).unwrap();
+                            self.materialize_call_arg(v, &ty)
+                        })
+                        .collect();
+                }
 
                 let instr = IRInstruction::Call {
                     reg,
                     func: name,
-                    args,
+                    args: value_args,
                 };
 
                 self.scope_handler.instructions.push(instr);
@@ -757,7 +768,6 @@ impl IRGenerator {
         }
     }
 
-
     fn materialize_call_arg(&mut self, v: Value, ty: &Type) -> Value {
         if ty.fits_in_register() {
             self.ensure_rvalue(v, ty)
@@ -770,7 +780,7 @@ impl IRGenerator {
                         .push(IRInstruction::AddressOf { dest: reg, src: v });
                     Value::Reg(reg)
                 }
-                Value::Reg(_) => v, 
+                Value::Reg(_) => v,
                 _ => v,
             }
         }

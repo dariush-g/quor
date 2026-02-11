@@ -495,9 +495,14 @@ impl Parser {
             _ => return Err(ParseError::UnexpectedToken(name.clone())),
         };
 
-        self.consume(TokenType::Colon, "Expected ':' after variable name")?;
+        let mut var_type = Type::Inferred;
 
-        let var_type = self.parse_type()?;
+        if let TokenType::Colon = self.peek().token_type {
+            self.advance();
+            var_type = self.parse_type()?;
+        }
+
+        // self.consume(TokenType::Colon, "Expected ':' after variable name")?;
 
         self.consume(TokenType::Equal, "Expected '=' after variable type")?;
 

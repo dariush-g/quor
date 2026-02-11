@@ -192,6 +192,7 @@ pub struct StructDef {
     pub name: String,
     pub fields: HashMap<String, (i32, Type)>,
     pub is_union: bool,
+    pub size: usize,
 }
 
 #[derive(Debug, Clone)]

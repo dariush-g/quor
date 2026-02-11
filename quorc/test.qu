@@ -1,10 +1,14 @@
 struct X {
+    y: Y;
     data: int;
     name: char*;
 }
 
+struct Y {
+    x: int;
+}
+
 def main() :: int {
-    let x: X = X { data: 10, name: "hello" };
     
     return 0;
 }
