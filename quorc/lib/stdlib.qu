@@ -7,8 +7,8 @@ struct string {
 }
 
 def new_string() :: string {
-    let len: int = 10;
-    let str: string = string { ptr: malloc(len) as char*, length: 0, capacity: 10 };
+    let len = 10;
+    let str = string { ptr: malloc(len) as char*, length: 0, capacity: 10 };
     *str.ptr = '\0';
     return str;
 }

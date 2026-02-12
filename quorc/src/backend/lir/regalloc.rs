@@ -8,17 +8,6 @@ use crate::{
 
 pub fn mir_to_lir(mir: IRProgram) {}
 
-impl IRFunction {
-    pub fn to_lir<
-        R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
-        F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
-    >(
-        &self,
-    ) -> LFunction<R, F> {
-        todo!()
-    }
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum RegRef<
     R: Eq + Copy + std::fmt::Debug + Copy + Hash,
@@ -159,53 +148,83 @@ pub enum CmpOp {
     Ge,
 }
 
-pub trait TargetRegs {
+pub trait TargetRegs
+where
+    <Self as TargetRegs>::Reg: 'static,
+    <Self as TargetRegs>::FpReg: 'static,
+{
     type Reg: Copy + Eq + std::fmt::Debug + std::hash::Hash;
     type FpReg: Copy + Eq + std::fmt::Debug + std::hash::Hash;
 
-    fn all_regs() -> &'static [Self::Reg];
-    fn allocatable_regs() -> &'static [Self::Reg];
+    fn all_regs(&self) -> &'static [Self::Reg];
+    fn allocatable_regs(&self) -> &'static [Self::Reg];
 
-    fn sp() -> Self::Reg;
-    fn fp() -> Option<Self::Reg>;
-    fn lr() -> Option<Self::Reg>; // aarch64 Some() | x86 None
+    fn sp(&self) -> Self::Reg;
+    fn fp(&self) -> Option<Self::Reg>;
+    fn lr(&self) -> Option<Self::Reg>; // aarch64 Some() | x86 None
 
-    fn caller_saved_regs() -> &'static [Self::Reg];
-    fn callee_saved_regs() -> &'static [Self::Reg];
+    fn caller_saved_regs(&self) -> &'static [Self::Reg];
+    fn callee_saved_regs(&self) -> &'static [Self::Reg];
 
-    fn arg_regs() -> &'static [Self::Reg];
-    fn fp_arg_regs() -> &'static [Self::FpReg];
-    fn ret_reg() -> Self::Reg;
+    fn arg_regs(&self) -> &'static [Self::Reg];
+    fn fp_arg_regs(&self) -> &'static [Self::FpReg];
+    fn ret_reg(&self) -> Self::Reg;
 
-    fn scratch_regs() -> &'static [Self::Reg];
+    fn scratch_regs(&self) -> &'static [Self::Reg];
 
-    fn float_regs() -> &'static [Self::FpReg];
+    fn float_regs(&self) -> &'static [Self::FpReg];
 
-    fn is_caller_saved(r: Self::Reg) -> bool;
-    fn is_callee_saved(r: Self::Reg) -> bool;
+    fn is_caller_saved(&self, r: Self::Reg) -> bool;
+    fn is_callee_saved(&self, r: Self::Reg) -> bool;
 
-    fn fp_is_caller_saved(r: Self::FpReg) -> bool;
-    fn fp_is_callee_saved(r: Self::FpReg) -> bool;
+    fn fp_is_caller_saved(&self, r: Self::FpReg) -> bool;
+    fn fp_is_callee_saved(&self, r: Self::FpReg) -> bool;
 
-    fn reg32(reg: Self::Reg) -> &'static str;
-    fn reg64(reg: Self::Reg) -> &'static str;
+    fn reg32(&self, reg: Self::Reg) -> &'static str;
+    fn reg64(&self, reg: Self::Reg) -> &'static str;
 
-    fn float128(reg: Self::FpReg) -> &'static str;
+    fn float128(&self, reg: Self::FpReg) -> &'static str;
 
-    fn fp_caller_saved() -> &'static [Self::FpReg];
-    fn fp_callee_saved() -> &'static [Self::FpReg];
+    fn fp_caller_saved(&self) -> &'static [Self::FpReg];
+    fn fp_callee_saved(&self) -> &'static [Self::FpReg];
 
-    fn regalloc(func: &IRFunction) -> Allocation<Self::Reg, Self::FpReg> {
-        let vreg_loc = HashMap::new();
+    fn regalloc(&self, func: &IRFunction) -> Allocation<Self::Reg, Self::FpReg> {
+        let mut vreg_loc: HashMap<
+            VReg,
+            Loc<<Self as TargetRegs>::Reg, <Self as TargetRegs>::FpReg>,
+        > = HashMap::new();
         let used_callee_saved = Vec::new();
         let used_callee_saved_fp = Vec::new();
 
-        
+        // TODO: Fp reg params
+
+        for (param, reg) in func.params.clone().iter().zip(self.arg_regs()) {
+            vreg_loc.insert(*param, Loc::PhysReg(RegRef::GprReg(*reg)));
+        }
+
+        println!("{:?}", vreg_loc);
 
         Allocation {
             vreg_loc,
             used_callee_saved,
             used_callee_saved_fp,
+        }
+    }
+
+    fn to_lir<
+        R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+        F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
+    >(
+        &self,
+        func: &IRFunction,
+    ) -> LFunction<R, F> {
+        let name = func.name.clone();
+        let allocation = self.regalloc(func);
+
+        LFunction {
+            name,
+            blocks: todo!(),
+            entry: todo!(),
         }
     }
 }

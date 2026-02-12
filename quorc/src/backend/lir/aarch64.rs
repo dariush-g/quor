@@ -240,51 +240,54 @@ pub enum A64RegFpr {
     V31,
 }
 
-impl TargetRegs for A64RegGpr {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct A64Regs;
+
+impl TargetRegs for A64Regs {
     type Reg = A64RegGpr;
     type FpReg = A64RegFpr;
 
-    fn all_regs() -> &'static [Self::Reg] {
+    fn all_regs(&self) -> &'static [Self::Reg] {
         A64RegGpr::ALL
     }
 
-    fn allocatable_regs() -> &'static [Self::Reg] {
+    fn allocatable_regs(&self) -> &'static [Self::Reg] {
         A64RegGpr::ALLOCATABLE
     }
 
-    fn sp() -> Self::Reg {
+    fn sp(&self) -> Self::Reg {
         A64RegGpr::SP
     }
 
-    fn fp() -> Option<Self::Reg> {
+    fn fp(&self) -> Option<Self::Reg> {
         Some(A64RegGpr::FP)
     }
 
-    fn lr() -> Option<Self::Reg> {
+    fn lr(&self) -> Option<Self::Reg> {
         Some(A64RegGpr::LR)
     }
 
-    fn caller_saved_regs() -> &'static [Self::Reg] {
+    fn caller_saved_regs(&self) -> &'static [Self::Reg] {
         A64RegGpr::CALLER_SAVED
     }
 
-    fn callee_saved_regs() -> &'static [Self::Reg] {
+    fn callee_saved_regs(&self) -> &'static [Self::Reg] {
         todo!()
     }
 
-    fn arg_regs() -> &'static [Self::Reg] {
-        todo!()
+    fn arg_regs(&self) -> &'static [Self::Reg] {
+        A64RegGpr::ARG_REGS
     }
 
-    fn ret_reg() -> Self::Reg {
+    fn ret_reg(&self) -> Self::Reg {
         A64RegGpr::X0
     }
 
-    fn scratch_regs() -> &'static [Self::Reg] {
+    fn scratch_regs(&self) -> &'static [Self::Reg] {
         todo!()
     }
 
-    fn is_caller_saved(r: Self::Reg) -> bool {
+    fn is_caller_saved(&self, r: Self::Reg) -> bool {
         matches!(
             r,
             A64RegGpr::X0
@@ -308,7 +311,7 @@ impl TargetRegs for A64RegGpr {
         )
     }
 
-    fn is_callee_saved(r: Self::Reg) -> bool {
+    fn is_callee_saved(&self, r: Self::Reg) -> bool {
         matches!(
             r,
             A64RegGpr::X19
@@ -324,7 +327,7 @@ impl TargetRegs for A64RegGpr {
         )
     }
 
-    fn reg32(reg: Self::Reg) -> &'static str {
+    fn reg32(&self, reg: Self::Reg) -> &'static str {
         match reg {
             A64RegGpr::X0 => "w0",
             A64RegGpr::X1 => "w1",
@@ -361,7 +364,7 @@ impl TargetRegs for A64RegGpr {
         }
     }
 
-    fn reg64(reg: Self::Reg) -> &'static str {
+    fn reg64(&self, reg: Self::Reg) -> &'static str {
         match reg {
             A64RegGpr::X0 => "x0",
             A64RegGpr::X1 => "x1",
@@ -398,11 +401,11 @@ impl TargetRegs for A64RegGpr {
         }
     }
 
-    fn float_regs() -> &'static [Self::FpReg] {
+    fn float_regs(&self) -> &'static [Self::FpReg] {
         A64RegFpr::ALL_FP
     }
 
-    fn float128(reg: Self::FpReg) -> &'static str {
+    fn float128(&self, reg: Self::FpReg) -> &'static str {
         match reg {
             A64RegFpr::V0 => "v0",
             A64RegFpr::V1 => "v1",
@@ -439,7 +442,7 @@ impl TargetRegs for A64RegGpr {
         }
     }
 
-    fn fp_is_caller_saved(r: Self::FpReg) -> bool {
+    fn fp_is_caller_saved(&self, r: Self::FpReg) -> bool {
         matches!(
             r,
             A64RegFpr::V0
@@ -469,7 +472,7 @@ impl TargetRegs for A64RegGpr {
         )
     }
 
-    fn fp_is_callee_saved(r: Self::FpReg) -> bool {
+    fn fp_is_callee_saved(&self, r: Self::FpReg) -> bool {
         matches!(
             r,
             A64RegFpr::V8
@@ -483,15 +486,15 @@ impl TargetRegs for A64RegGpr {
         )
     }
 
-    fn fp_caller_saved() -> &'static [Self::FpReg] {
+    fn fp_caller_saved(&self) -> &'static [Self::FpReg] {
         A64RegFpr::FP_CALLER_SAVED
     }
 
-    fn fp_callee_saved() -> &'static [Self::FpReg] {
+    fn fp_callee_saved(&self) -> &'static [Self::FpReg] {
         A64RegFpr::FP_CALLEE_SAVED
     }
 
-    fn fp_arg_regs() -> &'static [Self::FpReg] {
+    fn fp_arg_regs(&self) -> &'static [Self::FpReg] {
         A64RegFpr::ARG_REGS
     }
 }

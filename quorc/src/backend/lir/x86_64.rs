@@ -152,51 +152,51 @@ impl TargetRegs for X86Regs {
     type Reg = X86RegGpr;
     type FpReg = X86RegFpr;
 
-    fn all_regs() -> &'static [Self::Reg] {
+    fn all_regs(&self) -> &'static [Self::Reg] {
         X86RegGpr::ALL
     }
 
-    fn allocatable_regs() -> &'static [Self::Reg] {
+    fn allocatable_regs(&self) -> &'static [Self::Reg] {
         todo!()
     }
 
-    fn sp() -> Self::Reg {
+    fn sp(&self) -> Self::Reg {
         X86RegGpr::RSP
     }
 
-    fn fp() -> Option<Self::Reg> {
+    fn fp(&self) -> Option<Self::Reg> {
         None
     }
 
-    fn lr() -> Option<Self::Reg> {
+    fn lr(&self) -> Option<Self::Reg> {
         None
     }
 
-    fn caller_saved_regs() -> &'static [Self::Reg] {
+    fn caller_saved_regs(&self) -> &'static [Self::Reg] {
         X86RegGpr::GPR_CALLER_SAVED
     }
 
-    fn callee_saved_regs() -> &'static [Self::Reg] {
+    fn callee_saved_regs(&self) -> &'static [Self::Reg] {
         X86RegGpr::GPR_CALLEE_SAVED
     }
 
-    fn arg_regs() -> &'static [Self::Reg] {
+    fn arg_regs(&self) -> &'static [Self::Reg] {
         X86RegGpr::ARG_REGS
     }
 
-    fn ret_reg() -> Self::Reg {
+    fn ret_reg(&self) -> Self::Reg {
         X86RegGpr::RAX
     }
 
-    fn scratch_regs() -> &'static [Self::Reg] {
+    fn scratch_regs(&self) -> &'static [Self::Reg] {
         todo!()
     }
 
-    fn float_regs() -> &'static [Self::FpReg] {
+    fn float_regs(&self) -> &'static [Self::FpReg] {
         X86RegFpr::ALL
     }
 
-    fn is_caller_saved(r: Self::Reg) -> bool {
+    fn is_caller_saved(&self, r: Self::Reg) -> bool {
         matches!(
             r,
             X86RegGpr::RAX
@@ -211,7 +211,7 @@ impl TargetRegs for X86Regs {
         )
     }
 
-    fn is_callee_saved(r: Self::Reg) -> bool {
+    fn is_callee_saved(&self, r: Self::Reg) -> bool {
         matches!(
             r,
             X86RegGpr::RBX
@@ -223,7 +223,7 @@ impl TargetRegs for X86Regs {
         )
     }
 
-    fn fp_is_caller_saved(r: Self::FpReg) -> bool {
+    fn fp_is_caller_saved(&self, r: Self::FpReg) -> bool {
         matches!(
             r,
             X86RegFpr::XMM0
@@ -237,7 +237,7 @@ impl TargetRegs for X86Regs {
         )
     }
 
-    fn fp_is_callee_saved(r: Self::FpReg) -> bool {
+    fn fp_is_callee_saved(&self, r: Self::FpReg) -> bool {
         matches!(
             r,
             X86RegFpr::XMM8
@@ -251,7 +251,7 @@ impl TargetRegs for X86Regs {
         )
     }
 
-    fn reg32(reg: Self::Reg) -> &'static str {
+    fn reg32(&self, reg: Self::Reg) -> &'static str {
         match reg {
             X86RegGpr::RAX => "eax",
             X86RegGpr::RBX => "ebx",
@@ -272,7 +272,7 @@ impl TargetRegs for X86Regs {
         }
     }
 
-    fn reg64(reg: Self::Reg) -> &'static str {
+    fn reg64(&self, reg: Self::Reg) -> &'static str {
         match reg {
             X86RegGpr::RAX => "rax",
             X86RegGpr::RBX => "rbx",
@@ -293,7 +293,7 @@ impl TargetRegs for X86Regs {
         }
     }
 
-    fn float128(reg: Self::FpReg) -> &'static str {
+    fn float128(&self, reg: Self::FpReg) -> &'static str {
         match reg {
             X86RegFpr::XMM0 => "xmm0",
             X86RegFpr::XMM1 => "xmm1",
@@ -314,15 +314,15 @@ impl TargetRegs for X86Regs {
         }
     }
 
-    fn fp_caller_saved() -> &'static [Self::FpReg] {
+    fn fp_caller_saved(&self) -> &'static [Self::FpReg] {
         X86RegFpr::FP_CALLER_SAVED
     }
 
-    fn fp_callee_saved() -> &'static [Self::FpReg] {
+    fn fp_callee_saved(&self) -> &'static [Self::FpReg] {
         X86RegFpr::FP_CALLEE_SAVED
     }
 
-    fn fp_arg_regs() -> &'static [Self::FpReg] {
+    fn fp_arg_regs(&self) -> &'static [Self::FpReg] {
         X86RegFpr::ARG_REGS
     }
 }

@@ -1,9 +1,10 @@
+use crate::backend::lir::regalloc::TargetRegs;
 use std::collections::HashMap;
 
 use crate::{
     backend::{
-        emitter::aarch64::ARMEmitter,
-        emitter::x86_64::X86Emitter,
+        emitter::{aarch64::ARMEmitter, x86_64::X86Emitter},
+        lir::aarch64::A64Regs,
         target::{Target, TargetEmitter},
     },
     mir::block::*,
@@ -21,6 +22,10 @@ pub struct Codegen {
     pub emitter: ARMEmitter,
     #[cfg(target_arch = "x86_64")]
     pub emitter: X86Emitter,
+    #[cfg(target_arch = "aarch64")]
+    pub target_regs: A64Regs,
+    #[cfg(target_arch = "x86_64")]
+    pub emitter: X86Regs,
     pub asm: AsmEmitter,
 }
 
@@ -37,6 +42,10 @@ impl Codegen {
             emitter: ARMEmitter::default(),
             #[cfg(target_arch = "x86_64")]
             emitter: X86Emitter::default(),
+            #[cfg(target_arch = "aarch64")]
+            target_regs: A64Regs,
+            #[cfg(target_arch = "x86_64")]
+            emitter: X86Regs,
             asm: AsmEmitter::default(),
         };
 
@@ -50,7 +59,9 @@ impl Codegen {
         }
 
         for (_, function) in ir_program.functions {
-            codegen.emitter.generate_function(&function.to_lir());
+            codegen
+                .emitter
+                .generate_function(&codegen.target_regs.to_lir(&function));
         }
 
         codegen.emit()

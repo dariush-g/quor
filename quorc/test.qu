@@ -1,15 +1,6 @@
-struct X {
-    y: Y;
-    data: int;
-    name: char*;
-}
+@import <stdlib.qu>
 
-struct Y {
-    x: int;
-}
-
-def main() :: int {
-    
+def main(argc: int, argv: char**) :: int {
+    let str = new_string();
     return 0;
 }
-
