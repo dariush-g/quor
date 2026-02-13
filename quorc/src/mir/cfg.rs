@@ -37,8 +37,15 @@ pub struct VRegGenerator {
 }
 
 impl VRegGenerator {
-    pub fn fresh(&mut self) -> VReg {
-        let reg = VReg(self.next);
+    pub fn fresh(&mut self, is_float: bool) -> VReg {
+        let reg = VReg {
+            id: self.next,
+            ty: if is_float {
+                VRegType::Float
+            } else {
+                VRegType::Int
+            },
+        };
         self.next += 1;
         reg
     }
@@ -293,7 +300,7 @@ impl IRGenerator {
 
             let mut params = Vec::with_capacity(func_params.len());
             for (param_name, param_ty) in func_params.clone() {
-                let param_reg = self.vreg_gen.fresh();
+                let param_reg = self.vreg_gen.fresh(Type::float == param_ty);
                 if param_ty.fits_in_register() {
                     // Primitive or pointer: keep in VReg, no stack allocation needed
                     self.var_map

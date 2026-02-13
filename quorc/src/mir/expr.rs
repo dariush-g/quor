@@ -68,7 +68,7 @@ impl IRGenerator {
                     );
                 }
                 _ => {
-                    let temp_reg = self.vreg_gen.fresh();
+                    let temp_reg = self.vreg_gen.fresh(field_ty.clone() == Type::float);
 
                     self.scope_handler.instructions.push(IRInstruction::Load {
                         reg: temp_reg,
@@ -149,7 +149,7 @@ impl IRGenerator {
 
                 if expr_ty.fits_in_register() {
                     // primitive or pointer: use vReg
-                    let vreg = self.vreg_gen.fresh();
+                    let vreg = self.vreg_gen.fresh(expr_ty == Type::float);
                     self.var_map
                         .insert(var_name, (ty.clone(), Value::Reg(vreg)));
                     let v = self.ensure_rvalue(v, &expr_ty);
@@ -283,7 +283,7 @@ impl IRGenerator {
             }
             Expr::AddressOf(expression) => {
                 let (place, inner_ty) = self.lower_place(*expression).unwrap();
-                let reg = self.vreg_gen.fresh();
+                let reg = self.vreg_gen.fresh(false);
                 self.scope_handler
                     .instructions
                     .push(IRInstruction::AddressOf {
@@ -310,7 +310,7 @@ impl IRGenerator {
             }
             Expr::InstanceVar(struct_var_name, field_name) => {
                 let mut field_type = Type::Void;
-                let vreg = self.vreg_gen.fresh();
+                let vreg = self.vreg_gen.fresh(field_type == Type::float);
                 if let Some((ty, id)) = self.var_map.get(&struct_var_name) {
                     if let Type::Struct { name, .. } = ty {
                         let struct_def = self.ir_program.structs.get(name).unwrap();
@@ -350,11 +350,10 @@ impl IRGenerator {
                 };
 
                 if ty.fits_in_register() {
-                    // Primitive or pointer: ensure we have a reg (load if in memory)
                     match &value {
                         Value::Reg(_) => Some((value, ty)),
                         Value::Local(_) | Value::Global(_) => {
-                            let reg = self.vreg_gen.fresh();
+                            let reg = self.vreg_gen.fresh(ty == Type::float);
                             self.scope_handler.instructions.push(IRInstruction::Load {
                                 reg,
                                 addr: value,
@@ -366,7 +365,6 @@ impl IRGenerator {
                         _ => Some((value, ty)),
                     }
                 } else {
-                    // Struct or array: pass address/value as-is (no load into reg)
                     Some((value, ty))
                 }
             }
@@ -434,7 +432,7 @@ impl IRGenerator {
                 let (right_rvalue, right_type) = self.first_pass_parse_expr(*right).unwrap();
                 let right = self.ensure_rvalue(right_rvalue, &right_type);
 
-                let reg = self.vreg_gen.fresh();
+                let reg = self.vreg_gen.fresh(result_type == Type::float);
 
                 match op {
                     BinaryOp::Add => self.scope_handler.instructions.push(IRInstruction::Add {
@@ -512,7 +510,7 @@ impl IRGenerator {
                 UnaryOp::Not => {
                     let (v, ty) = self.first_pass_parse_expr(*expr).unwrap();
                     let v = self.ensure_rvalue(v, &ty);
-                    let reg = self.vreg_gen.fresh();
+                    let reg = self.vreg_gen.fresh(result_type == Type::float);
                     self.scope_handler.instructions.push(IRInstruction::Eq {
                         reg,
                         left: v,
@@ -524,7 +522,7 @@ impl IRGenerator {
                 UnaryOp::Negate => {
                     let (v, ty) = self.first_pass_parse_expr(*expr).unwrap();
                     let v = self.ensure_rvalue(v, &ty);
-                    let reg = self.vreg_gen.fresh();
+                    let reg = self.vreg_gen.fresh(result_type == Type::float);
                     self.scope_handler.instructions.push(IRInstruction::Sub {
                         reg,
                         left: Value::Const(0),
@@ -537,7 +535,7 @@ impl IRGenerator {
                     let (place, inner_ty) = self
                         .lower_place(*expr)
                         .expect("cannot take address of non-place");
-                    let reg = self.vreg_gen.fresh();
+                    let reg = self.vreg_gen.fresh(result_type == Type::float);
                     self.scope_handler
                         .instructions
                         .push(IRInstruction::AddressOf {
@@ -556,7 +554,7 @@ impl IRGenerator {
                         _ => panic!("cannot dereference non-pointer type"),
                     };
 
-                    let reg = self.vreg_gen.fresh();
+                    let reg = self.vreg_gen.fresh(result_type == Type::float);
                     self.scope_handler.instructions.push(IRInstruction::Load {
                         reg,
                         addr: ptr,
@@ -574,7 +572,7 @@ impl IRGenerator {
                 let reg = if return_type == Type::Void {
                     None
                 } else {
-                    Some(self.vreg_gen.fresh())
+                    Some(self.vreg_gen.fresh(return_type == Type::float))
                 };
 
                 let mut value_args: Vec<Value> = vec![];
@@ -612,7 +610,7 @@ impl IRGenerator {
             Expr::Cast { expr, target_type } => {
                 let (from_val, from_ty) = self.first_pass_parse_expr(*expr).unwrap();
                 let from_val = self.ensure_rvalue(from_val, &from_ty);
-                let result_reg = self.vreg_gen.fresh();
+                let result_reg = self.vreg_gen.fresh(target_type == Type::float);
                 self.scope_handler.instructions.push(IRInstruction::Cast {
                     reg: result_reg,
                     src: from_val,
@@ -651,7 +649,7 @@ impl IRGenerator {
                 let (index_val, index_ty) = self.first_pass_parse_expr(*index).unwrap();
                 let index_val = self.ensure_rvalue(index_val, &index_ty);
 
-                let addr_reg = self.vreg_gen.fresh();
+                let addr_reg = self.vreg_gen.fresh(false);
                 self.scope_handler.instructions.push(IRInstruction::Gep {
                     dest: addr_reg,
                     base: addr_val,
@@ -659,7 +657,7 @@ impl IRGenerator {
                     scale: elem_ty.size(),
                 });
 
-                let result_reg = self.vreg_gen.fresh();
+                let result_reg = self.vreg_gen.fresh(elem_ty == Type::float);
                 self.scope_handler.instructions.push(IRInstruction::Load {
                     reg: result_reg,
                     addr: Value::Reg(addr_reg),
@@ -685,7 +683,7 @@ impl IRGenerator {
 
                 let base_ptr = match base {
                     Value::Local(_) | Value::Global(_) => {
-                        let reg = self.vreg_gen.fresh();
+                        let reg = self.vreg_gen.fresh(false);
                         self.scope_handler
                             .instructions
                             .push(IRInstruction::AddressOf {
@@ -697,7 +695,7 @@ impl IRGenerator {
                     _ => base,
                 };
 
-                let addr_reg = self.vreg_gen.fresh();
+                let addr_reg = self.vreg_gen.fresh(false);
                 self.scope_handler.instructions.push(IRInstruction::Gep {
                     dest: addr_reg,
                     base: base_ptr,
@@ -774,7 +772,7 @@ impl IRGenerator {
         } else {
             match &v {
                 Value::Local(_) | Value::Global(_) => {
-                    let reg = self.vreg_gen.fresh();
+                    let reg = self.vreg_gen.fresh(false);
                     self.scope_handler
                         .instructions
                         .push(IRInstruction::AddressOf { dest: reg, src: v });
@@ -791,7 +789,7 @@ impl IRGenerator {
             Value::Reg(_) | Value::Const(_) | Value::ConstFloat(_) => v,
             Value::Local(_) | Value::Global(_) => {
                 if ty.fits_in_register() {
-                    let r = self.vreg_gen.fresh();
+                    let r = self.vreg_gen.fresh(ty == &Type::float);
                     self.scope_handler.instructions.push(IRInstruction::Load {
                         reg: r,
                         addr: v,

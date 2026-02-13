@@ -3,10 +3,11 @@ use std::{collections::HashMap, hash::Hash};
 use crate::{
     backend::lir::{SymId, aarch64::A64RegGpr},
     frontend::ast::Type,
-    mir::block::{BlockId, GlobalDef, GlobalValue, IRFunction, IRProgram, VReg},
+    mir::block::{
+        BlockId, GlobalDef, GlobalValue, IRBlock, IRFunction, IRInstruction, IRProgram, Terminator,
+        VReg, Value,
+    },
 };
-
-pub fn mir_to_lir(mir: IRProgram) {}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum RegRef<
@@ -202,7 +203,9 @@ where
             vreg_loc.insert(*param, Loc::PhysReg(RegRef::GprReg(*reg)));
         }
 
-        println!("{:?}", vreg_loc);
+        let flattened_blocks = flatten_blocks(func.blocks.clone());
+        let lifetimes: HashMap<VReg, LiveRange> = assign_live_ranges(flattened_blocks);
+
 
         Allocation {
             vreg_loc,
@@ -298,4 +301,162 @@ pub struct LStructDef {
 pub struct LGlobalDef {
     pub id: usize,
     pub value: GlobalValue,
+}
+
+fn flatten_blocks(blocks: Vec<IRBlock>) -> Vec<LifetimeInstr> {
+    let mut insts = Vec::new();
+
+    for block in blocks {
+        insts.extend(
+            block
+                .instructions
+                .into_iter()
+                .map(LifetimeInstr::IRInstruction),
+        );
+        insts.push(LifetimeInstr::Terminator(block.terminator));
+    }
+
+    insts
+}
+
+#[derive(Debug, Clone)]
+enum LifetimeInstr {
+    IRInstruction(IRInstruction),
+    Terminator(Terminator),
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct LiveRange {
+    vreg: VReg,
+    start: usize, // index of start and end within the Vec<LifetimeInstr>
+    end: usize,
+}
+
+fn vreg_of_value(value: &Value) -> Option<&VReg> {
+    if let Value::Reg(vreg) = value {
+        return Some(vreg);
+    }
+    None
+}
+fn assign_live_ranges(insts: Vec<LifetimeInstr>) -> HashMap<VReg, LiveRange> {
+    let mut map: HashMap<VReg, LiveRange> = HashMap::new();
+
+    for (idx, inst) in insts.iter().enumerate() {
+        match inst {
+            LifetimeInstr::IRInstruction(irinstruction) => match irinstruction {
+                IRInstruction::Add { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Sub { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Mul { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Div { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Mod { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Eq { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Ne { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Lt { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Le { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Ge { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Gt { reg, left, right } => {
+                    update_live_range(vreg_of_value(right), &mut map, idx);
+                    update_live_range(vreg_of_value(left), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Cast { reg, src, .. } => {
+                    update_live_range(vreg_of_value(src), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Load { reg, addr, .. } => {
+                    update_live_range(vreg_of_value(addr), &mut map, idx);
+                    update_live_range(Some(reg), &mut map, idx);
+                }
+                IRInstruction::Store { value, addr, .. } => {
+                    update_live_range(vreg_of_value(addr), &mut map, idx);
+                    update_live_range(vreg_of_value(value), &mut map, idx);
+                }
+                IRInstruction::Gep { dest, base, .. } => {
+                    update_live_range(Some(dest), &mut map, idx);
+                    update_live_range(vreg_of_value(base), &mut map, idx);
+                }
+                IRInstruction::Call { reg, args, .. } => {
+                    update_live_range(reg.as_ref(), &mut map, idx);
+                    args.iter()
+                        .for_each(|arg| update_live_range(vreg_of_value(arg), &mut map, idx));
+                }
+                IRInstruction::Move { dest, from } => {
+                    update_live_range(Some(dest), &mut map, idx);
+                    update_live_range(vreg_of_value(from), &mut map, idx);
+                }
+                IRInstruction::AddressOf { dest, src } => {
+                    update_live_range(Some(dest), &mut map, idx);
+                    update_live_range(vreg_of_value(src), &mut map, idx);
+                }
+                IRInstruction::Memcpy { dst, src, .. } => {
+                    update_live_range(vreg_of_value(src), &mut map, idx);
+                    update_live_range(vreg_of_value(dst), &mut map, idx);
+                }
+                _ => {}
+            },
+            LifetimeInstr::Terminator(terminator) => match terminator {
+                Terminator::Return { value: Some(value) } => {
+                    update_live_range(vreg_of_value(value), &mut map, idx)
+                }
+                Terminator::Branch { condition, .. } => {
+                    update_live_range(vreg_of_value(condition), &mut map, idx)
+                }
+                _ => {}
+            },
+        }
+    }
+
+    map
+}
+
+fn update_live_range(vreg: Option<&VReg>, map: &mut HashMap<VReg, LiveRange>, idx: usize) {
+    if let Some(vreg) = vreg {
+        map.entry(*vreg)
+            .and_modify(|range| range.end = idx)
+            .or_insert(LiveRange {
+                vreg: *vreg,
+                start: idx,
+                end: idx,
+            });
+    }
 }

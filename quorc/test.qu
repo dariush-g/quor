@@ -1,6 +1,7 @@
-@import <stdlib.qu>
 
-def main(argc: int, argv: char**) :: int {
-    let str = new_string();
+def main() :: int {
+    let x = 0;
+    x= x + 2;
+    
     return 0;
 }

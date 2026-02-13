@@ -3,7 +3,16 @@ use std::collections::HashMap;
 use crate::frontend::ast::{Expr, Type};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct VReg(pub usize);
+pub struct VReg {
+    pub id: usize,
+    pub ty: VRegType,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VRegType {
+    Int,
+    Float,
+}
 
 #[derive(Debug, Clone)]
 pub enum Value {
