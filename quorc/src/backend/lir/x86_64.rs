@@ -143,12 +143,32 @@ impl X86RegGpr {
         X86RegGpr::R14,
         X86RegGpr::R15,
     ];
+
+    pub const ALLOCATABLE: &'static [X86RegGpr] = &[
+        X86RegGpr::RAX,
+        X86RegGpr::RCX,
+        X86RegGpr::RDX,
+        X86RegGpr::RSI,
+        X86RegGpr::RDI,
+        X86RegGpr::R8,
+        X86RegGpr::R9,
+        X86RegGpr::R10,
+        X86RegGpr::R11,
+        X86RegGpr::RBX,
+        X86RegGpr::R12,
+        X86RegGpr::R13,
+        X86RegGpr::R14,
+        X86RegGpr::R15,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct X86Regs;
 
 impl TargetRegs for X86Regs {
+    const NUM_ALLOCATABLE: usize = 14;
+    const FPR_ALLOCATABLE: usize = 15;
+
     type Reg = X86RegGpr;
     type FpReg = X86RegFpr;
 

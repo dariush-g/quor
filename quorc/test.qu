@@ -1,7 +1,10 @@
 
 def main() :: int {
-    let x = 0;
-    x= x + 2;
+    let x = 1;
+    let y = 0.1;
+
+    let z = y as int;
+    let k = x;
     
     return 0;
 }

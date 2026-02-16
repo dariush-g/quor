@@ -170,6 +170,15 @@ impl A64RegGpr {
     ];
 
     pub const ALLOCATABLE: &'static [A64RegGpr] = &[
+        A64RegGpr::X9,
+        A64RegGpr::X10,
+        A64RegGpr::X11,
+        A64RegGpr::X12,
+        A64RegGpr::X13,
+        A64RegGpr::X14,
+        A64RegGpr::X15,
+        A64RegGpr::X16,
+        A64RegGpr::X17,
         A64RegGpr::X19,
         A64RegGpr::X20,
         A64RegGpr::X21,
@@ -246,6 +255,9 @@ pub struct A64Regs;
 impl TargetRegs for A64Regs {
     type Reg = A64RegGpr;
     type FpReg = A64RegFpr;
+
+    const FPR_ALLOCATABLE: usize = 31;
+    const NUM_ALLOCATABLE: usize = 19;
 
     fn all_regs(&self) -> &'static [Self::Reg] {
         A64RegGpr::ALL

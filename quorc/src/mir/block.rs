@@ -8,6 +8,16 @@ pub struct VReg {
     pub ty: VRegType,
 }
 
+impl VReg {
+    pub fn is_gpr(&self) -> bool {
+        self.ty == VRegType::Int
+    }
+
+    pub fn is_fpr(&self) -> bool {
+        self.ty == VRegType::Float
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VRegType {
     Int,

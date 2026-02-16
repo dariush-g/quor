@@ -587,9 +587,15 @@ impl TypeChecker {
                 }
             }
             Expr::Unary { expr: inner, .. } => self.fill_expr_types(inner),
-            Expr::Binary { left, right, .. } => {
+            Expr::Binary {
+                left,
+                right,
+                result_type,
+                ..
+            } => {
                 self.fill_expr_types(left);
                 self.fill_expr_types(right);
+                *result_type = left.get_type();
             }
             Expr::Assign { value, .. } => self.fill_expr_types(value),
             Expr::Call { name, args, .. } => {
@@ -1299,7 +1305,7 @@ impl TypeChecker {
 
                 // println!("{value_type:?}, {resolved_type:?}");
 
-                if resolved_type == Type::Inferred {
+                if resolved_type == Type::Inferred || resolved_type == Type::Unknown {
                     self.declare_var(name, value_type.clone())?;
                     return Ok(Stmt::VarDecl {
                         name: name.clone(),
@@ -1387,7 +1393,7 @@ impl TypeChecker {
                 self.declare_var(name, resolved_type.clone())?;
                 Ok(Stmt::VarDecl {
                     name: name.clone(),
-                    var_type: resolved_type,
+                    var_type: value_type,
                     value: value.clone(),
                 })
             }

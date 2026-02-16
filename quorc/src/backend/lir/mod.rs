@@ -1,4 +1,5 @@
 pub mod aarch64;
+pub mod interference;
 pub mod regalloc;
 pub mod x86_64;
 

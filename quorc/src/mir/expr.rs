@@ -209,12 +209,15 @@ impl IRGenerator {
     pub fn lower_place(&mut self, expr: Expr) -> Option<(Value, Type)> {
         match expr {
             Expr::BoolLiteral(b) => Some((Value::Const(b as i64), Type::Bool)),
-            Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::Bool)),
-            Expr::LongLiteral(i) => Some((Value::Const(i), Type::Bool)),
+            Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::int)),
+            Expr::LongLiteral(i) => Some((Value::Const(i), Type::Long)),
+            Expr::FloatLiteral(f) => Some((Value::ConstFloat(f as f64), Type::float)),
+
             Expr::Variable(name, ty) => {
                 let value = self.var_map.get(&name).unwrap().1.clone();
                 Some((value, ty))
             }
+            Expr::CharLiteral(c) => Some((Value::Const(c as i64), Type::Char)),
             Expr::StringLiteral(s) => {
                 let mut g = self.static_strings.get(&s);
                 if g.is_none() {

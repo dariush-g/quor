@@ -1,11 +1,18 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 use crate::{
-    backend::lir::{SymId, aarch64::A64RegGpr},
+    backend::lir::{
+        SymId,
+        aarch64::A64RegGpr,
+        interference::{InterferenceGraph, build_interference_graph},
+    },
     frontend::ast::Type,
     mir::block::{
         BlockId, GlobalDef, GlobalValue, IRBlock, IRFunction, IRInstruction, IRProgram, Terminator,
-        VReg, Value,
+        VReg, VRegType, Value,
     },
 };
 
@@ -154,6 +161,9 @@ where
     <Self as TargetRegs>::Reg: 'static,
     <Self as TargetRegs>::FpReg: 'static,
 {
+    const NUM_ALLOCATABLE: usize;
+    const FPR_ALLOCATABLE: usize;
+
     type Reg: Copy + Eq + std::fmt::Debug + std::hash::Hash;
     type FpReg: Copy + Eq + std::fmt::Debug + std::hash::Hash;
 
@@ -197,21 +207,165 @@ where
         let used_callee_saved = Vec::new();
         let used_callee_saved_fp = Vec::new();
 
-        // TODO: Fp reg params
+        let gp_args = self.arg_regs();
+        let fp_args = self.fp_arg_regs();
 
-        for (param, reg) in func.params.clone().iter().zip(self.arg_regs()) {
-            vreg_loc.insert(*param, Loc::PhysReg(RegRef::GprReg(*reg)));
-        }
+        let (int_params, float_params): (Vec<_>, Vec<_>) = func
+            .params
+            .iter()
+            .partition(|p| matches!(p.ty, VRegType::Int));
+
+        // Assign integer params
+        vreg_loc.extend(
+            int_params
+                .iter()
+                .zip(gp_args.iter())
+                .map(|(param, &reg)| (*param, Loc::PhysReg(RegRef::GprReg(reg)))),
+        );
+
+        // Assign float params
+        vreg_loc.extend(
+            float_params
+                .iter()
+                .zip(fp_args.iter())
+                .map(|(param, &reg)| (*param, Loc::PhysReg(RegRef::FprReg(reg)))),
+        );
 
         let flattened_blocks = flatten_blocks(func.blocks.clone());
-        let lifetimes: HashMap<VReg, LiveRange> = assign_live_ranges(flattened_blocks);
+        let live_ranges = assign_live_ranges(flattened_blocks);
 
+        let (gpr_ranges, fpr_ranges): (HashMap<_, _>, HashMap<_, _>) = live_ranges
+            .into_iter()
+            .partition(|(vreg, _)| matches!(vreg.ty, VRegType::Int));
+
+        let gpr_graph = build_interference_graph(&gpr_ranges);
+        let fpr_graph = build_interference_graph(&fpr_ranges);
+
+        let mut gpr_stack = Vec::new();
+        let mut fpr_stack = Vec::new();
+
+        for (node, connections) in gpr_graph.edges.clone() {
+            if connections.len() < Self::NUM_ALLOCATABLE {
+                gpr_stack.push(node);
+            }
+        }
+
+        for (node, connections) in gpr_graph.edges.clone() {
+            if connections.len() > Self::NUM_ALLOCATABLE {
+                gpr_stack.push(node);
+            }
+        }
+
+        for (node, connections) in fpr_graph.edges.clone() {
+            if connections.len() < Self::FPR_ALLOCATABLE {
+                fpr_stack.push(node);
+            }
+        }
+
+        for (node, connections) in fpr_graph.edges.clone() {
+            if connections.len() > Self::FPR_ALLOCATABLE {
+                fpr_stack.push(node);
+            }
+        }
+
+        let gpr_alloc = self.color_graph_gpr(gpr_stack, &gpr_graph);
+        let fpr_alloc = self.color_graph_fpr(fpr_stack, &fpr_graph);
+
+        println!("{gpr_alloc:?}");
+        println!("{fpr_alloc:?}");
 
         Allocation {
             vreg_loc,
             used_callee_saved,
             used_callee_saved_fp,
         }
+    }
+
+    fn color_graph_gpr(
+        &self,
+        stack: Vec<VReg>,
+        graph: &InterferenceGraph,
+    ) -> HashMap<VReg, Loc<Self::Reg, Self::FpReg>> {
+        let mut post_prologue_stack_offset = 0;
+        let mut allocation: HashMap<VReg, Loc<Self::Reg, Self::FpReg>> = HashMap::new();
+
+        for node in stack.into_iter().rev() {
+            let neighbors = graph.neighbors(&node);
+
+            let neighbor_colors: HashSet<usize> = neighbors
+                .iter()
+                .filter_map(|n| {
+                    if let Some(Loc::PhysReg(RegRef::GprReg(reg))) = allocation.get(n) {
+                        self.allocatable_regs().iter().position(|r| r == reg)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if let Some(color) = (0..Self::NUM_ALLOCATABLE).find(|c| !neighbor_colors.contains(c)) {
+                let phys_reg = self.allocatable_regs()[color];
+                allocation.insert(node, Loc::PhysReg(RegRef::GprReg(phys_reg)));
+            } else {
+                allocation.insert(node, Loc::Stack(post_prologue_stack_offset));
+                post_prologue_stack_offset += 8;
+            }
+        }
+
+        allocation
+    }
+
+    fn color_graph_fpr(
+        &self,
+        stack: Vec<VReg>,
+        graph: &InterferenceGraph,
+    ) -> HashMap<VReg, Loc<Self::Reg, Self::FpReg>> {
+        let mut post_prologue_stack_offset = 0;
+        let mut allocation: HashMap<VReg, Loc<Self::Reg, Self::FpReg>> = HashMap::new();
+
+        for node in stack.into_iter().rev() {
+            let neighbors = graph.neighbors(&node);
+
+            let neighbor_colors: HashSet<usize> = neighbors
+                .iter()
+                .filter_map(|n| {
+                    if let Some(Loc::PhysReg(RegRef::FprReg(reg))) = allocation.get(n) {
+                        self.float_regs().iter().position(|r| r == reg)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if let Some(color) = (0..Self::NUM_ALLOCATABLE).find(|c| !neighbor_colors.contains(c)) {
+                let phys_reg = self.float_regs()[color];
+                allocation.insert(node, Loc::PhysReg(RegRef::FprReg(phys_reg)));
+            } else {
+                allocation.insert(node, Loc::Stack(post_prologue_stack_offset));
+                post_prologue_stack_offset += 8;
+            }
+        }
+
+        allocation
+    }
+
+    fn find_node_with_degree_less_than_k(&self, graph: &InterferenceGraph) -> Vec<VReg> {
+        let mut ret = Vec::new();
+        for (node, connections) in graph.edges.clone() {
+            match node.ty {
+                VRegType::Int => {
+                    if connections.len() < Self::NUM_ALLOCATABLE {
+                        ret.push(node);
+                    }
+                }
+                VRegType::Float => {
+                    if connections.len() < Self::FPR_ALLOCATABLE {
+                        ret.push(node);
+                    }
+                }
+            }
+        }
+        ret
     }
 
     fn to_lir<
@@ -320,16 +474,16 @@ fn flatten_blocks(blocks: Vec<IRBlock>) -> Vec<LifetimeInstr> {
 }
 
 #[derive(Debug, Clone)]
-enum LifetimeInstr {
+pub enum LifetimeInstr {
     IRInstruction(IRInstruction),
     Terminator(Terminator),
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-struct LiveRange {
-    vreg: VReg,
-    start: usize, // index of start and end within the Vec<LifetimeInstr>
-    end: usize,
+pub struct LiveRange {
+    pub vreg: VReg,
+    pub start: usize, // index of start and end within the Vec<LifetimeInstr>
+    pub end: usize,
 }
 
 fn vreg_of_value(value: &Value) -> Option<&VReg> {
