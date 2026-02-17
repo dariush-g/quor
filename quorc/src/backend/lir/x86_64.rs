@@ -162,7 +162,7 @@ impl X86RegGpr {
     ];
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct X86Regs;
 
 impl TargetRegs for X86Regs {
@@ -185,7 +185,7 @@ impl TargetRegs for X86Regs {
     }
 
     fn fp(&self) -> Option<Self::Reg> {
-        None
+        Some(X86RegGpr::RBP)
     }
 
     fn lr(&self) -> Option<Self::Reg> {

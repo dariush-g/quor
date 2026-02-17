@@ -441,6 +441,7 @@ where
             name,
             blocks,
             entry: func.entry,
+            size: func.offset,
         }
     }
 
@@ -782,6 +783,7 @@ pub struct LFunction<
     pub name: String,
     pub blocks: Vec<LBlock<R, F>>,
     pub entry: BlockId,
+    pub size: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -850,7 +852,8 @@ fn collect_local_and_global_ids(func: &IRFunction) -> (HashMap<usize, i32>, Hash
     let mut sorted_locals: Vec<_> = local_ids.into_iter().collect();
     sorted_locals.sort_unstable();
     for (i, &id) in sorted_locals.iter().enumerate() {
-        local_loc.insert(id, func.offset + (i as i32) * 8);
+        // local_loc.insert(id, func.offset + (i as i32) * 8);
+        local_loc.insert(id, (i as i32) * 8);
     }
 
     let global_loc: HashMap<usize, SymId> =

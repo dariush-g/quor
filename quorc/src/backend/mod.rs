@@ -67,7 +67,11 @@ impl Codegen {
         }
 
         for (_, func) in ir_program.functions {
-            println!("{:?}", codegen.target_regs.to_lir(&func));
+            codegen.asm.text.push_str(
+                &codegen
+                    .emitter
+                    .generate_function(&codegen.target_regs.to_lir(&func)),
+            );
         }
 
         codegen.emit()
@@ -132,19 +136,19 @@ pub enum AsmSection {
 }
 
 #[derive(Clone, Debug)]
-pub struct CodegenCtx<'a> {
+pub struct CodegenCtx<'a, R, F>
+where
+    R: Copy + Clone + std::fmt::Debug + std::hash::Hash + Eq,
+    F: Copy + Clone + std::fmt::Debug + std::hash::Hash + Eq,
+{
     // codegen ctx is ephemeral
-    pub func: &'a IRFunction,
-    pub frame: &'a FrameLayout,
-    pub block_labels: HashMap<BlockId, &'a IRBlock>,
+    pub func: &'a LFunction<R, F>,
+    pub frame: FrameLayout,
     pub current_block: BlockId,
-    pub next_tmp_label: usize,
 }
 
 #[derive(Clone, Debug)]
 pub struct FrameLayout {
-    pub local_off: HashMap<usize, i32>,
-    pub vreg_off: HashMap<VReg, i32>,
     pub frame_size: i32,
     pub align: i32,
 }

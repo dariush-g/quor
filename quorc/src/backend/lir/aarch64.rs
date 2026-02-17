@@ -249,7 +249,7 @@ pub enum A64RegFpr {
     V31,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct A64Regs;
 
 impl TargetRegs for A64Regs {

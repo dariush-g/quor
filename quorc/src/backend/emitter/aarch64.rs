@@ -13,7 +13,9 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub struct ARMEmitter {}
+pub struct ARMEmitter {
+    target_regs: A64Regs,
+}
 
 impl TargetEmitter for ARMEmitter {
     type Reg = A64RegGpr;
@@ -36,37 +38,10 @@ impl TargetEmitter for ARMEmitter {
         global
     }
 
-    fn t_prologue(
-        &mut self,
-        frame: &FrameLayout,
-        func: &LFunction<Self::Reg, Self::FpReg>,
-    ) -> String {
-        #[cfg(target_os = "macos")]
-        let function_name = format!("_{}", func.name.clone());
-        #[cfg(not(target_os = "macos"))]
-        let function_name = func.name.clone();
-        format!(
-            "{function_name}:\nstp x29, x30, [sp, #-16]!\nmov x29, sp\nsub sp, sp, #{}",
-            frame.frame_size
-        )
-    }
-
-    fn t_epilogue(
-        &mut self,
-        frame: &FrameLayout,
-        func: &LFunction<Self::Reg, Self::FpReg>,
-    ) -> String {
-        format!(
-            "add sp, sp, #{}\nldp x29, x30, [sp], #16\nret\n",
-            frame.frame_size
-        )
-    }
-
     fn t_emit_inst(
         &mut self,
         inst: &LInst<Self::Reg, Self::FpReg>,
-        frame: &FrameLayout,
-        ctx: &mut CodegenCtx,
+        ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
         match inst {
             LInst::Add { dst, a, b } => {
@@ -89,31 +64,39 @@ impl TargetEmitter for ARMEmitter {
     fn t_emit_term(
         &mut self,
         term: &LTerm<Self::Reg, Self::FpReg>,
-        frame: &FrameLayout,
-        ctx: &mut CodegenCtx,
+        ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
         todo!()
     }
 
-    fn generate_stack_frame(&mut self, func: &LFunction<Self::Reg, Self::FpReg>) -> FrameLayout {
+    fn t_operand(&self, operand: &lir::regalloc::Operand<Self::Reg, Self::FpReg>) -> String {
         todo!()
     }
-
-    fn generate_function(&mut self, func: &LFunction<Self::Reg, Self::FpReg>) -> String {
-        let mut assembly_function = String::new();
-        let frame = self.generate_stack_frame(func);
-        println!("{frame:?}");
-        assembly_function.push_str(&self.t_prologue(&frame, func));
-
-        assembly_function.push_str(&self.t_epilogue(&frame, func));
-        assembly_function
-    }
-
     fn t_loc(&self, loc: lir::regalloc::Loc<Self::Reg, Self::FpReg>) -> String {
         todo!()
     }
 
     fn t_addr(&self, loc: lir::regalloc::Addr<Self::Reg>) -> String {
+        todo!()
+    }
+
+    fn t_prologue(
+        &mut self,
+        ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
+        func: &LFunction<Self::Reg, Self::FpReg>,
+    ) -> String {
+        todo!()
+    }
+
+    fn t_epilogue(
+        &mut self,
+        ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
+        func: &LFunction<Self::Reg, Self::FpReg>,
+    ) -> String {
+        todo!()
+    }
+
+    fn generate_ctx(func: &LFunction<Self::Reg, Self::FpReg>) -> CodegenCtx<Self::Reg, Self::FpReg> {
         todo!()
     }
 }
