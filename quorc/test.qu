@@ -1,4 +1,5 @@
 
+
 struct X {
     i: int;
     z: char*;

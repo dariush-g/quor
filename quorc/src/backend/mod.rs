@@ -111,7 +111,12 @@ impl Codegen {
 
     #[cfg(target_arch = "x86_64")]
     fn emit(&self) -> String {
-        String::new()
+        let rodata = format!("section .rodata\n{}", self.asm.rodata);
+        let data = format!("section .data\n{}", self.asm.data);
+        let bss = format!("section .bss\n{}", self.asm.bss);
+        let text = format!("section .text\n{}", self.asm.text);
+
+        format!("{rodata}{data}{bss}{text}")
     }
 }
 
