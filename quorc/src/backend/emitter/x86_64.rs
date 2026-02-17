@@ -58,4 +58,12 @@ impl TargetEmitter for X86Emitter {
     ) -> String {
         todo!()
     }
+    
+    fn t_loc(&self, loc: crate::backend::lir::regalloc::Loc<Self::Reg, Self::FpReg>) -> String {
+        todo!()
+    }
+    
+    fn t_addr(&self, loc: crate::backend::lir::regalloc::Addr<Self::Reg>) -> String {
+        todo!()
+    }
 }

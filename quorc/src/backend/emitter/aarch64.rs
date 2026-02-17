@@ -68,7 +68,22 @@ impl TargetEmitter for ARMEmitter {
         frame: &FrameLayout,
         ctx: &mut CodegenCtx,
     ) -> String {
-        todo!()
+        match inst {
+            LInst::Add { dst, a, b } => {
+                todo!()
+            }
+            LInst::Sub { dst, a, b } => todo!(),
+            LInst::Mul { dst, a, b } => todo!(),
+            LInst::Div { dst, a, b } => todo!(),
+            LInst::Mod { dst, a, b } => todo!(),
+            LInst::CmpSet { dst, op, a, b } => todo!(),
+            LInst::Cast { dst, src, ty } => todo!(),
+            LInst::Load { dst, addr, ty } => todo!(),
+            LInst::Store { src, addr, ty } => todo!(),
+            LInst::Call { dst, func, args } => todo!(),
+            LInst::Mov { dst, src } => todo!(),
+            LInst::Lea { dst, addr } => todo!(),
+        }
     }
 
     fn t_emit_term(
@@ -92,5 +107,13 @@ impl TargetEmitter for ARMEmitter {
 
         assembly_function.push_str(&self.t_epilogue(&frame, func));
         assembly_function
+    }
+
+    fn t_loc(&self, loc: lir::regalloc::Loc<Self::Reg, Self::FpReg>) -> String {
+        todo!()
+    }
+
+    fn t_addr(&self, loc: lir::regalloc::Addr<Self::Reg>) -> String {
+        todo!()
     }
 }

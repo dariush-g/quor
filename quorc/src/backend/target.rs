@@ -1,7 +1,7 @@
 use crate::{
     backend::{
         CodegenCtx, FrameLayout,
-        lir::regalloc::{LFunction, LInst, LTerm},
+        lir::regalloc::{Addr, LFunction, LInst, LTerm, Loc},
     },
     mir::block::{GlobalDef, IRFunction, IRInstruction, Terminator},
 };
@@ -17,6 +17,10 @@ pub trait TargetEmitter: std::fmt::Debug {
     type FpReg: Copy + Eq + std::hash::Hash + std::fmt::Debug;
 
     fn t_add_global_const(&mut self, constant: GlobalDef) -> String;
+
+    fn t_loc(&self, loc: Loc<Self::Reg, Self::FpReg>) -> String;
+
+    fn t_addr(&self, loc: Addr<Self::Reg>) -> String;
 
     fn t_prologue(
         &mut self,
