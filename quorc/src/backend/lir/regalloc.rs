@@ -23,7 +23,7 @@ pub enum RegRef<
     FprReg(F),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Loc<
     R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,

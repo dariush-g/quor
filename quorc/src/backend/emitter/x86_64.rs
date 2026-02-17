@@ -28,7 +28,13 @@ impl TargetEmitter for X86Emitter {
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
         func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
-        todo!()
+        let mut prologue = String::new();
+        prologue.push_str(&format!("{}:\n", func.name));
+        prologue.push_str(&format!(
+            "push rbp\nmov rbp, rsp\nsub rsp, {}",
+            ctx.frame.frame_size
+        ));
+        prologue
     }
 
     fn t_epilogue(
@@ -36,28 +42,18 @@ impl TargetEmitter for X86Emitter {
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
-        todo!()
+        let mut prologue = String::new();
+        prologue.push_str(&format!(".Lret_{}\n", func.name));
+        prologue.push_str(&format!("mov rsp, rbp\npop rbp",));
+        prologue
     }
-
+    
     fn t_emit_inst(
         &mut self,
-        inst: &crate::backend::lir::regalloc::LInst<Self::Reg, Self::FpReg>,
+        inst: &LInst<Self::Reg, Self::FpReg>,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
-        match inst {
-            LInst::Add { dst, a, b } => todo!(),
-            LInst::Sub { dst, a, b } => todo!(),
-            LInst::Mul { dst, a, b } => todo!(),
-            LInst::Div { dst, a, b } => todo!(),
-            LInst::Mod { dst, a, b } => todo!(),
-            LInst::CmpSet { dst, op, a, b } => todo!(),
-            LInst::Cast { dst, src, ty } => todo!(),
-            LInst::Load { dst, addr, ty } => todo!(),
-            LInst::Store { src, addr, ty } => todo!(),
-            LInst::Call { dst, func, args } => todo!(),
-            LInst::Mov { dst, src } => todo!(),
-            LInst::Lea { dst, addr } => todo!(),
-        }
+        String::new()
     }
 
     fn t_loc(&self, loc: crate::backend::lir::regalloc::Loc<Self::Reg, Self::FpReg>) -> String {
@@ -106,8 +102,8 @@ impl TargetEmitter for X86Emitter {
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> CodegenCtx<'_, Self::Reg, Self::FpReg> {
         let frame = FrameLayout {
-            frame_size: func.size,
-            align: (func.size + 15) & !15, // align up to 16
+            frame_size: (func.size + 15) & !15, // align up to 16
+            align: 16,
         };
 
         CodegenCtx {
