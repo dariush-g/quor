@@ -53,6 +53,15 @@ pub trait TargetEmitter: std::fmt::Debug {
         let ctx = &mut Self::generate_ctx(func);
         func_asm.push_str(&self.t_prologue(ctx, func));
 
+        for block in func.blocks.clone() {
+            for inst in block.insts {
+                func_asm.push_str(&self.t_emit_inst(&inst, ctx));
+            }
+            func_asm.push_str(&self.t_emit_term(&block.term, ctx));
+        }
+
+        func_asm.push_str(&self.t_epilogue(ctx, func));
+
         func_asm
     }
 

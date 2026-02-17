@@ -1,4 +1,4 @@
-
+@import <io.qu>
 
 struct X {
     i: int;
@@ -8,5 +8,7 @@ struct X {
 def main() :: int {
     let x = X { i: 1, z: "hello" };
     
+    print("%s\n", x.z);
+
     return 0;
 }

@@ -188,11 +188,11 @@ fn main() {
         Err(_) => src_path,
     };
 
-    let _workdir = src_path
+    let workdir = src_path
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let _out_name = src_path
+    let out_name = src_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("out");
@@ -205,7 +205,7 @@ fn main() {
         }
     };
 
-    let _keep_asm = source.contains("@keep_asm");
+    let keep_asm = source.contains("@keep_asm");
 
     let mut lexer = Lexer::new(source);
     let tokens = match lexer.tokenize() {
@@ -268,10 +268,10 @@ fn main() {
     //     gen_asm(st, asm.clone());
     // }
 
-    // if let Err(e) = build_link_run(&asm, &workdir, out_name, keep_asm) {
-    //     eprintln!("build failed: {e}");
-    //     std::process::exit(1);
-    // }
+    if let Err(e) = build_link_run(&asm, &workdir, out_name, keep_asm) {
+        eprintln!("build failed: {e}");
+        std::process::exit(1);
+    }
 }
 
 // fn gen_asm(input_path: String, mut current: String) -> String {

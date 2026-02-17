@@ -426,7 +426,9 @@ where
                         if_true: *if_true,
                         if_false: *if_false,
                     },
-                    Terminator::TemporaryNone => panic!("TemporaryNone terminator"),
+                    Terminator::TemporaryNone => {
+                        panic!("TemporaryNone terminator")
+                    }
                 },
                 insts: block
                     .instructions
@@ -853,7 +855,7 @@ fn collect_local_and_global_ids(func: &IRFunction) -> (HashMap<usize, i32>, Hash
     sorted_locals.sort_unstable();
     for (i, &id) in sorted_locals.iter().enumerate() {
         // local_loc.insert(id, func.offset + (i as i32) * 8);
-        local_loc.insert(id, (i as i32) * 8);
+        local_loc.insert(id, (i as i32) * 8 + 8);
     }
 
     let global_loc: HashMap<usize, SymId> =

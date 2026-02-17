@@ -21,7 +21,70 @@ impl TargetEmitter for X86Emitter {
     type FpReg = X86RegFpr;
 
     fn t_add_global_const(&mut self, constant: GlobalDef) -> String {
-        todo!()
+        let symbol = format!("__q_g_{}", constant.id);
+
+        let mut out = String::new();
+        out.push_str(&format!("{}:\n", symbol));
+
+        match &constant.value {
+            GlobalValue::Int(v) => {
+                out.push_str(&format!("    dq {}\n", v));
+            }
+
+            GlobalValue::Float(f) => {
+                out.push_str(&format!("    dq 0x{:016x}\n", f.to_bits()));
+            }
+
+            GlobalValue::Bool(b) => {
+                let val = if *b { 1 } else { 0 };
+                out.push_str(&format!("    db {}\n", val));
+            }
+
+            GlobalValue::Char(c) => {
+                out.push_str(&format!("    db {}\n", *c as u8));
+            }
+
+            GlobalValue::String(s) => {
+                out.push_str(&format!("    db {:?}, 0\n", s));
+            }
+
+            GlobalValue::Bytes(bytes) => {
+                let list = bytes
+                    .iter()
+                    .map(|b| b.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push_str(&format!("    db {}\n", list));
+            }
+
+            GlobalValue::Zeroed(size) => {
+                out.push_str(&format!("    times {} db 0\n", size));
+            }
+
+            GlobalValue::Array(values) => {
+                for val in values {
+                    match val {
+                        GlobalValue::Int(v) => {
+                            out.push_str(&format!("    dq {}\n", v));
+                        }
+                        GlobalValue::Bool(b) => {
+                            let val = if *b { 1 } else { 0 };
+                            out.push_str(&format!("    db {}\n", val));
+                        }
+                        GlobalValue::Char(c) => {
+                            out.push_str(&format!("    db {}\n", *c as u8));
+                        }
+                        _ => unimplemented!("Nested array type not implemented"),
+                    }
+                }
+            }
+
+            GlobalValue::Struct(_) => {
+                unimplemented!("Struct global emission not implemented yet");
+            }
+        }
+
+        out
     }
 
     fn t_prologue(
@@ -30,9 +93,13 @@ impl TargetEmitter for X86Emitter {
         func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         let mut prologue = String::new();
-        prologue.push_str(&format!("__q_f_{}:\n", func.name));
+        if func.name != "main" {
+            prologue.push_str(&format!("__q_f_{}:\n", func.name));
+        } else {
+            prologue.push_str(&format!("global main\n{}:\n", func.name));
+        }
         prologue.push_str(&format!(
-            "push rbp\nmov rbp, rsp\nsub rsp, {}",
+            "push rbp\nmov rbp, rsp\nsub rsp, {}\n",
             ctx.frame.frame_size
         ));
         prologue
@@ -44,11 +111,11 @@ impl TargetEmitter for X86Emitter {
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         let mut prologue = String::new();
-        prologue.push_str(&format!(".Lret_{}\n", func.name));
-        prologue.push_str(&format!("mov rsp, rbp\npop rbp",));
+        prologue.push_str(&format!(".Lret_{}:\n", func.name));
+        prologue.push_str(&format!("mov rsp, rbp\npop rbp\nret\n",));
         prologue
     }
-    
+
     fn t_emit_inst(
         &mut self,
         inst: &LInst<Self::Reg, Self::FpReg>,
@@ -57,7 +124,7 @@ impl TargetEmitter for X86Emitter {
         match inst {
             LInst::Add { dst, a, b } => {
                 format!(
-                    "mov {}, {}\nadd {}, {}",
+                    "mov {}, {}\nadd {}, {}\n",
                     self.t_loc(dst.clone()),
                     self.t_operand(a),
                     self.t_loc(dst.clone()),
@@ -66,7 +133,7 @@ impl TargetEmitter for X86Emitter {
             }
             LInst::Sub { dst, a, b } => {
                 format!(
-                    "mov {}, {}\nsub {}, {}",
+                    "mov {}, {}\nsub {}, {}\n",
                     self.t_loc(dst.clone()),
                     self.t_operand(a),
                     self.t_loc(dst.clone()),
@@ -75,7 +142,7 @@ impl TargetEmitter for X86Emitter {
             }
             LInst::Mul { dst, a, b } => {
                 format!(
-                    "mov {}, {}\nimul {}, {}",
+                    "mov {}, {}\nimul {}, {}\n",
                     self.t_loc(dst.clone()),
                     self.t_operand(a),
                     self.t_loc(dst.clone()),
@@ -84,7 +151,7 @@ impl TargetEmitter for X86Emitter {
             }
             LInst::Div { dst, a, b } => {
                 format!(
-                    "mov rax, {}\ncqo\nidiv {}\nmov {}, rax",
+                    "mov rax, {}\ncqo\nidiv {}\nmov {}, rax\n",
                     self.t_operand(a),
                     self.t_operand(b),
                     self.t_loc(dst.clone())
@@ -92,7 +159,7 @@ impl TargetEmitter for X86Emitter {
             }
             LInst::Mod { dst, a, b } => {
                 format!(
-                    "mov rax, {}\ncqo\nidiv {}\nmov {}, rdx",
+                    "mov rax, {}\ncqo\nidiv {}\nmov {}, rdx\n",
                     self.t_operand(a),
                     self.t_operand(b),
                     self.t_loc(dst.clone())
@@ -109,7 +176,7 @@ impl TargetEmitter for X86Emitter {
                 };
                 let dst_str = self.t_loc(dst.clone());
                 format!(
-                    "cmp {}, {}\n{} al\nmovzx eax, al\nmov {}, rax",
+                    "cmp {}, {}\n{} al\nmovzx eax, al\nmov {}, rax\n",
                     self.t_operand(a),
                     self.t_operand(b),
                     setcc,
@@ -121,10 +188,14 @@ impl TargetEmitter for X86Emitter {
             LInst::Store { src, addr, ty } => self.emit_store(src, addr, ty),
             LInst::Call { dst, func, args } => self.emit_call(dst, func, args),
             LInst::Mov { dst, src } => {
-                format!("mov {}, {}", self.t_loc(dst.clone()), self.t_operand(src))
+                format!("mov {}, {}\n", self.t_loc(dst.clone()), self.t_operand(src))
             }
             LInst::Lea { dst, addr } => {
-                format!("lea {}, {}", self.t_loc(dst.clone()), self.t_addr(addr.clone()))
+                format!(
+                    "lea {}, {}\n",
+                    self.t_loc(dst.clone()),
+                    self.t_addr(addr.clone())
+                )
             }
         }
     }
@@ -135,7 +206,7 @@ impl TargetEmitter for X86Emitter {
                 RegRef::GprReg(r) => self.target_args.reg64(r).to_owned(),
                 RegRef::FprReg(r) => self.target_args.float128(r).to_owned(),
             },
-            Loc::Stack(offset) => format!("qword [rbx - {offset}]"),
+            Loc::Stack(offset) => format!("qword [rbp - {offset}]\n"),
         }
     }
 
@@ -157,7 +228,22 @@ impl TargetEmitter for X86Emitter {
         term: &LTerm<Self::Reg, Self::FpReg>,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
-        todo!()
+        let mut asm = String::new();
+        match term {
+            LTerm::Ret { value } => {
+                if let Some(operand) = value {
+                    asm.push_str(&format!("mov rax, {}\n", self.t_operand(operand)));
+                }
+                asm.push_str(&format!("jmp .Lret_{}\n", ctx.func.name));
+            }
+            LTerm::Jump { target } => todo!(),
+            LTerm::Branch {
+                condition,
+                if_true,
+                if_false,
+            } => todo!(),
+        };
+        asm
     }
 
     fn generate_ctx(
@@ -204,7 +290,13 @@ impl X86Emitter {
                 scale,
                 off
             ),
-            Addr::Global { sym, off } => format!("{} [__q_g_{}+{}]", size, sym, off),
+            Addr::Global { sym, off } => {
+                if *off == 0 {
+                    format!("{} [rel __q_g_{}]", size, sym)
+                } else {
+                    format!("{} [rel __q_g_{}+{}]", size, sym, off)
+                }
+            }
         }
     }
 
@@ -217,23 +309,15 @@ impl X86Emitter {
         match ty {
             Type::Long => {
                 format!(
-                    "movsxd {}, {}",
+                    "movsxd {}, {}\n",
                     self.t_loc(dst.clone()),
                     self.t_operand(src)
                 )
             }
             Type::int => {
-                format!(
-                    "mov {}, {}",
-                    self.t_loc(dst.clone()),
-                    self.t_operand(src)
-                )
+                format!("mov {}, {}\n", self.t_loc(dst.clone()), self.t_operand(src))
             }
-            _ => format!(
-                "mov {}, {}",
-                self.t_loc(dst.clone()),
-                self.t_operand(src)
-            ),
+            _ => format!("mov {}, {}\n", self.t_loc(dst.clone()), self.t_operand(src)),
         }
     }
 
@@ -245,11 +329,19 @@ impl X86Emitter {
     ) -> String {
         let size = Self::type_size_suffix(ty);
         let mem = self.mem_ref_sized(addr, size);
-        match size {
-            "byte" => format!("movzx rax, {}\nmov {}, rax", mem, self.t_loc(dst.clone())),
-            "dword" => format!("mov eax, {}\nmov {}, rax", mem, self.t_loc(dst.clone())),
-            _ => format!("mov rax, {}\nmov {}, rax", mem, self.t_loc(dst.clone())),
+        let mut ret = match size {
+            "byte" => format!("movzx rax, {}\n", mem,),
+            "dword" => format!("mov eax, {}\n", mem,),
+            _ => format!("mov rax, {}\n", mem,),
+        };
+        if let Loc::PhysReg(reg) = dst
+            && let RegRef::GprReg(r) = reg
+            && *r == X86RegGpr::RAX
+        {
+            return ret;
         }
+        ret.push_str(&format!("mov {}, rax\n", self.t_loc(dst.clone())));
+        ret
     }
 
     fn emit_store(
@@ -260,7 +352,7 @@ impl X86Emitter {
     ) -> String {
         let size = Self::type_size_suffix(ty);
         let mem = self.mem_ref_sized(addr, size);
-        format!("mov {}, {}", mem, self.t_operand(src))
+        format!("mov {}, {}\n", mem, self.t_operand(src))
     }
 
     fn emit_call(
@@ -270,17 +362,46 @@ impl X86Emitter {
         args: &[Operand<X86RegGpr, X86RegFpr>],
     ) -> String {
         let arg_regs = self.target_args.arg_regs();
+        let fp_regs = self.target_args.fp_arg_regs();
+        let mut gp_args = 0;
+        let mut fp_args = 0;
         let mut out = String::new();
-        for (i, arg) in args.iter().take(6).enumerate() {
-            out.push_str(&format!("mov {}, {}\n", arg_regs[i], self.t_operand(arg)));
+        for arg in args.iter() {
+            let is_fp = match arg {
+                Operand::Loc(loc) => match loc {
+                    Loc::PhysReg(reg_ref) => match reg_ref {
+                        RegRef::GprReg(_) => false,
+                        RegRef::FprReg(_) => true,
+                    },
+                    Loc::Stack(_) => false,
+                },
+                Operand::ImmI64(_) => false,
+                Operand::ImmF64(_) => true,
+                _ => false,
+            };
+            if is_fp {
+                out.push_str(&format!(
+                    "mov {}, {}\n",
+                    self.target_args.float128(fp_regs[fp_args]),
+                    self.t_operand(arg)
+                ));
+                fp_args += 1;
+            } else {
+                out.push_str(&format!(
+                    "mov {}, {}\n",
+                    self.target_args.reg64(arg_regs[gp_args]),
+                    self.t_operand(arg)
+                ));
+                gp_args += 1;
+            }
         }
         let target = match func {
             CallTarget::Direct(sym) => format!("__q_f_{}", sym.0),
             CallTarget::Indirect(reg) => self.target_args.reg64(*reg).to_string(),
         };
-        out.push_str(&format!("call {}", target));
+        out.push_str(&format!("call {}\n", target));
         if let Some(d) = dst {
-            out.push_str(&format!("\nmov {}, rax", self.t_loc(d.clone())));
+            out.push_str(&format!("\nmov {}, rax\n", self.t_loc(d.clone())));
         }
         out
     }

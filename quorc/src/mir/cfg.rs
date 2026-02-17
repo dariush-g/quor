@@ -1,7 +1,4 @@
-use std::{
-    cmp::max,
-    collections::{HashMap, HashSet, VecDeque},
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{frontend::ast::*, mir::block::*};
 
@@ -126,8 +123,9 @@ impl IRGenerator {
         let def = GlobalDef {
             id,
             ty: Type::Pointer(Box::new(Type::Char)),
-            value: GlobalValue::Bytes(value.as_bytes().to_vec()),
+            value: GlobalValue::String(value.clone()),
         };
+        self.ir_program.global_consts.insert(id, def.clone());
         self.static_strings.insert(value, def);
     }
 
