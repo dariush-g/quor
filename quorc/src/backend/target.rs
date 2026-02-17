@@ -27,6 +27,7 @@ pub trait TargetEmitter: std::fmt::Debug {
         frame: &FrameLayout,
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String;
+
     fn t_epilogue(
         &mut self,
         frame: &FrameLayout,

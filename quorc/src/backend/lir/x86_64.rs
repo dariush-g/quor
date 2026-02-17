@@ -177,7 +177,7 @@ impl TargetRegs for X86Regs {
     }
 
     fn allocatable_regs(&self) -> &'static [Self::Reg] {
-        todo!()
+        X86RegGpr::ALLOCATABLE
     }
 
     fn sp(&self) -> Self::Reg {

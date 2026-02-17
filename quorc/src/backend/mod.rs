@@ -1,3 +1,5 @@
+#[cfg(target_arch = "x86_64")]
+use crate::backend::lir::x86_64::X86Regs;
 use crate::backend::lir::{
     aarch64::A64RegFpr,
     regalloc::{LFunction, TargetRegs},
@@ -28,7 +30,7 @@ pub struct Codegen {
     #[cfg(target_arch = "aarch64")]
     pub target_regs: A64Regs,
     #[cfg(target_arch = "x86_64")]
-    pub emitter: X86Regs,
+    pub target_regs: X86Regs,
     pub asm: AsmEmitter,
 }
 
@@ -48,13 +50,16 @@ impl Codegen {
             #[cfg(target_arch = "aarch64")]
             target_regs: A64Regs,
             #[cfg(target_arch = "x86_64")]
-            emitter: X86Regs,
+            target_regs: X86Regs,
             asm: AsmEmitter::default(),
         };
 
         for constant in ir_program.global_consts {
             let constant_ = codegen.emitter.t_add_global_const(constant.clone());
-            if let GlobalValue::String(_) = constant.value {
+            if let GlobalValue::String(_) = constant.value
+                && cfg!(target_os = "macos")
+            {
+                #[cfg(target_os = "macos")]
                 codegen.add_line(AsmSection::CSTRING, &constant_);
             } else {
                 codegen.add_line(AsmSection::RODATA, &constant_);
@@ -74,6 +79,7 @@ impl Codegen {
             AsmSection::RODATA => self.asm.rodata.push_str(&format!("{line}\n")),
             AsmSection::DATA => self.asm.data.push_str(&format!("{line}\n")),
             AsmSection::TEXT => self.asm.text.push_str(&format!("{line}\n")),
+            #[cfg(target_os = "macos")]
             AsmSection::CSTRING => self.asm.cstrings.push_str(&format!("{line}\n")),
         }
     }
