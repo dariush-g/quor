@@ -299,7 +299,7 @@ impl TargetRegs for A64Regs {
         todo!()
     }
 
-    fn is_caller_saved(&self, r: Self::Reg) -> bool {
+    fn is_caller_saved(&self, r: &Self::Reg) -> bool {
         matches!(
             r,
             A64RegGpr::X0
@@ -323,7 +323,7 @@ impl TargetRegs for A64Regs {
         )
     }
 
-    fn is_callee_saved(&self, r: Self::Reg) -> bool {
+    fn is_callee_saved(&self, r: &Self::Reg) -> bool {
         matches!(
             r,
             A64RegGpr::X19

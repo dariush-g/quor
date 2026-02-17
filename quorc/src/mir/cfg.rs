@@ -28,6 +28,7 @@ pub struct ScopeHandler {
     pub break_stack: VecDeque<BlockId>,
     pub continue_stack: VecDeque<BlockId>,
     pub instructions: Vec<IRInstruction>,
+    pub current_offset: i32,
     pub current: BlockId,
 }
 
@@ -371,6 +372,9 @@ impl IRGenerator {
                 last.terminator = Terminator::Return { value: None };
             }
 
+            let offset = self.scope_handler.current_offset;
+            self.scope_handler.current_offset = 0;
+
             let ir_func = IRFunction {
                 name: name.clone(),
                 params,
@@ -381,6 +385,7 @@ impl IRGenerator {
                     .iter()
                     .filter_map(|attr| AtDecl::parse_attribute(attr.as_str()))
                     .collect(),
+                offset,
             };
 
             self.var_map = HashMap::new();

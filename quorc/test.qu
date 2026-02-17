@@ -1,10 +1,11 @@
 
-def main() :: int {
-    let x = 1;
-    let y = 0.1;
+struct X {
+    i: int;
+    z: char*;
+}
 
-    let z = y as int;
-    let k = x;
+def main() :: int {
+    let x = X { i: 1, z: "hello" };
     
     return 0;
 }

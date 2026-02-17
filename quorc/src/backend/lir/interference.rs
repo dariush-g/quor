@@ -16,7 +16,7 @@ impl InterferenceGraph {
 
     pub fn add_edge(&mut self, v1: VReg, v2: VReg) {
         if v1 == v2 {
-            return; // No self-loops
+            return;
         }
 
         self.add_node(v1);

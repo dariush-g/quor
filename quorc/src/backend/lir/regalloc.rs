@@ -185,8 +185,8 @@ where
 
     fn float_regs(&self) -> &'static [Self::FpReg];
 
-    fn is_caller_saved(&self, r: Self::Reg) -> bool;
-    fn is_callee_saved(&self, r: Self::Reg) -> bool;
+    fn is_caller_saved(&self, r: &Self::Reg) -> bool;
+    fn is_callee_saved(&self, r: &Self::Reg) -> bool;
 
     fn fp_is_caller_saved(&self, r: Self::FpReg) -> bool;
     fn fp_is_callee_saved(&self, r: Self::FpReg) -> bool;
@@ -204,8 +204,8 @@ where
             VReg,
             Loc<<Self as TargetRegs>::Reg, <Self as TargetRegs>::FpReg>,
         > = HashMap::new();
-        let used_callee_saved = Vec::new();
-        let used_callee_saved_fp = Vec::new();
+        let mut used_callee_saved = Vec::new();
+        let mut used_callee_saved_fp = Vec::new();
 
         let gp_args = self.arg_regs();
         let fp_args = self.fp_arg_regs();
@@ -241,52 +241,82 @@ where
         let gpr_graph = build_interference_graph(&gpr_ranges);
         let fpr_graph = build_interference_graph(&fpr_ranges);
 
-        let mut gpr_stack = Vec::new();
-        let mut fpr_stack = Vec::new();
+        let gpr_stack = self.simplify_graph(&gpr_graph, Self::NUM_ALLOCATABLE);
+        let fpr_stack = self.simplify_graph(&fpr_graph, Self::FPR_ALLOCATABLE);
 
-        for (node, connections) in gpr_graph.edges.clone() {
-            if connections.len() < Self::NUM_ALLOCATABLE {
-                gpr_stack.push(node);
+        let (gpr_alloc, offset) = self.color_graph_gpr(gpr_stack, &gpr_graph, func.offset);
+        let (fpr_alloc, offset) = self.color_graph_fpr(fpr_stack, &fpr_graph, offset);
+
+        gpr_alloc.iter().for_each(|(k, v)| {
+            if let Loc::PhysReg(reg_ref) = v
+                && let RegRef::GprReg(r) = reg_ref
+                && self.is_callee_saved(r)
+            {
+                used_callee_saved.push(*r);
             }
-        }
 
-        for (node, connections) in gpr_graph.edges.clone() {
-            if connections.len() > Self::NUM_ALLOCATABLE {
-                gpr_stack.push(node);
+            vreg_loc.insert(*k, v.clone());
+        });
+
+        fpr_alloc.iter().for_each(|(k, v)| {
+            if let Loc::PhysReg(reg_ref) = v
+                && let RegRef::FprReg(r) = reg_ref
+                && self.fp_is_callee_saved(*r)
+            {
+                used_callee_saved_fp.push(*r);
             }
-        }
 
-        for (node, connections) in fpr_graph.edges.clone() {
-            if connections.len() < Self::FPR_ALLOCATABLE {
-                fpr_stack.push(node);
-            }
-        }
-
-        for (node, connections) in fpr_graph.edges.clone() {
-            if connections.len() > Self::FPR_ALLOCATABLE {
-                fpr_stack.push(node);
-            }
-        }
-
-        let gpr_alloc = self.color_graph_gpr(gpr_stack, &gpr_graph);
-        let fpr_alloc = self.color_graph_fpr(fpr_stack, &fpr_graph);
-
-        println!("{gpr_alloc:?}");
-        println!("{fpr_alloc:?}");
+            vreg_loc.insert(*k, v.clone());
+        });
 
         Allocation {
             vreg_loc,
             used_callee_saved,
             used_callee_saved_fp,
+            local_loc: HashMap::new(),
+            global_loc: HashMap::new(),
+            stack_size: offset,
         }
     }
 
+    fn simplify_graph(&self, graph: &InterferenceGraph, k: usize) -> Vec<VReg> {
+        let mut stack = Vec::new();
+        let mut working_graph = graph.clone();
+
+        loop {
+            if let Some(node) = working_graph
+                .edges
+                .iter()
+                .find(|(_, neighbors)| neighbors.len() < k)
+                .map(|(n, _)| *n)
+            {
+                stack.push(node);
+                working_graph.remove_node(&node);
+            } else if !working_graph.edges.is_empty() {
+                let node = working_graph
+                    .edges
+                    .iter()
+                    .max_by_key(|(_, neighbors)| neighbors.len())
+                    .map(|(n, _)| *n)
+                    .unwrap();
+                stack.push(node);
+                working_graph.remove_node(&node);
+            } else {
+                break;
+            }
+        }
+
+        stack
+    }
+
+    #[allow(clippy::type_complexity)]
     fn color_graph_gpr(
         &self,
         stack: Vec<VReg>,
         graph: &InterferenceGraph,
-    ) -> HashMap<VReg, Loc<Self::Reg, Self::FpReg>> {
-        let mut post_prologue_stack_offset = 0;
+        current_stack_offset: i32,
+    ) -> (HashMap<VReg, Loc<Self::Reg, Self::FpReg>>, i32) {
+        let mut stack_offset = current_stack_offset;
         let mut allocation: HashMap<VReg, Loc<Self::Reg, Self::FpReg>> = HashMap::new();
 
         for node in stack.into_iter().rev() {
@@ -307,20 +337,22 @@ where
                 let phys_reg = self.allocatable_regs()[color];
                 allocation.insert(node, Loc::PhysReg(RegRef::GprReg(phys_reg)));
             } else {
-                allocation.insert(node, Loc::Stack(post_prologue_stack_offset));
-                post_prologue_stack_offset += 8;
+                allocation.insert(node, Loc::Stack(stack_offset));
+                stack_offset += 8;
             }
         }
 
-        allocation
+        (allocation, stack_offset)
     }
 
+    #[allow(clippy::type_complexity)]
     fn color_graph_fpr(
         &self,
         stack: Vec<VReg>,
         graph: &InterferenceGraph,
-    ) -> HashMap<VReg, Loc<Self::Reg, Self::FpReg>> {
-        let mut post_prologue_stack_offset = 0;
+        current_stack_offset: i32,
+    ) -> (HashMap<VReg, Loc<Self::Reg, Self::FpReg>>, i32) {
+        let mut stack_offset = current_stack_offset;
         let mut allocation: HashMap<VReg, Loc<Self::Reg, Self::FpReg>> = HashMap::new();
 
         for node in stack.into_iter().rev() {
@@ -337,16 +369,16 @@ where
                 })
                 .collect();
 
-            if let Some(color) = (0..Self::NUM_ALLOCATABLE).find(|c| !neighbor_colors.contains(c)) {
+            if let Some(color) = (0..Self::FPR_ALLOCATABLE).find(|c| !neighbor_colors.contains(c)) {
                 let phys_reg = self.float_regs()[color];
                 allocation.insert(node, Loc::PhysReg(RegRef::FprReg(phys_reg)));
             } else {
-                allocation.insert(node, Loc::Stack(post_prologue_stack_offset));
-                post_prologue_stack_offset += 8;
+                allocation.insert(node, Loc::Stack(stack_offset));
+                stack_offset += 8;
             }
         }
 
-        allocation
+        (allocation, stack_offset)
     }
 
     fn find_node_with_degree_less_than_k(&self, graph: &InterferenceGraph) -> Vec<VReg> {
@@ -378,10 +410,175 @@ where
         let name = func.name.clone();
         let allocation = self.regalloc(func);
 
+        func.blocks
+            .iter()
+            .map(|block| LBlock::<Self::Reg, Self::FpReg> {
+                id: block.id,
+                term: match block.terminator {
+                    Terminator::Return { value } => LTerm::Ret {
+                        value: value.map(|v| Self::value_to_operand(&v, &allocation)),
+                    },
+                    Terminator::Jump { block } => LTerm::Jump { target: block },
+                    Terminator::Branch {
+                        condition,
+                        if_true,
+                        if_false,
+                    } => LTerm::Branch {
+                        condition: Self::value_to_operand(&condition, &allocation),
+                        if_true,
+                        if_false,
+                    },
+                    Terminator::TemporaryNone => panic!(),
+                },
+                insts: block
+                    .instructions
+                    .iter()
+                    .map(|v| mir_instr_to_lir(&v, &allocation)),
+            });
+
         LFunction {
             name,
             blocks: todo!(),
-            entry: todo!(),
+            entry: func.entry,
+        }
+    }
+
+    fn value_to_addr(
+        val: &Value, offset: i32,
+        allocation: &Allocation<Self::Reg, Self::FpReg>,
+    ) -> Addr<Self::Reg, Self::FpReg> {
+        match val {
+            Value::Local(id) => {
+                let off = allocation.local_loc[id];
+                Addr::BaseOff { base: , off }
+            },
+            Value::Global(id) => todo!(),
+            _ => panic!()
+        }
+    }
+
+    fn mir_instr_to_lir(
+        mirinst: &IRInstruction,
+        allocation: &Allocation<Self::Reg, Self::FpReg>,
+    ) -> LInst<Self::Reg, Self::FpReg> {
+        match mirinst {
+            IRInstruction::Add { reg, left, right } => LInst::Add {
+                dst: allocation.vreg_loc[reg].clone(),
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Sub { reg, left, right } => LInst::Sub {
+                dst: allocation.vreg_loc[reg].clone(),
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Mul { reg, left, right } => LInst::Mul {
+                dst: allocation.vreg_loc[reg].clone(),
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Div { reg, left, right } => LInst::Div {
+                dst: allocation.vreg_loc[reg].clone(),
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Mod { reg, left, right } => LInst::Mod {
+                dst: allocation.vreg_loc[reg].clone(),
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Eq { reg, left, right } => LInst::CmpSet {
+                dst: allocation.vreg_loc[reg].clone(),
+                op: CmpOp::Eq,
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Ne { reg, left, right } => LInst::CmpSet {
+                dst: allocation.vreg_loc[reg].clone(),
+                op: CmpOp::Ne,
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Lt { reg, left, right } => LInst::CmpSet {
+                dst: allocation.vreg_loc[reg].clone(),
+                op: CmpOp::Lt,
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Le { reg, left, right } => LInst::CmpSet {
+                dst: allocation.vreg_loc[reg].clone(),
+                op: CmpOp::Le,
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Ge { reg, left, right } => LInst::CmpSet {
+                dst: allocation.vreg_loc[reg].clone(),
+                op: CmpOp::Ge,
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Gt { reg, left, right } => LInst::CmpSet {
+                dst: allocation.vreg_loc[reg].clone(),
+                op: CmpOp::Gt,
+                a: Self::value_to_operand(left, allocation),
+                b: Self::value_to_operand(right, allocation),
+            },
+            IRInstruction::Cast { reg, src, ty } => LInst::Cast {
+                dst: allocation.vreg_loc[reg].clone(),
+                src: Self::value_to_operand(src, allocation),
+                ty: ty.clone(),
+            },
+            IRInstruction::Load {
+                reg,
+                addr,
+                offset,
+                ty,
+            } => LInst::Load {
+                dst: allocation.vreg_loc[reg].clone(),
+                addr: (),
+                ty: (),
+            },
+            IRInstruction::Store {
+                value,
+                addr,
+                offset,
+                ty,
+            } => todo!(),
+            IRInstruction::Gep {
+                dest,
+                base,
+                index,
+                scale,
+            } => todo!(),
+            IRInstruction::Call { reg, func, args } => todo!(),
+            IRInstruction::Move { dest, from } => todo!(),
+            IRInstruction::AddressOf { dest, src } => todo!(),
+            IRInstruction::Memcpy {
+                dst,
+                src,
+                size,
+                align,
+            } => todo!(),
+            IRInstruction::Declaration(at_decl) => todo!(),
+        }
+    }
+
+    fn value_to_operand(
+        value: &Value,
+        allocation: &Allocation<Self::Reg, Self::FpReg>,
+    ) -> Operand<Self::Reg, Self::FpReg> {
+        match value {
+            Value::Reg(vreg) => Operand::Loc(allocation.vreg_loc.get(vreg).unwrap().clone()),
+            Value::Const(c) => Operand::ImmI64(*c),
+            Value::ConstFloat(c) => Operand::ImmF64(*c),
+            Value::Local(local_id) => {
+                let offset = allocation.local_loc.get(local_id).unwrap();
+                Operand::Loc(Loc::Stack(*offset))
+            }
+            Value::Global(global_id) => {
+                let sym = allocation.global_loc.get(global_id).unwrap();
+                todo!("Handle globals")
+            }
         }
     }
 }
@@ -392,8 +589,11 @@ pub struct Allocation<
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
 > {
     pub vreg_loc: HashMap<VReg, Loc<R, F>>,
+    pub local_loc: HashMap<usize, i32>,
+    pub global_loc: HashMap<usize, SymId>,
     pub used_callee_saved: Vec<R>,
-    pub used_callee_saved_fp: Vec<R>,
+    pub used_callee_saved_fp: Vec<F>,
+    pub stack_size: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -492,6 +692,7 @@ fn vreg_of_value(value: &Value) -> Option<&VReg> {
     }
     None
 }
+
 fn assign_live_ranges(insts: Vec<LifetimeInstr>) -> HashMap<VReg, LiveRange> {
     let mut map: HashMap<VReg, LiveRange> = HashMap::new();
 

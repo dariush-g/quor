@@ -216,7 +216,7 @@ impl TargetRegs for X86Regs {
         X86RegFpr::ALL
     }
 
-    fn is_caller_saved(&self, r: Self::Reg) -> bool {
+    fn is_caller_saved(&self, r: &Self::Reg) -> bool {
         matches!(
             r,
             X86RegGpr::RAX
@@ -231,7 +231,7 @@ impl TargetRegs for X86Regs {
         )
     }
 
-    fn is_callee_saved(&self, r: Self::Reg) -> bool {
+    fn is_callee_saved(&self, r: &Self::Reg) -> bool {
         matches!(
             r,
             X86RegGpr::RBX

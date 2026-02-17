@@ -197,6 +197,7 @@ pub struct IRFunction {
     pub blocks: Vec<IRBlock>,
     pub entry: BlockId,
     pub attributes: Vec<AtDecl>,
+    pub offset: i32,
 }
 
 #[derive(Debug, Clone, Default)]

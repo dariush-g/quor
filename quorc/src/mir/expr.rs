@@ -126,6 +126,8 @@ impl IRGenerator {
                 let layout = def.fields.clone();
                 let local = self.var_gen.fresh();
 
+                self.scope_handler.current_offset += def.size as i32;
+
                 self.var_map
                     .insert(var_name, (ty.clone(), Value::Local(local)));
 
