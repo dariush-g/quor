@@ -1,4 +1,7 @@
-use crate::backend::lir::regalloc::TargetRegs;
+use crate::backend::lir::{
+    aarch64::A64RegFpr,
+    regalloc::{LFunction, TargetRegs},
+};
 use std::collections::HashMap;
 
 use crate::{
@@ -58,10 +61,8 @@ impl Codegen {
             }
         }
 
-        for (_, function) in ir_program.functions {
-            codegen
-                .emitter
-                .generate_function(&codegen.target_regs.to_lir(&function));
+        for (_, func) in ir_program.functions {
+            println!("{:?}", codegen.target_regs.to_lir(&func));
         }
 
         codegen.emit()

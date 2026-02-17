@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::format};
 use crate::{
     backend::{
         lir::{
-            aarch64::A64RegFpr,
+            aarch64::{A64RegFpr, A64RegGpr},
             regalloc::{LFunction, LInst, LTerm},
         },
         target::TargetEmitter,
@@ -16,8 +16,8 @@ use crate::{
 pub struct ARMEmitter {}
 
 impl TargetEmitter for ARMEmitter {
+    type Reg = A64RegGpr;
     type FpReg = A64RegFpr;
-    type Reg = A64RegFpr;
 
     fn t_add_global_const(&mut self, constant: GlobalDef) -> String {
         let ty = match constant.value {

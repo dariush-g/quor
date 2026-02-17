@@ -6,13 +6,11 @@ use std::{
 use crate::{
     backend::lir::{
         SymId,
-        aarch64::A64RegGpr,
         interference::{InterferenceGraph, build_interference_graph},
     },
     frontend::ast::Type,
     mir::block::{
-        BlockId, GlobalDef, GlobalValue, IRBlock, IRFunction, IRInstruction, IRProgram, Terminator,
-        VReg, VRegType, Value,
+        BlockId, GlobalValue, IRBlock, IRFunction, IRInstruction, Terminator, VReg, VRegType, Value,
     },
 };
 
@@ -40,8 +38,9 @@ pub enum Operand<
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
 > {
     Loc(Loc<R, F>),
-    ImmI64(i64), // integer constant
-    ImmF64(f64), // float constant}
+    ImmI64(i64),       // integer constant
+    ImmF64(f64),       // float constant
+    Indirect(Addr<R>), // value at this memory address
 }
 
 impl<R: Copy + Eq + Hash + std::fmt::Debug, F: Copy + Eq + Hash + std::fmt::Debug> From<Loc<R, F>>
@@ -269,12 +268,14 @@ where
             vreg_loc.insert(*k, v.clone());
         });
 
+        let (local_loc, global_loc) = collect_local_and_global_ids(func);
+
         Allocation {
             vreg_loc,
             used_callee_saved,
             used_callee_saved_fp,
-            local_loc: HashMap::new(),
-            global_loc: HashMap::new(),
+            local_loc,
+            global_loc,
             stack_size: offset,
         }
     }
@@ -400,184 +401,361 @@ where
         ret
     }
 
-    fn to_lir<
-        R: Copy + Eq + std::fmt::Debug + std::hash::Hash,
-        F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
-    >(
-        &self,
-        func: &IRFunction,
-    ) -> LFunction<R, F> {
+    fn to_lir(&self, func: &IRFunction) -> LFunction<Self::Reg, Self::FpReg> {
         let name = func.name.clone();
         let allocation = self.regalloc(func);
 
-        func.blocks
+        let blocks: Vec<_> = func
+            .blocks
             .iter()
             .map(|block| LBlock::<Self::Reg, Self::FpReg> {
                 id: block.id,
-                term: match block.terminator {
+                term: match &block.terminator {
                     Terminator::Return { value } => LTerm::Ret {
-                        value: value.map(|v| Self::value_to_operand(&v, &allocation)),
+                        value: value
+                            .as_ref()
+                            .map(|v| self.value_to_operand(v, &allocation)),
                     },
-                    Terminator::Jump { block } => LTerm::Jump { target: block },
+                    Terminator::Jump { block: target } => LTerm::Jump { target: *target },
                     Terminator::Branch {
                         condition,
                         if_true,
                         if_false,
                     } => LTerm::Branch {
-                        condition: Self::value_to_operand(&condition, &allocation),
-                        if_true,
-                        if_false,
+                        condition: self.value_to_operand(condition, &allocation),
+                        if_true: *if_true,
+                        if_false: *if_false,
                     },
-                    Terminator::TemporaryNone => panic!(),
+                    Terminator::TemporaryNone => panic!("TemporaryNone terminator"),
                 },
                 insts: block
                     .instructions
                     .iter()
-                    .map(|v| mir_instr_to_lir(&v, &allocation)),
-            });
+                    .filter(|i| !matches!(i, IRInstruction::Declaration(_)))
+                    .flat_map(|v| self.mir_instr_to_lir(v, &allocation))
+                    .collect(),
+            })
+            .collect();
 
         LFunction {
             name,
-            blocks: todo!(),
+            blocks,
             entry: func.entry,
         }
     }
 
     fn value_to_addr(
-        val: &Value, offset: i32,
+        &self,
+        val: &Value,
+        offset: i32,
         allocation: &Allocation<Self::Reg, Self::FpReg>,
-    ) -> Addr<Self::Reg, Self::FpReg> {
+    ) -> (Vec<LInst<Self::Reg, Self::FpReg>>, Addr<Self::Reg>) {
         match val {
+            Value::Reg(vreg) => {
+                let loc = allocation
+                    .vreg_loc
+                    .get(vreg)
+                    .expect("vreg not in allocation");
+                match loc {
+                    Loc::PhysReg(RegRef::GprReg(r)) => (
+                        vec![],
+                        Addr::BaseOff {
+                            base: *r,
+                            off: offset,
+                        },
+                    ),
+                    Loc::Stack(stack_off) => {
+                        let fp = self.fp().expect("fp required for spilled address");
+                        let scratch = self.scratch_regs()[0];
+                        let setup = vec![LInst::Load {
+                            dst: Loc::PhysReg(RegRef::GprReg(scratch)),
+                            addr: Addr::BaseOff {
+                                base: fp,
+                                off: *stack_off,
+                            },
+                            ty: Type::Pointer(Box::new(Type::Unknown)),
+                        }];
+                        (
+                            setup,
+                            Addr::BaseOff {
+                                base: scratch,
+                                off: offset,
+                            },
+                        )
+                    }
+                    _ => panic!("Address must be in GPR"),
+                }
+            }
             Value::Local(id) => {
-                let off = allocation.local_loc[id];
-                Addr::BaseOff { base: , off }
-            },
-            Value::Global(id) => todo!(),
-            _ => panic!()
+                let off = allocation
+                    .local_loc
+                    .get(id)
+                    .copied()
+                    .unwrap_or(0)
+                    .saturating_add(offset);
+                let fp = self.fp().expect("fp required for Local address");
+                (vec![], Addr::BaseOff { base: fp, off })
+            }
+            Value::Global(id) => {
+                let sym = allocation.global_loc.get(id).map(|s| s.0).unwrap_or(*id);
+                (vec![], Addr::Global { sym, off: offset })
+            }
+            _ => panic!("Value {:?} is not a valid address", val),
         }
     }
 
     fn mir_instr_to_lir(
+        &self,
         mirinst: &IRInstruction,
         allocation: &Allocation<Self::Reg, Self::FpReg>,
-    ) -> LInst<Self::Reg, Self::FpReg> {
+    ) -> Vec<LInst<Self::Reg, Self::FpReg>> {
         match mirinst {
-            IRInstruction::Add { reg, left, right } => LInst::Add {
+            IRInstruction::Add { reg, left, right } => vec![LInst::Add {
                 dst: allocation.vreg_loc[reg].clone(),
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Sub { reg, left, right } => LInst::Sub {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Sub { reg, left, right } => vec![LInst::Sub {
                 dst: allocation.vreg_loc[reg].clone(),
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Mul { reg, left, right } => LInst::Mul {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Mul { reg, left, right } => vec![LInst::Mul {
                 dst: allocation.vreg_loc[reg].clone(),
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Div { reg, left, right } => LInst::Div {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Div { reg, left, right } => vec![LInst::Div {
                 dst: allocation.vreg_loc[reg].clone(),
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Mod { reg, left, right } => LInst::Mod {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Mod { reg, left, right } => vec![LInst::Mod {
                 dst: allocation.vreg_loc[reg].clone(),
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Eq { reg, left, right } => LInst::CmpSet {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Eq { reg, left, right } => vec![LInst::CmpSet {
                 dst: allocation.vreg_loc[reg].clone(),
                 op: CmpOp::Eq,
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Ne { reg, left, right } => LInst::CmpSet {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Ne { reg, left, right } => vec![LInst::CmpSet {
                 dst: allocation.vreg_loc[reg].clone(),
                 op: CmpOp::Ne,
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Lt { reg, left, right } => LInst::CmpSet {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Lt { reg, left, right } => vec![LInst::CmpSet {
                 dst: allocation.vreg_loc[reg].clone(),
                 op: CmpOp::Lt,
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Le { reg, left, right } => LInst::CmpSet {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Le { reg, left, right } => vec![LInst::CmpSet {
                 dst: allocation.vreg_loc[reg].clone(),
                 op: CmpOp::Le,
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Ge { reg, left, right } => LInst::CmpSet {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Ge { reg, left, right } => vec![LInst::CmpSet {
                 dst: allocation.vreg_loc[reg].clone(),
                 op: CmpOp::Ge,
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Gt { reg, left, right } => LInst::CmpSet {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Gt { reg, left, right } => vec![LInst::CmpSet {
                 dst: allocation.vreg_loc[reg].clone(),
                 op: CmpOp::Gt,
-                a: Self::value_to_operand(left, allocation),
-                b: Self::value_to_operand(right, allocation),
-            },
-            IRInstruction::Cast { reg, src, ty } => LInst::Cast {
+                a: self.value_to_operand(left, allocation),
+                b: self.value_to_operand(right, allocation),
+            }],
+            IRInstruction::Cast { reg, src, ty } => vec![LInst::Cast {
                 dst: allocation.vreg_loc[reg].clone(),
-                src: Self::value_to_operand(src, allocation),
+                src: self.value_to_operand(src, allocation),
                 ty: ty.clone(),
-            },
+            }],
             IRInstruction::Load {
                 reg,
                 addr,
                 offset,
                 ty,
-            } => LInst::Load {
-                dst: allocation.vreg_loc[reg].clone(),
-                addr: (),
-                ty: (),
-            },
+            } => {
+                let (mut setup, addr) = self.value_to_addr(addr, *offset, allocation);
+                setup.push(LInst::Load {
+                    dst: allocation.vreg_loc[reg].clone(),
+                    addr,
+                    ty: ty.clone(),
+                });
+                setup
+            }
             IRInstruction::Store {
                 value,
                 addr,
                 offset,
                 ty,
-            } => todo!(),
+            } => {
+                let (mut setup, addr) = self.value_to_addr(addr, *offset, allocation);
+                setup.push(LInst::Store {
+                    src: self.value_to_operand(value, allocation),
+                    addr,
+                    ty: ty.clone(),
+                });
+                setup
+            }
             IRInstruction::Gep {
                 dest,
                 base,
                 index,
                 scale,
-            } => todo!(),
-            IRInstruction::Call { reg, func, args } => todo!(),
-            IRInstruction::Move { dest, from } => todo!(),
-            IRInstruction::AddressOf { dest, src } => todo!(),
-            IRInstruction::Memcpy {
-                dst,
-                src,
-                size,
-                align,
-            } => todo!(),
-            IRInstruction::Declaration(at_decl) => todo!(),
+            } => {
+                let scale_u8 = (*scale).min(255) as u8;
+                match index {
+                    Value::Const(0) => {
+                        let (mut setup, addr) = self.value_to_addr(base, 0, allocation);
+                        setup.push(LInst::Lea {
+                            dst: allocation.vreg_loc[dest].clone(),
+                            addr,
+                        });
+                        setup
+                    }
+                    Value::Const(n) => {
+                        let offset = (*n as i32).saturating_mul(*scale as i32);
+                        let (mut setup, addr) = self.value_to_addr(base, offset, allocation);
+                        setup.push(LInst::Lea {
+                            dst: allocation.vreg_loc[dest].clone(),
+                            addr,
+                        });
+                        setup
+                    }
+                    Value::Reg(index_vreg) => {
+                        let base_loc = vreg_of_value(base).and_then(|v| allocation.vreg_loc.get(v));
+                        let index_loc = allocation.vreg_loc.get(index_vreg);
+                        if let (
+                            Some(Loc::PhysReg(RegRef::GprReg(base_reg))),
+                            Some(Loc::PhysReg(RegRef::GprReg(index_reg))),
+                        ) = (base_loc, index_loc)
+                        {
+                            vec![LInst::Lea {
+                                dst: allocation.vreg_loc[dest].clone(),
+                                addr: Addr::BaseIndex {
+                                    base: *base_reg,
+                                    index: *index_reg,
+                                    scale: scale_u8,
+                                    off: 0,
+                                },
+                            }]
+                        } else {
+                            let (mut setup, addr) = self.value_to_addr(base, 0, allocation);
+                            let base_scratch = self.scratch_regs()[0];
+                            let index_operand = self.value_to_operand(index, allocation);
+                            setup.push(LInst::Lea {
+                                dst: Loc::PhysReg(RegRef::GprReg(base_scratch)),
+                                addr,
+                            });
+                            setup.push(LInst::Add {
+                                dst: allocation.vreg_loc[dest].clone(),
+                                a: Operand::Loc(Loc::PhysReg(RegRef::GprReg(base_scratch))),
+                                b: index_operand,
+                            });
+                            setup
+                        }
+                    }
+                    _ => {
+                        let (mut setup, addr) = self.value_to_addr(base, 0, allocation);
+                        setup.push(LInst::Lea {
+                            dst: allocation.vreg_loc[dest].clone(),
+                            addr,
+                        });
+                        setup
+                    }
+                }
+            }
+            IRInstruction::Call {
+                reg,
+                func: _func,
+                args,
+            } => vec![LInst::Call {
+                dst: reg.map(|r| allocation.vreg_loc[&r].clone()),
+                func: CallTarget::Direct(SymId(0)),
+                args: args
+                    .iter()
+                    .map(|a| self.value_to_operand(a, allocation))
+                    .collect(),
+            }],
+            IRInstruction::Move { dest, from } => vec![LInst::Mov {
+                dst: allocation.vreg_loc[dest].clone(),
+                src: self.value_to_operand(from, allocation),
+            }],
+            IRInstruction::AddressOf { dest, src } => {
+                let (mut setup, addr) = self.value_to_addr(src, 0, allocation);
+                setup.push(LInst::Lea {
+                    dst: allocation.vreg_loc[dest].clone(),
+                    addr,
+                });
+                setup
+            }
+            IRInstruction::Memcpy { dst, src, size, .. } => {
+                let (mut setup, addr_dst) = self.value_to_addr(dst, 0, allocation);
+                let (setup_src, addr_src) = self.value_to_addr(src, 0, allocation);
+                setup.extend(setup_src);
+
+                let [scratch0, scratch1] = [
+                    self.scratch_regs()[0],
+                    self.scratch_regs()
+                        .get(1)
+                        .copied()
+                        .unwrap_or_else(|| self.scratch_regs()[0]),
+                ];
+                setup.push(LInst::Lea {
+                    dst: Loc::PhysReg(RegRef::GprReg(scratch0)),
+                    addr: addr_dst,
+                });
+                setup.push(LInst::Lea {
+                    dst: Loc::PhysReg(RegRef::GprReg(scratch1)),
+                    addr: addr_src,
+                });
+                setup.push(LInst::Call {
+                    dst: None,
+                    func: CallTarget::Direct(SymId(0)),
+                    args: vec![
+                        Operand::Loc(Loc::PhysReg(RegRef::GprReg(scratch0))),
+                        Operand::Loc(Loc::PhysReg(RegRef::GprReg(scratch1))),
+                        Operand::ImmI64(*size as i64),
+                    ],
+                });
+                setup
+            }
+            IRInstruction::Declaration(_) => vec![],
         }
     }
 
     fn value_to_operand(
+        &self,
         value: &Value,
         allocation: &Allocation<Self::Reg, Self::FpReg>,
     ) -> Operand<Self::Reg, Self::FpReg> {
         match value {
-            Value::Reg(vreg) => Operand::Loc(allocation.vreg_loc.get(vreg).unwrap().clone()),
+            Value::Reg(vreg) => Operand::Loc(
+                allocation
+                    .vreg_loc
+                    .get(vreg)
+                    .expect("vreg not in allocation")
+                    .clone(),
+            ),
             Value::Const(c) => Operand::ImmI64(*c),
             Value::ConstFloat(c) => Operand::ImmF64(*c),
-            Value::Local(local_id) => {
-                let offset = allocation.local_loc.get(local_id).unwrap();
-                Operand::Loc(Loc::Stack(*offset))
-            }
+            Value::Local(local_id) => Operand::Loc(Loc::Stack(
+                allocation.local_loc.get(local_id).copied().unwrap_or(0),
+            )),
             Value::Global(global_id) => {
-                let sym = allocation.global_loc.get(global_id).unwrap();
-                todo!("Handle globals")
+                let sym = allocation
+                    .global_loc
+                    .get(global_id)
+                    .map(|s| s.0)
+                    .unwrap_or(*global_id);
+                Operand::Indirect(Addr::Global { sym, off: 0 })
             }
         }
     }
@@ -655,6 +833,114 @@ pub struct LStructDef {
 pub struct LGlobalDef {
     pub id: usize,
     pub value: GlobalValue,
+}
+
+fn collect_local_and_global_ids(func: &IRFunction) -> (HashMap<usize, i32>, HashMap<usize, SymId>) {
+    let mut local_ids: HashSet<usize> = HashSet::new();
+    let mut global_ids: HashSet<usize> = HashSet::new();
+
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            collect_value_ids(inst, &mut local_ids, &mut global_ids);
+        }
+        collect_terminator_value_ids(&block.terminator, &mut local_ids, &mut global_ids);
+    }
+
+    let mut local_loc: HashMap<usize, i32> = HashMap::new();
+    let mut sorted_locals: Vec<_> = local_ids.into_iter().collect();
+    sorted_locals.sort_unstable();
+    for (i, &id) in sorted_locals.iter().enumerate() {
+        local_loc.insert(id, func.offset + (i as i32) * 8);
+    }
+
+    let global_loc: HashMap<usize, SymId> =
+        global_ids.into_iter().map(|id| (id, SymId(id))).collect();
+
+    (local_loc, global_loc)
+}
+
+fn collect_value_ids(
+    inst: &IRInstruction,
+    locals: &mut HashSet<usize>,
+    globals: &mut HashSet<usize>,
+) {
+    fn collect_val(val: &Value, locals: &mut HashSet<usize>, globals: &mut HashSet<usize>) {
+        match val {
+            Value::Local(id) => {
+                locals.insert(*id);
+            }
+            Value::Global(id) => {
+                globals.insert(*id);
+            }
+            _ => {}
+        }
+    }
+
+    match inst {
+        IRInstruction::Load { addr, .. } => {
+            collect_val(addr, locals, globals);
+        }
+        IRInstruction::Store { addr, value, .. } => {
+            collect_val(addr, locals, globals);
+            collect_val(value, locals, globals);
+        }
+        IRInstruction::Gep { base, index, .. } => {
+            collect_val(base, locals, globals);
+            collect_val(index, locals, globals);
+        }
+        IRInstruction::Call { args, .. } => {
+            for arg in args {
+                collect_val(arg, locals, globals);
+            }
+        }
+        IRInstruction::Move { from, .. } => collect_val(from, locals, globals),
+        IRInstruction::AddressOf { src, .. } => collect_val(src, locals, globals),
+        IRInstruction::Cast { src, .. } => collect_val(src, locals, globals),
+        IRInstruction::Memcpy { dst, src, .. } => {
+            collect_val(dst, locals, globals);
+            collect_val(src, locals, globals);
+        }
+        IRInstruction::Add { left, right, .. }
+        | IRInstruction::Sub { left, right, .. }
+        | IRInstruction::Mul { left, right, .. }
+        | IRInstruction::Div { left, right, .. }
+        | IRInstruction::Mod { left, right, .. }
+        | IRInstruction::Eq { left, right, .. }
+        | IRInstruction::Ne { left, right, .. }
+        | IRInstruction::Lt { left, right, .. }
+        | IRInstruction::Le { left, right, .. }
+        | IRInstruction::Ge { left, right, .. }
+        | IRInstruction::Gt { left, right, .. } => {
+            collect_val(left, locals, globals);
+            collect_val(right, locals, globals);
+        }
+        _ => {}
+    }
+}
+
+fn collect_terminator_value_ids(
+    term: &Terminator,
+    locals: &mut HashSet<usize>,
+    globals: &mut HashSet<usize>,
+) {
+    fn collect_val(val: &Value, locals: &mut HashSet<usize>, globals: &mut HashSet<usize>) {
+        match val {
+            Value::Local(id) => {
+                locals.insert(*id);
+            }
+            Value::Global(id) => {
+                globals.insert(*id);
+            }
+            _ => {}
+        }
+    }
+
+    match term {
+        Terminator::Return { value: Some(v) } | Terminator::Branch { condition: v, .. } => {
+            collect_val(v, locals, globals);
+        }
+        _ => {}
+    }
 }
 
 fn flatten_blocks(blocks: Vec<IRBlock>) -> Vec<LifetimeInstr> {

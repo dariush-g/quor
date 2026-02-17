@@ -296,7 +296,7 @@ impl TargetRegs for A64Regs {
     }
 
     fn scratch_regs(&self) -> &'static [Self::Reg] {
-        todo!()
+        &[A64RegGpr::X16, A64RegGpr::X17]
     }
 
     fn is_caller_saved(&self, r: &Self::Reg) -> bool {
