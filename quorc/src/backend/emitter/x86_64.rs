@@ -112,7 +112,7 @@ impl TargetEmitter for X86Emitter {
     ) -> String {
         let mut prologue = String::new();
         prologue.push_str(&format!(".Lret_{}:\n", func.name));
-        prologue.push_str(&format!("mov rsp, rbp\npop rbp\nret\n",));
+        prologue.push_str("mov rsp, rbp\npop rbp\nret\n");
         prologue
     }
 

@@ -432,9 +432,7 @@ where
                     }),
                     Terminator::TemporaryNone => None,
                 };
-                if term.is_none() {
-                    return None;
-                }
+                term.as_ref()?;
                 Some(LBlock::<Self::Reg, Self::FpReg> {
                     id: block.id,
                     term: term.unwrap(),

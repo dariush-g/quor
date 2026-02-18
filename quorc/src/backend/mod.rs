@@ -1,14 +1,10 @@
+use crate::backend::lir::regalloc::{LFunction, TargetRegs};
 #[cfg(target_arch = "x86_64")]
-use crate::backend::lir::x86_64::X86Regs;
-use crate::backend::lir::{
-    aarch64::A64RegFpr,
-    regalloc::{LFunction, TargetRegs},
-};
-use std::collections::HashMap;
+use crate::{backend::lir::x86_64::X86Regs, emitter::x86_64::X86Emitter};
 
 use crate::{
     backend::{
-        emitter::{aarch64::ARMEmitter, x86_64::X86Emitter},
+        emitter::aarch64::ARMEmitter,
         lir::aarch64::A64Regs,
         target::{Target, TargetEmitter},
     },
