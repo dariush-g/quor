@@ -1,8 +1,13 @@
+@keep_asm
+
+
 @import <io.qu>
-
-
 def main() :: int {
-    print("Hello, world!");
-
+    let x = add(1, 2);
+    print("%d", x);
     return 0;
+}
+
+def add(a: int, b: int) :: int {
+    return a + b;
 }

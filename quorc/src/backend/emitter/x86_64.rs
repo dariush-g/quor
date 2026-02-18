@@ -357,6 +357,7 @@ impl X86Emitter {
     ) -> String {
         let size = Self::type_size_suffix(ty);
         let mem = self.mem_ref_sized(addr, size);
+
         format!("mov {}, {}\n", mem, self.t_operand(src))
     }
 
