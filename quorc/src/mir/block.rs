@@ -152,6 +152,7 @@ pub enum AtDecl {
     Const { name: String, ty: Type, val: Expr },
     TrustRet,
     InlineAssembly { content: String },
+    Extern { name: String },
 }
 
 impl AtDecl {
@@ -202,6 +203,7 @@ pub struct IRFunction {
 
 #[derive(Debug, Clone, Default)]
 pub struct IRProgram {
+    pub externs: Vec<String>,
     pub functions: HashMap<String, IRFunction>,
     pub global_consts: Vec<GlobalDef>,
     pub structs: HashMap<String, StructDef>,

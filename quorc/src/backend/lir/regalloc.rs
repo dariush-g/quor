@@ -10,7 +10,8 @@ use crate::{
     },
     frontend::ast::Type,
     mir::block::{
-        BlockId, GlobalValue, IRBlock, IRFunction, IRInstruction, Terminator, VReg, VRegType, Value,
+        AtDecl, BlockId, GlobalValue, IRBlock, IRFunction, IRInstruction, Terminator, VReg,
+        VRegType, Value,
     },
 };
 
@@ -69,9 +70,9 @@ pub enum Addr<R: Copy + Eq + std::hash::Hash + std::fmt::Debug> {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CallTarget<R> {
-    Direct(SymId),
+    Direct(String),
     Indirect(R),
 }
 
@@ -142,6 +143,10 @@ pub enum LInst<R: Copy + Eq + Hash + std::fmt::Debug, F: Copy + Eq + Hash + std:
     Lea {
         dst: Loc<R, F>,
         addr: Addr<R>,
+    },
+
+    InlineAsm {
+        asm: String,
     },
 }
 
@@ -408,34 +413,37 @@ where
         let blocks: Vec<_> = func
             .blocks
             .iter()
-            .map(|block| LBlock::<Self::Reg, Self::FpReg> {
-                id: block.id,
-                term: match &block.terminator {
-                    Terminator::Return { value } => LTerm::Ret {
+            .filter_map(|block| {
+                let term = match &block.terminator {
+                    Terminator::Return { value } => Some(LTerm::Ret {
                         value: value
                             .as_ref()
                             .map(|v| self.value_to_operand(v, &allocation)),
-                    },
-                    Terminator::Jump { block: target } => LTerm::Jump { target: *target },
+                    }),
+                    Terminator::Jump { block: target } => Some(LTerm::Jump { target: *target }),
                     Terminator::Branch {
                         condition,
                         if_true,
                         if_false,
-                    } => LTerm::Branch {
+                    } => Some(LTerm::Branch {
                         condition: self.value_to_operand(condition, &allocation),
                         if_true: *if_true,
                         if_false: *if_false,
-                    },
-                    Terminator::TemporaryNone => {
-                        panic!("TemporaryNone terminator")
-                    }
-                },
-                insts: block
-                    .instructions
-                    .iter()
-                    .filter(|i| !matches!(i, IRInstruction::Declaration(_)))
-                    .flat_map(|v| self.mir_instr_to_lir(v, &allocation))
-                    .collect(),
+                    }),
+                    Terminator::TemporaryNone => None,
+                };
+                if term.is_none() {
+                    return None;
+                }
+                Some(LBlock::<Self::Reg, Self::FpReg> {
+                    id: block.id,
+                    term: term.unwrap(),
+                    insts: block
+                        .instructions
+                        .iter()
+                        .flat_map(|v| self.mir_instr_to_lir(v, &allocation))
+                        .collect(),
+                })
             })
             .collect();
 
@@ -681,7 +689,7 @@ where
                 args,
             } => vec![LInst::Call {
                 dst: reg.map(|r| allocation.vreg_loc[&r].clone()),
-                func: CallTarget::Direct(SymId(0)),
+                func: CallTarget::Direct(_func.to_string()),
                 args: args
                     .iter()
                     .map(|a| self.value_to_operand(a, allocation))
@@ -721,7 +729,7 @@ where
                 });
                 setup.push(LInst::Call {
                     dst: None,
-                    func: CallTarget::Direct(SymId(0)),
+                    func: CallTarget::Direct("memcpy".to_owned()),
                     args: vec![
                         Operand::Loc(Loc::PhysReg(RegRef::GprReg(scratch0))),
                         Operand::Loc(Loc::PhysReg(RegRef::GprReg(scratch1))),
@@ -730,7 +738,12 @@ where
                 });
                 setup
             }
-            IRInstruction::Declaration(_) => vec![],
+            IRInstruction::Declaration(decl) => match decl {
+                AtDecl::InlineAssembly { content } => vec![LInst::InlineAsm {
+                    asm: content.to_string(),
+                }],
+                _ => vec![],
+            },
         }
     }
 

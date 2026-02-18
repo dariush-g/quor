@@ -208,15 +208,8 @@ impl IRGenerator {
     ) -> Result<(), String> {
         if let Stmt::AtDecl(decl, param, val, _content) = stmt {
             match decl.as_str() {
-                "import" => {
-                    // let path = param.as_ref().unwrap();
-                    // if path.ends_with('!') {
-                    //     let mut path = path.clone();
-                    //     path.pop();
-                    //     self.ir_program.imports.push((path, false));
-                    // } else {
-                    //     self.ir_program.imports.push((path.clone(), true));
-                    // }
+                "extern" => {
+                    self.ir_program.externs.push(param.clone().unwrap());
                 }
                 "const" => {
                     // let const_value = match val.clone().unwrap() {
@@ -349,10 +342,13 @@ impl IRGenerator {
                 params.push(param_reg);
             }
 
+            // println!("inside block id: {:?}", self.scope_handler.current);
+
+            self.lower_block(body);
+
             self.blocks[self.scope_handler.current.0]
                 .instructions
                 .append(&mut self.scope_handler.instructions);
-            self.lower_block(body);
 
             let mut blocks: Vec<IRBlock> = self
                 .scope_handler

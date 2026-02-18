@@ -54,6 +54,10 @@ impl Codegen {
             asm: AsmEmitter::default(),
         };
 
+        for externed in ir_program.externs {
+            codegen.add_line(AsmSection::EXTERN, &codegen.emitter.t_extern(externed));
+        }
+
         for constant in ir_program.global_consts {
             let constant_ = codegen.emitter.t_add_global_const(constant.clone());
             if let GlobalValue::String(_) = constant.value
@@ -85,28 +89,31 @@ impl Codegen {
             AsmSection::TEXT => self.asm.text.push_str(&format!("{line}\n")),
             #[cfg(target_os = "macos")]
             AsmSection::CSTRING => self.asm.cstrings.push_str(&format!("{line}\n")),
+            AsmSection::EXTERN => self.asm.externs.push_str(&format!("{line}\n")),
         }
     }
 
     #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
     fn emit(&self) -> String {
+        let externs = format!("{}\n", self.asm.externs);
         let rodata = format!(".section __TEXT,__const\n{}", self.asm.rodata);
         let cstrings = format!(".section __TEXT,__cstring\n{}", self.asm.cstrings);
         let data = format!(".section __DATA,__data\n{}", self.asm.data);
         let bss = format!(".section __DATA,__bss\n{}", self.asm.bss);
         let text = format!(".section __TEXT,__text\n{}", self.asm.text);
 
-        format!("{cstrings}{rodata}{data}{bss}{text}")
+        format!("{externs}{cstrings}{rodata}{data}{bss}{text}")
     }
 
     #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
     fn emit(&self) -> String {
+        let externs = format!("{}\n", self.asm.externs);
         let rodata = format!(".section .rodata\n{}", self.asm.rodata);
         let data = format!(".section .data\n{}", self.asm.data);
         let bss = format!(".section .bss\n{}", self.asm.bss);
         let text = format!(".section .text\n{}", self.asm.text);
 
-        format!("{rodata}{data}{bss}{text}")
+        format!("{externs}{rodata}{data}{bss}{text}")
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -115,13 +122,15 @@ impl Codegen {
         let data = format!("section .data\n{}", self.asm.data);
         let bss = format!("section .bss\n{}", self.asm.bss);
         let text = format!("section .text\n{}", self.asm.text);
+        let externs = format!("{}\n", self.asm.externs);
 
-        format!("{rodata}{data}{bss}{text}")
+        format!("{externs}{rodata}{data}{bss}{text}")
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct AsmEmitter {
+    pub externs: String,
     pub text: String,
     pub data: String,
     pub rodata: String,
@@ -132,6 +141,7 @@ pub struct AsmEmitter {
 
 #[derive(Clone, Debug, Copy)]
 pub enum AsmSection {
+    EXTERN,
     BSS,
     RODATA,
     DATA,

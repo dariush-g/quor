@@ -65,6 +65,8 @@ pub trait TargetEmitter: std::fmt::Debug {
         func_asm
     }
 
+    fn t_extern(&self, ext: String) -> String;
+
     fn generate_ctx(
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> CodegenCtx<'_, Self::Reg, Self::FpReg>;

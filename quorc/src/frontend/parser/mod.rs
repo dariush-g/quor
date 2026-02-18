@@ -191,6 +191,18 @@ impl Parser {
                 return self.parse_import();
             }
 
+            if decl == "extern" {
+                if let TokenType::Identifier(name) = &self.peek().token_type.clone() {
+                    self.advance();
+                    return Ok(Stmt::AtDecl(
+                        decl.to_string(),
+                        Some(name.to_string()),
+                        None,
+                        None,
+                    ));
+                }
+            }
+
             if let TokenType::Identifier(name) = &self.peek().clone().token_type {
                 self.advance();
 
@@ -204,22 +216,6 @@ impl Parser {
                         None,
                     ));
                 }
-
-                let expr = self.expression().unwrap_or_else(|_| panic!());
-                // let token_type = self.peek().token_type;
-                // TODO: FOR @define replace all "name" with the value of the token
-                // match token_type {
-                //     TokenType::IntLiteral(i) => {}
-                //     TokenType::CharLiteral(c) => {}
-                //     _ => {}
-                // }
-
-                return Ok(Stmt::AtDecl(
-                    decl.to_string(),
-                    Some(name.to_string()),
-                    Some(expr),
-                    None,
-                ));
             }
 
             // if let TokenType::LeftBrace = &self.peek().token_type {
@@ -426,8 +422,13 @@ impl Parser {
                         lookahead += 1;
                         continue;
                     }
-                    TokenType::Identifier(_) => {
-                        lookahead += 1;
+                    TokenType::Identifier(identifier) => {
+                        match identifier.as_str() {
+                            "any_params" | "trust_ret" => {
+                                lookahead += 1;
+                            }
+                            _ => break,
+                        }
                         continue;
                     }
                     TokenType::Newline => {
@@ -569,14 +570,15 @@ impl Parser {
         while self.match_token(&[TokenType::At]) {
             // println!("Found @ token, next token: {:?}", self.peek().token_type);
             if let TokenType::Identifier(attr) = &self.peek().token_type.clone() {
+                match attr.as_str() {
+                    "any_params" | "trust_ret" => {}
+                    _ => continue,
+                };
                 self.advance();
                 attributes.push(attr.clone());
                 // println!("Found attribute: {}", attr);
 
-                // Skip newlines after each attribute
-                while self.match_token(&[TokenType::Newline]) {
-                    // Just consume the newline token
-                }
+                while self.match_token(&[TokenType::Newline]) {}
             } else {
                 return Err(ParseError::Expected {
                     expected: TokenType::Identifier("attribute".to_string()),

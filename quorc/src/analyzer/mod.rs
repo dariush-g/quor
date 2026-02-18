@@ -1270,6 +1270,7 @@ impl TypeChecker {
                 "__asm_bss__" | "_asm_bss_" | "asm_bss" => Ok(stmt.clone()),
                 "__asm_ro__" | "_asm_ro_" | "asm_ro" => Ok(stmt.clone()),
                 "any_params" | "ANY_PARAMS" => Ok(stmt.clone()),
+                "extern" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
                 _ => Err(format!("Unknown @ declaration: '{decl}'")),

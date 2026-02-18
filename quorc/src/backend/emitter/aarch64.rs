@@ -58,6 +58,7 @@ impl TargetEmitter for ARMEmitter {
             LInst::Call { dst, func, args } => todo!(),
             LInst::Mov { dst, src } => todo!(),
             LInst::Lea { dst, addr } => todo!(),
+            LInst::InlineAsm { asm } => todo!(),
         }
     }
 
@@ -96,7 +97,16 @@ impl TargetEmitter for ARMEmitter {
         todo!()
     }
 
-    fn generate_ctx(func: &LFunction<Self::Reg, Self::FpReg>) -> CodegenCtx<Self::Reg, Self::FpReg> {
+    fn generate_ctx(
+        func: &LFunction<Self::Reg, Self::FpReg>,
+    ) -> CodegenCtx<'_, Self::Reg, Self::FpReg> {
         todo!()
+    }
+
+    fn t_extern(&self, ext: String) -> String {
+        if cfg!(target_os = "macos") {
+            return format!("extern _{ext}");
+        }
+        format!("extern {ext}")
     }
 }

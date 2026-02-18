@@ -197,6 +197,7 @@ impl TargetEmitter for X86Emitter {
                     self.t_addr(addr.clone())
                 )
             }
+            LInst::InlineAsm { asm } => format!("{}\n", asm),
         }
     }
 
@@ -259,6 +260,10 @@ impl TargetEmitter for X86Emitter {
             frame,
             current_block: func.entry,
         }
+    }
+
+    fn t_extern(&self, ext: String) -> String {
+        format!("extern {ext}\n")
     }
 }
 
@@ -331,8 +336,8 @@ impl X86Emitter {
         let mem = self.mem_ref_sized(addr, size);
         let mut ret = match size {
             "byte" => format!("movzx rax, {}\n", mem,),
-            "dword" => format!("mov eax, {}\n", mem,),
-            _ => format!("mov rax, {}\n", mem,),
+            "dword" => format!("lea eax, {}\n", mem,),
+            _ => format!("lea rax, {}\n", mem,),
         };
         if let Loc::PhysReg(reg) = dst
             && let RegRef::GprReg(r) = reg
@@ -396,7 +401,7 @@ impl X86Emitter {
             }
         }
         let target = match func {
-            CallTarget::Direct(sym) => format!("__q_f_{}", sym.0),
+            CallTarget::Direct(sym) => format!("__q_f_{}", sym),
             CallTarget::Indirect(reg) => self.target_args.reg64(*reg).to_string(),
         };
         out.push_str(&format!("call {}\n", target));

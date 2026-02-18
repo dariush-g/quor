@@ -1,14 +1,8 @@
 @import <io.qu>
 
-struct X {
-    i: int;
-    z: char*;
-}
 
 def main() :: int {
-    let x = X { i: 1, z: "hello" };
-    
-    print("%s\n", x.z);
+    print("Hello, world!");
 
     return 0;
 }
