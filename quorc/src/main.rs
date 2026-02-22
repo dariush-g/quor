@@ -34,7 +34,7 @@ fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub fn build_link_run(
     asm_text: &str,
     workdir: &Path, // where intermediates should go
@@ -61,23 +61,7 @@ pub fn build_link_run(
         run(&mut c, workdir)?;
     }
 
-    // 3) clang → runtime.o (compile for x86_64 with a consistent min version)
-    // {
-    //     let mut c = Command::new("clang");
-    //     c.args([
-    //         "-arch",
-    //         "x86_64",
-    //         "-mmacosx-version-min=15.0",
-
-    // "-c",
-    // rt_c.to_str().unwrap(),
-    // "-o",
-    // rt_o.to_str().unwrap(),
-    //     ]);
-    //     run(&mut c, workdir)?;
-    // }
-
-    // 4) link (custom entry _start + explicit platform version)
+    // 2) link (custom entry _start + explicit platform version)
     {
         let mut c = Command::new("clang");
         c.args([
@@ -93,11 +77,54 @@ pub fn build_link_run(
         run(&mut c, workdir)?;
     }
 
-    // 5) run the produced binary
-    // {
-    //     let mut c = Command::new(&bin);
-    //     run(&mut c, workdir)?;
-    // }
+    if !keep_asm {
+        let _ = fs::remove_file(&asm);
+    }
+
+    Ok(())
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub fn build_link_run(
+    asm_text: &str,
+    workdir: &Path,
+    out_name: &str,
+    keep_asm: bool,
+) -> io::Result<()> {
+    let asm = workdir.join(format!("{out_name}.s"));
+    let obj = workdir.join(format!("{out_name}.o"));
+    let bin = workdir.join(out_name);
+
+    // 1) write GAS-syntax assembly
+    fs::write(&asm, asm_text)?;
+
+    // 2) assemble with clang (GAS syntax, arm64)
+    {
+        let mut c = Command::new("clang");
+        c.args([
+            "-c",
+            "-arch",
+            "arm64",
+            asm.to_str().unwrap(),
+            "-o",
+            obj.to_str().unwrap(),
+        ]);
+        run(&mut c, workdir)?;
+    }
+
+    // 3) link with clang (standard C runtime provides entry → _main)
+    {
+        let mut c = Command::new("clang");
+        c.args([
+            "-arch",
+            "arm64",
+            "-Wl,-platform_version,macos,15.0,15.0",
+            "-o",
+            bin.to_str().unwrap(),
+            obj.to_str().unwrap(),
+        ]);
+        run(&mut c, workdir)?;
+    }
 
     if !keep_asm {
         let _ = fs::remove_file(&asm);
@@ -121,7 +148,7 @@ fn run(cmd: &mut Command, workdir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn build_link_run(
     asm_text: &str,
     workdir: impl Into<PathBuf>,
@@ -132,7 +159,6 @@ pub fn build_link_run(
     let asm = workdir.join(format!("{out}.asm"));
     let obj = workdir.join(format!("{out}.o"));
 
-    // let bin = workdir.join(out);
     fs::write(&asm, asm_text)?;
 
     run(
@@ -145,13 +171,47 @@ pub fn build_link_run(
         ]),
         &workdir,
     )?;
-    //  -nostartfiles -no-pie
-    // GCC
+
     run(
         Command::new("gcc").args([
-            // "./stdlib/read_file.o",
-            //"-nostartfiles",
             "-no-pie",
+            obj.to_str().unwrap(),
+            "-o".into(),
+            out,
+        ]),
+        &workdir,
+    )?;
+
+    if !keep_asm {
+        let _ = fs::remove_file(&asm);
+    }
+
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub fn build_link_run(
+    asm_text: &str,
+    workdir: impl Into<PathBuf>,
+    out: &str,
+    keep_asm: bool,
+) -> io::Result<()> {
+    let workdir = workdir.into();
+    let asm = workdir.join(format!("{out}.s"));
+    let obj = workdir.join(format!("{out}.o"));
+
+    fs::write(&asm, asm_text)?;
+
+    // Assemble GAS syntax
+    run(
+        Command::new("as")
+            .args([asm.to_str().unwrap(), "-o", obj.to_str().unwrap()]),
+        &workdir,
+    )?;
+
+    // Link with gcc
+    run(
+        Command::new("gcc").args([
             obj.to_str().unwrap(),
             "-o".into(),
             out,

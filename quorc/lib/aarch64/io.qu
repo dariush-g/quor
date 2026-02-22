@@ -1,0 +1,8 @@
+@extern printf
+
+@any_params
+def print(_: char*) :: void {
+    @__asm__ {
+        bl _printf
+    }
+}

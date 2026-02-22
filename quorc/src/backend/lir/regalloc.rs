@@ -410,6 +410,39 @@ where
         let name = func.name.clone();
         let allocation = self.regalloc(func);
 
+        // Build parameter move instructions: arg registers → allocated locations.
+        // The regalloc may assign parameters to different registers than the ABI
+        // argument registers, so we need explicit moves at function entry.
+        let gp_args = self.arg_regs();
+        let fp_args = self.fp_arg_regs();
+        let mut param_moves: Vec<LInst<Self::Reg, Self::FpReg>> = Vec::new();
+        let mut gp_idx = 0;
+        let mut fp_idx = 0;
+        for param in &func.params {
+            if let Some(dst_loc) = allocation.vreg_loc.get(param) {
+                let is_fp = matches!(param.ty, VRegType::Float);
+                if is_fp {
+                    let arg_reg = Loc::PhysReg(RegRef::FprReg(fp_args[fp_idx]));
+                    if *dst_loc != arg_reg {
+                        param_moves.push(LInst::Mov {
+                            dst: dst_loc.clone(),
+                            src: Operand::Loc(arg_reg),
+                        });
+                    }
+                    fp_idx += 1;
+                } else {
+                    let arg_reg = Loc::PhysReg(RegRef::GprReg(gp_args[gp_idx]));
+                    if *dst_loc != arg_reg {
+                        param_moves.push(LInst::Mov {
+                            dst: dst_loc.clone(),
+                            src: Operand::Loc(arg_reg),
+                        });
+                    }
+                    gp_idx += 1;
+                }
+            }
+        }
+
         let blocks: Vec<_> = func
             .blocks
             .iter()
@@ -433,14 +466,23 @@ where
                     Terminator::TemporaryNone => None,
                 };
                 term.as_ref()?;
+
+                let mut insts: Vec<LInst<Self::Reg, Self::FpReg>> = Vec::new();
+                // Prepend parameter moves to the entry block
+                if block.id == func.entry {
+                    insts.extend(param_moves.clone());
+                }
+                insts.extend(
+                    block
+                        .instructions
+                        .iter()
+                        .flat_map(|v| self.mir_instr_to_lir(v, &allocation)),
+                );
+
                 Some(LBlock::<Self::Reg, Self::FpReg> {
                     id: block.id,
                     term: term.unwrap(),
-                    insts: block
-                        .instructions
-                        .iter()
-                        .flat_map(|v| self.mir_instr_to_lir(v, &allocation))
-                        .collect(),
+                    insts,
                 })
             })
             .collect();

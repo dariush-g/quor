@@ -84,10 +84,16 @@ fn rec_import_walk(
                     .clone()
                     .unwrap_or_else(|| panic!("Unable to locate import"));
                 let path = if param.ends_with('!') {
-                    // stdlib import
+                    // stdlib import — prefer arch-specific override
                     param.pop(); // remove '!'
                     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-                    format!("{manifest_dir}/lib/{param}")
+                    let arch = std::env::consts::ARCH; // "aarch64" or "x86_64"
+                    let arch_path = format!("{manifest_dir}/lib/{arch}/{param}");
+                    if std::path::Path::new(&arch_path).exists() {
+                        arch_path
+                    } else {
+                        format!("{manifest_dir}/lib/{param}")
+                    }
                 } else {
                     // local import
                     param.clone()
