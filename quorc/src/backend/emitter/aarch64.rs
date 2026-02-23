@@ -3,7 +3,8 @@ use crate::{
         lir::{
             aarch64::{A64RegFpr, A64RegGpr, A64Regs},
             regalloc::{
-                Addr, CallTarget, CmpOp, LFunction, LInst, LTerm, Loc, Operand, RegRef, TargetRegs,
+                Addr, CallTarget, CmpOp, LFunction, LInst, LTerm, Loc, Operand, RegType,
+                RegWidth, TargetRegs,
             },
         },
         target::TargetEmitter,
@@ -19,9 +20,34 @@ pub struct ARMEmitter {
 }
 
 impl ARMEmitter {
-    /// Ensure an operand is in a register. Returns (preamble_asm, register_name).
-    /// If the operand is already a physical register, no preamble is needed.
-    /// Otherwise, loads/moves the value into `scratch`.
+    fn loc_width(loc: &Loc<A64RegGpr, A64RegFpr>) -> RegWidth {
+        match loc {
+            Loc::PhysReg(rr) => rr.size,
+            Loc::Stack(_) => RegWidth::W64,
+        }
+    }
+
+    fn operand_width(op: &Operand<A64RegGpr, A64RegFpr>) -> RegWidth {
+        match op {
+            Operand::Loc(loc) => Self::loc_width(loc),
+            _ => RegWidth::W64,
+        }
+    }
+
+    /// Return the scratch register name at a given width.
+    /// ARM64: W32 and below use w-registers, W64+ use x-registers.
+    fn scratch_at(n: u8, w: RegWidth) -> &'static str {
+        match (n, w) {
+            (16, RegWidth::W8 | RegWidth::W16 | RegWidth::W32) => "w16",
+            (16, _) => "x16",
+            (17, RegWidth::W8 | RegWidth::W16 | RegWidth::W32) => "w17",
+            (17, _) => "x17",
+            _ => unreachable!(),
+        }
+    }
+
+    /// Ensure an operand is in a register at the given width.
+    /// Returns (preamble_asm, register_name).
     fn operand_to_reg(
         &self,
         operand: &Operand<A64RegGpr, A64RegFpr>,
@@ -47,10 +73,10 @@ impl ARMEmitter {
     /// Ensure a location is in a register. Returns (preamble_asm, register_name).
     fn loc_to_reg(&self, loc: &Loc<A64RegGpr, A64RegFpr>, scratch: &str) -> (String, String) {
         match loc {
-            Loc::PhysReg(reg_ref) => {
-                let name = match reg_ref {
-                    RegRef::GprReg(r) => self.target_regs.reg64(*r).to_string(),
-                    RegRef::FprReg(r) => self.target_regs.float128(*r).to_string(),
+            Loc::PhysReg(rr) => {
+                let name = match &rr.ty {
+                    RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_string(),
+                    RegType::FprReg(r) => self.target_regs.float128(*r).to_string(),
                 };
                 (String::new(), name)
             }
@@ -64,10 +90,10 @@ impl ARMEmitter {
     /// Write a value from `src_reg` into `dst` location.
     fn store_to_loc(&self, dst: &Loc<A64RegGpr, A64RegFpr>, src_reg: &str) -> String {
         match dst {
-            Loc::PhysReg(reg_ref) => {
-                let dst_reg = match reg_ref {
-                    RegRef::GprReg(r) => self.target_regs.reg64(*r),
-                    RegRef::FprReg(r) => self.target_regs.float128(*r),
+            Loc::PhysReg(rr) => {
+                let dst_reg = match &rr.ty {
+                    RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size),
+                    RegType::FprReg(r) => self.target_regs.float128(*r),
                 };
                 if dst_reg == src_reg {
                     String::new()
@@ -82,6 +108,7 @@ impl ARMEmitter {
     }
 
     /// Emit a 3-operand ALU instruction: `op dst, a, b`
+    /// All operands use consistent register width derived from dst.
     fn emit_binop(
         &self,
         op: &str,
@@ -90,26 +117,29 @@ impl ARMEmitter {
         b: &Operand<A64RegGpr, A64RegFpr>,
     ) -> String {
         let mut out = String::new();
-        let (setup_a, reg_a) = self.operand_to_reg(a, "x16");
-        let (setup_b, reg_b) = self.operand_to_reg(b, "x17");
+        let w = Self::loc_width(dst);
+        let s16 = Self::scratch_at(16, w);
+        let s17 = Self::scratch_at(17, w);
+        let (setup_a, reg_a) = self.operand_to_reg(a, s16);
+        let (setup_b, reg_b) = self.operand_to_reg(b, s17);
         out.push_str(&setup_a);
         out.push_str(&setup_b);
 
         let (dst_reg, is_stack) = match dst {
-            Loc::PhysReg(reg_ref) => {
-                let name = match reg_ref {
-                    RegRef::GprReg(r) => self.target_regs.reg64(*r).to_string(),
-                    RegRef::FprReg(r) => self.target_regs.float128(*r).to_string(),
+            Loc::PhysReg(rr) => {
+                let name = match &rr.ty {
+                    RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_string(),
+                    RegType::FprReg(r) => self.target_regs.float128(*r).to_string(),
                 };
                 (name, false)
             }
-            Loc::Stack(_) => ("x16".to_string(), true),
+            Loc::Stack(_) => (s16.to_string(), true),
         };
 
         out.push_str(&format!("{} {}, {}, {}\n", op, dst_reg, reg_a, reg_b));
 
         if is_stack {
-            out.push_str(&self.store_to_loc(dst, "x16"));
+            out.push_str(&self.store_to_loc(dst, s16));
         }
 
         out
@@ -323,10 +353,11 @@ impl ARMEmitter {
         let mut fp_idx = 0;
 
         for arg in args {
-            let is_fp = matches!(
-                arg,
-                Operand::Loc(Loc::PhysReg(RegRef::FprReg(_))) | Operand::ImmF64(_)
-            );
+            let is_fp = match arg {
+                Operand::Loc(Loc::PhysReg(rr)) => rr.is_fpr(),
+                Operand::ImmF64(_) => true,
+                _ => false,
+            };
 
             if is_fp {
                 let reg = self.target_regs.float128(fp_regs[fp_idx]);
@@ -337,11 +368,13 @@ impl ARMEmitter {
                 }
                 fp_idx += 1;
             } else {
-                let reg = self.target_regs.reg64(arg_regs[gp_idx]);
-                let (setup, src_reg) = self.operand_to_reg(arg, "x16");
+                let arg_w = Self::operand_width(arg);
+                let arg_reg = self.target_regs.reg_by_width(arg_regs[gp_idx], arg_w);
+                let s16 = Self::scratch_at(16, arg_w);
+                let (setup, src_reg) = self.operand_to_reg(arg, s16);
                 out.push_str(&setup);
-                if src_reg != reg {
-                    out.push_str(&format!("mov {}, {}\n", reg, src_reg));
+                if src_reg != arg_reg {
+                    out.push_str(&format!("mov {}, {}\n", arg_reg, src_reg));
                 }
                 gp_idx += 1;
             }
@@ -357,7 +390,12 @@ impl ARMEmitter {
         }
 
         if let Some(d) = dst {
-            out.push_str(&self.store_to_loc(d, "x0"));
+            let dst_w = Self::loc_width(d);
+            let ret_reg = match dst_w {
+                RegWidth::W8 | RegWidth::W16 | RegWidth::W32 => "w0",
+                _ => "x0",
+            };
+            out.push_str(&self.store_to_loc(d, ret_reg));
         }
 
         out
@@ -370,12 +408,12 @@ impl ARMEmitter {
         ty: &Type,
     ) -> String {
         let mut out = String::new();
-        let (setup, src_reg) = self.operand_to_reg(src, "x16");
-        out.push_str(&setup);
 
         match ty {
             Type::Long | Type::Pointer(_) => {
-                // Sign-extend 32-bit to 64-bit
+                // Sign-extend 32-bit to 64-bit: sxtw uses w-register source
+                let (setup, src_reg) = self.operand_to_reg(src, "w16");
+                out.push_str(&setup);
                 let w_reg = if src_reg.starts_with('x') {
                     format!("w{}", &src_reg[1..])
                 } else {
@@ -385,11 +423,20 @@ impl ARMEmitter {
                 out.push_str(&self.store_to_loc(dst, "x16"));
             }
             Type::Bool | Type::Char => {
-                out.push_str(&format!("and x16, {}, #0xff\n", src_reg));
-                out.push_str(&self.store_to_loc(dst, "x16"));
+                // Mask to 8-bit: and uses x-register form
+                let (setup, src_reg) = self.operand_to_reg(src, "x16");
+                out.push_str(&setup);
+                let dst_w = Self::loc_width(dst);
+                let ds16 = Self::scratch_at(16, dst_w);
+                out.push_str(&format!("and {}, {}, #0xff\n", ds16, src_reg));
+                out.push_str(&self.store_to_loc(dst, ds16));
             }
             _ => {
-                // Default: just move
+                // Default: move at dst width
+                let dst_w = Self::loc_width(dst);
+                let s16 = Self::scratch_at(16, dst_w);
+                let (setup, src_reg) = self.operand_to_reg(src, s16);
+                out.push_str(&setup);
                 out.push_str(&self.store_to_loc(dst, &src_reg));
             }
         }
@@ -523,42 +570,45 @@ impl TargetEmitter for ARMEmitter {
                 // ARM64 has no remainder instruction.
                 // mod = a - (a / b) * b  =>  msub dst, quotient, b, a
                 let mut out = String::new();
-                let (setup_a, reg_a) = self.operand_to_reg(a, "x16");
-                let (setup_b, reg_b) = self.operand_to_reg(b, "x17");
+                let w = Self::loc_width(dst);
+                let s16 = Self::scratch_at(16, w);
+                let s17 = Self::scratch_at(17, w);
+                let (setup_a, reg_a) = self.operand_to_reg(a, s16);
+                let (setup_b, reg_b) = self.operand_to_reg(b, s17);
                 out.push_str(&setup_a);
                 out.push_str(&setup_b);
 
                 let (dst_reg, is_stack) = match dst {
-                    Loc::PhysReg(reg_ref) => {
-                        let name = match reg_ref {
-                            RegRef::GprReg(r) => self.target_regs.reg64(*r).to_string(),
-                            RegRef::FprReg(r) => self.target_regs.float128(*r).to_string(),
+                    Loc::PhysReg(rr) => {
+                        let name = match &rr.ty {
+                            RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_string(),
+                            RegType::FprReg(r) => self.target_regs.float128(*r).to_string(),
                         };
                         (name, false)
                     }
-                    Loc::Stack(_) => ("x16".to_string(), true),
+                    Loc::Stack(_) => (s16.to_string(), true),
                 };
 
-                // x16 = a / b, then msub dst = a - x16 * b
-                // We need a temporary for the quotient that doesn't clobber reg_a or reg_b
-                // Use dst_reg for quotient if it's not a stack, otherwise use x16
                 out.push_str(&format!("sdiv {}, {}, {}\n", dst_reg, reg_a, reg_b));
-                // msub dst, quotient, divisor, dividend => dst = dividend - quotient * divisor
                 out.push_str(&format!(
                     "msub {}, {}, {}, {}\n",
                     dst_reg, dst_reg, reg_b, reg_a
                 ));
 
                 if is_stack {
-                    out.push_str(&self.store_to_loc(dst, "x16"));
+                    out.push_str(&self.store_to_loc(dst, s16));
                 }
 
                 out
             }
             LInst::CmpSet { dst, op, a, b } => {
                 let mut out = String::new();
-                let (setup_a, reg_a) = self.operand_to_reg(a, "x16");
-                let (setup_b, reg_b) = self.operand_to_reg(b, "x17");
+                // cmp operands use their own width
+                let cmp_w = Self::operand_width(a);
+                let cs16 = Self::scratch_at(16, cmp_w);
+                let cs17 = Self::scratch_at(17, cmp_w);
+                let (setup_a, reg_a) = self.operand_to_reg(a, cs16);
+                let (setup_b, reg_b) = self.operand_to_reg(b, cs17);
                 out.push_str(&setup_a);
                 out.push_str(&setup_b);
 
@@ -573,21 +623,24 @@ impl TargetEmitter for ARMEmitter {
                     CmpOp::Ge => "ge",
                 };
 
+                // cset result uses dst width
+                let dst_w = Self::loc_width(dst);
+                let ds16 = Self::scratch_at(16, dst_w);
                 let (dst_reg, is_stack) = match dst {
-                    Loc::PhysReg(reg_ref) => {
-                        let name = match reg_ref {
-                            RegRef::GprReg(r) => self.target_regs.reg64(*r).to_string(),
-                            RegRef::FprReg(r) => self.target_regs.float128(*r).to_string(),
+                    Loc::PhysReg(rr) => {
+                        let name = match &rr.ty {
+                            RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_string(),
+                            RegType::FprReg(r) => self.target_regs.float128(*r).to_string(),
                         };
                         (name, false)
                     }
-                    Loc::Stack(_) => ("x16".to_string(), true),
+                    Loc::Stack(_) => (ds16.to_string(), true),
                 };
 
                 out.push_str(&format!("cset {}, {}\n", dst_reg, cond));
 
                 if is_stack {
-                    out.push_str(&self.store_to_loc(dst, "x16"));
+                    out.push_str(&self.store_to_loc(dst, ds16));
                 }
 
                 out
@@ -598,7 +651,9 @@ impl TargetEmitter for ARMEmitter {
             LInst::Call { dst, func, args } => self.emit_call(dst, func, args),
             LInst::Mov { dst, src } => {
                 let mut out = String::new();
-                let (setup, src_reg) = self.operand_to_reg(src, "x16");
+                let w = Self::loc_width(dst);
+                let s16 = Self::scratch_at(16, w);
+                let (setup, src_reg) = self.operand_to_reg(src, s16);
                 out.push_str(&setup);
                 out.push_str(&self.store_to_loc(dst, &src_reg));
                 out
@@ -661,10 +716,16 @@ impl TargetEmitter for ARMEmitter {
         match term {
             LTerm::Ret { value } => {
                 if let Some(operand) = value {
-                    let (setup, src_reg) = self.operand_to_reg(operand, "x16");
+                    let w = Self::operand_width(operand);
+                    let s16 = Self::scratch_at(16, w);
+                    let ret_reg = match w {
+                        RegWidth::W8 | RegWidth::W16 | RegWidth::W32 => "w0",
+                        _ => "x0",
+                    };
+                    let (setup, src_reg) = self.operand_to_reg(operand, s16);
                     asm.push_str(&setup);
-                    if src_reg != "x0" {
-                        asm.push_str(&format!("mov x0, {}\n", src_reg));
+                    if src_reg != ret_reg {
+                        asm.push_str(&format!("mov {}, {}\n", ret_reg, src_reg));
                     }
                 }
                 asm.push_str(&format!("b .Lret_{}\n", ctx.func.name));
@@ -677,7 +738,9 @@ impl TargetEmitter for ARMEmitter {
                 if_true,
                 if_false,
             } => {
-                let (setup, cond_reg) = self.operand_to_reg(condition, "x16");
+                let w = Self::operand_width(condition);
+                let s16 = Self::scratch_at(16, w);
+                let (setup, cond_reg) = self.operand_to_reg(condition, s16);
                 asm.push_str(&setup);
                 asm.push_str(&format!(
                     "cbnz {}, .Lblock_{}_{}\n",
@@ -700,9 +763,9 @@ impl TargetEmitter for ARMEmitter {
 
     fn t_loc(&self, loc: Loc<Self::Reg, Self::FpReg>) -> String {
         match loc {
-            Loc::PhysReg(reg_ref) => match reg_ref {
-                RegRef::GprReg(r) => self.target_regs.reg64(r).to_owned(),
-                RegRef::FprReg(r) => self.target_regs.float128(r).to_owned(),
+            Loc::PhysReg(rr) => match &rr.ty {
+                RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_owned(),
+                RegType::FprReg(r) => self.target_regs.float128(*r).to_owned(),
             },
             Loc::Stack(offset) => format!("[x29, #-{}]", offset),
         }

@@ -123,46 +123,72 @@ impl TargetEmitter for X86Emitter {
     ) -> String {
         match inst {
             LInst::Add { dst, a, b } => {
+                let w = Self::loc_width(dst);
                 format!(
                     "mov {}, {}\nadd {}, {}\n",
-                    self.t_loc(dst.clone()),
-                    self.t_operand(a),
-                    self.t_loc(dst.clone()),
-                    self.t_operand(b)
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(a, w),
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(b, w)
                 )
             }
             LInst::Sub { dst, a, b } => {
+                let w = Self::loc_width(dst);
                 format!(
                     "mov {}, {}\nsub {}, {}\n",
-                    self.t_loc(dst.clone()),
-                    self.t_operand(a),
-                    self.t_loc(dst.clone()),
-                    self.t_operand(b)
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(a, w),
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(b, w)
                 )
             }
             LInst::Mul { dst, a, b } => {
+                let w = Self::loc_width(dst);
                 format!(
                     "mov {}, {}\nimul {}, {}\n",
-                    self.t_loc(dst.clone()),
-                    self.t_operand(a),
-                    self.t_loc(dst.clone()),
-                    self.t_operand(b)
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(a, w),
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(b, w)
                 )
             }
             LInst::Div { dst, a, b } => {
+                let w = Self::loc_width(dst);
+                let rax = self.target_args.reg_by_width(X86RegGpr::RAX, w);
+                let sign_ext = match w {
+                    RegWidth::W8 => "cbw",
+                    RegWidth::W16 => "cwd",
+                    RegWidth::W32 => "cdq",
+                    _ => "cqo",
+                };
                 format!(
-                    "mov rax, {}\ncqo\nidiv {}\nmov {}, rax\n",
-                    self.t_operand(a),
-                    self.t_operand(b),
-                    self.t_loc(dst.clone())
+                    "mov {}, {}\n{}\nidiv {}\nmov {}, {}\n",
+                    rax,
+                    self.t_operand_at(a, w),
+                    sign_ext,
+                    self.t_operand_at(b, w),
+                    self.t_loc_at(dst, w),
+                    rax
                 )
             }
             LInst::Mod { dst, a, b } => {
+                let w = Self::loc_width(dst);
+                let rax = self.target_args.reg_by_width(X86RegGpr::RAX, w);
+                let rdx = self.target_args.reg_by_width(X86RegGpr::RDX, w);
+                let sign_ext = match w {
+                    RegWidth::W8 => "cbw",
+                    RegWidth::W16 => "cwd",
+                    RegWidth::W32 => "cdq",
+                    _ => "cqo",
+                };
                 format!(
-                    "mov rax, {}\ncqo\nidiv {}\nmov {}, rdx\n",
-                    self.t_operand(a),
-                    self.t_operand(b),
-                    self.t_loc(dst.clone())
+                    "mov {}, {}\n{}\nidiv {}\nmov {}, {}\n",
+                    rax,
+                    self.t_operand_at(a, w),
+                    sign_ext,
+                    self.t_operand_at(b, w),
+                    self.t_loc_at(dst, w),
+                    rdx
                 )
             }
             LInst::CmpSet { dst, op, a, b } => {
@@ -174,13 +200,15 @@ impl TargetEmitter for X86Emitter {
                     CmpOp::Gt => "setg",
                     CmpOp::Ge => "setge",
                 };
-                let dst_str = self.t_loc(dst.clone());
+                // cmp operands must match each other's width
+                let cmp_w = Self::operand_width(a);
+                let dst_w = Self::loc_width(dst);
                 format!(
-                    "cmp {}, {}\n{} al\nmovzx eax, al\nmov {}, rax\n",
-                    self.t_operand(a),
-                    self.t_operand(b),
+                    "cmp {}, {}\n{} al\nmovzx {}, al\n",
+                    self.t_operand_at(a, cmp_w),
+                    self.t_operand_at(b, cmp_w),
                     setcc,
-                    dst_str
+                    self.t_loc_at(dst, dst_w),
                 )
             }
             LInst::Cast { dst, src, ty } => self.emit_cast(dst, src, ty),
@@ -188,12 +216,14 @@ impl TargetEmitter for X86Emitter {
             LInst::Store { src, addr, ty } => self.emit_store(src, addr, ty),
             LInst::Call { dst, func, args } => self.emit_call(dst, func, args),
             LInst::Mov { dst, src } => {
-                format!("mov {}, {}\n", self.t_loc(dst.clone()), self.t_operand(src))
+                let w = Self::loc_width(dst);
+                format!("mov {}, {}\n", self.t_loc_at(dst, w), self.t_operand_at(src, w))
             }
             LInst::Lea { dst, addr } => {
+                // LEA always operates on addresses (64-bit)
                 format!(
                     "lea {}, {}\n",
-                    self.t_loc(dst.clone()),
+                    self.t_loc_at(dst, RegWidth::W64),
                     self.t_addr(addr.clone())
                 )
             }
@@ -203,9 +233,9 @@ impl TargetEmitter for X86Emitter {
 
     fn t_loc(&self, loc: crate::backend::lir::regalloc::Loc<Self::Reg, Self::FpReg>) -> String {
         match loc {
-            Loc::PhysReg(reg_ref) => match reg_ref {
-                RegRef::GprReg(r) => self.target_args.reg64(r).to_owned(),
-                RegRef::FprReg(r) => self.target_args.float128(r).to_owned(),
+            Loc::PhysReg(rr) => match &rr.ty {
+                RegType::GprReg(r) => self.target_args.reg_by_width(*r, rr.size).to_owned(),
+                RegType::FprReg(r) => self.target_args.float128(*r).to_owned(),
             },
             Loc::Stack(offset) => format!("qword [rbp - {offset}]\n"),
         }
@@ -233,7 +263,9 @@ impl TargetEmitter for X86Emitter {
         match term {
             LTerm::Ret { value } => {
                 if let Some(operand) = value {
-                    asm.push_str(&format!("mov rax, {}\n", self.t_operand(operand)));
+                    let w = Self::operand_width(operand);
+                    let rax = self.target_args.reg_by_width(X86RegGpr::RAX, w);
+                    asm.push_str(&format!("mov {}, {}\n", rax, self.t_operand_at(operand, w)));
                 }
                 asm.push_str(&format!("jmp .Lret_{}\n", ctx.func.name));
             }
@@ -268,6 +300,53 @@ impl TargetEmitter for X86Emitter {
 }
 
 impl X86Emitter {
+    fn width_to_size_prefix(w: RegWidth) -> &'static str {
+        match w {
+            RegWidth::W8 => "byte",
+            RegWidth::W16 => "word",
+            RegWidth::W32 => "dword",
+            RegWidth::W64 | RegWidth::W128 => "qword",
+        }
+    }
+
+    fn loc_width(loc: &Loc<X86RegGpr, X86RegFpr>) -> RegWidth {
+        match loc {
+            Loc::PhysReg(rr) => rr.size,
+            Loc::Stack(_) => RegWidth::W64,
+        }
+    }
+
+    fn operand_width(op: &Operand<X86RegGpr, X86RegFpr>) -> RegWidth {
+        match op {
+            Operand::Loc(loc) => Self::loc_width(loc),
+            _ => RegWidth::W64,
+        }
+    }
+
+    /// Render a Loc at a specific register width.
+    fn t_loc_at(&self, loc: &Loc<X86RegGpr, X86RegFpr>, w: RegWidth) -> String {
+        match loc {
+            Loc::PhysReg(rr) => match &rr.ty {
+                RegType::GprReg(r) => self.target_args.reg_by_width(*r, w).to_owned(),
+                RegType::FprReg(r) => self.target_args.float128(*r).to_owned(),
+            },
+            Loc::Stack(offset) => {
+                let size = Self::width_to_size_prefix(w);
+                format!("{} [rbp - {}]", size, offset)
+            }
+        }
+    }
+
+    /// Render an Operand at a specific register width.
+    fn t_operand_at(&self, operand: &Operand<X86RegGpr, X86RegFpr>, w: RegWidth) -> String {
+        match operand {
+            Operand::Loc(loc) => self.t_loc_at(loc, w),
+            Operand::ImmI64(i) => i.to_string(),
+            Operand::ImmF64(i) => i.to_string(),
+            Operand::Indirect(addr) => self.t_addr(addr.clone()),
+        }
+    }
+
     fn type_size_suffix(ty: &Type) -> &'static str {
         match ty {
             Type::Char | Type::Bool => "byte",
@@ -311,18 +390,32 @@ impl X86Emitter {
         src: &Operand<X86RegGpr, X86RegFpr>,
         ty: &Type,
     ) -> String {
+        let dst_w = Self::loc_width(dst);
         match ty {
-            Type::Long => {
+            Type::Long | Type::Pointer(_) => {
+                // Sign-extend to 64-bit: movsxd uses 32-bit source, 64-bit dest
                 format!(
                     "movsxd {}, {}\n",
-                    self.t_loc(dst.clone()),
-                    self.t_operand(src)
+                    self.t_loc_at(dst, RegWidth::W64),
+                    self.t_operand_at(src, RegWidth::W32)
+                )
+            }
+            Type::Bool | Type::Char => {
+                // Zero-extend byte to dst width
+                format!(
+                    "movzx {}, {}\n",
+                    self.t_loc_at(dst, dst_w),
+                    self.t_operand_at(src, RegWidth::W8)
                 )
             }
             Type::int => {
-                format!("mov {}, {}\n", self.t_loc(dst.clone()), self.t_operand(src))
+                // Truncate or same-size move at 32-bit
+                format!("mov {}, {}\n", self.t_loc_at(dst, RegWidth::W32), self.t_operand_at(src, RegWidth::W32))
             }
-            _ => format!("mov {}, {}\n", self.t_loc(dst.clone()), self.t_operand(src)),
+            _ => {
+                // Default: move at dst width
+                format!("mov {}, {}\n", self.t_loc_at(dst, dst_w), self.t_operand_at(src, dst_w))
+            }
         }
     }
 
@@ -333,19 +426,21 @@ impl X86Emitter {
         ty: &Type,
     ) -> String {
         let size = Self::type_size_suffix(ty);
+        let w = Self::loc_width(dst);
+        let rax = self.target_args.reg_by_width(X86RegGpr::RAX, w);
         let mem = self.mem_ref_sized(addr, size);
         let mut ret = match size {
-            "byte" => format!("movzx rax, {}\n", mem,),
-            "dword" => format!("lea eax, {}\n", mem,),
-            _ => format!("lea rax, {}\n", mem,),
+            "byte" => format!("movzx {}, {}\n", rax, mem),
+            "dword" => format!("mov {}, {}\n", self.target_args.reg_by_width(X86RegGpr::RAX, RegWidth::W32), mem),
+            _ => format!("lea {}, {}\n", rax, mem),
         };
-        if let Loc::PhysReg(reg) = dst
-            && let RegRef::GprReg(r) = reg
+        if let Loc::PhysReg(rr) = dst
+            && let Some(r) = rr.as_gpr()
             && *r == X86RegGpr::RAX
         {
             return ret;
         }
-        ret.push_str(&format!("mov {}, rax\n", self.t_loc(dst.clone())));
+        ret.push_str(&format!("mov {}, {}\n", self.t_loc_at(dst, w), rax));
         ret
     }
 
@@ -356,9 +451,14 @@ impl X86Emitter {
         ty: &Type,
     ) -> String {
         let size = Self::type_size_suffix(ty);
+        let w = match ty {
+            Type::Bool | Type::Char => RegWidth::W8,
+            Type::int | Type::float => RegWidth::W32,
+            _ => RegWidth::W64,
+        };
         let mem = self.mem_ref_sized(addr, size);
 
-        format!("mov {}, {}\n", mem, self.t_operand(src))
+        format!("mov {}, {}\n", mem, self.t_operand_at(src, w))
     }
 
     fn emit_call(
@@ -375,10 +475,7 @@ impl X86Emitter {
         for arg in args.iter() {
             let is_fp = match arg {
                 Operand::Loc(loc) => match loc {
-                    Loc::PhysReg(reg_ref) => match reg_ref {
-                        RegRef::GprReg(_) => false,
-                        RegRef::FprReg(_) => true,
-                    },
+                    Loc::PhysReg(rr) => rr.is_fpr(),
                     Loc::Stack(_) => false,
                 },
                 Operand::ImmI64(_) => false,
@@ -393,10 +490,11 @@ impl X86Emitter {
                 ));
                 fp_args += 1;
             } else {
+                let arg_w = Self::operand_width(arg);
                 out.push_str(&format!(
                     "mov {}, {}\n",
-                    self.target_args.reg64(arg_regs[gp_args]),
-                    self.t_operand(arg)
+                    self.target_args.reg_by_width(arg_regs[gp_args], arg_w),
+                    self.t_operand_at(arg, arg_w)
                 ));
                 gp_args += 1;
             }
@@ -407,7 +505,9 @@ impl X86Emitter {
         };
         out.push_str(&format!("call {}\n", target));
         if let Some(d) = dst {
-            out.push_str(&format!("\nmov {}, rax\n", self.t_loc(d.clone())));
+            let dst_w = Self::loc_width(d);
+            let rax = self.target_args.reg_by_width(X86RegGpr::RAX, dst_w);
+            out.push_str(&format!("\nmov {}, {}\n", self.t_loc_at(d, dst_w), rax));
         }
         out
     }

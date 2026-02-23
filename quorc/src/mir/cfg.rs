@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::{frontend::ast::*, mir::block::*};
+use crate::{backend::lir::regalloc::RegWidth, frontend::ast::*, mir::block::*};
 
 #[derive(Default, Debug, Clone)]
 pub struct BlockIdGen {
@@ -35,7 +35,7 @@ pub struct VRegGenerator {
 }
 
 impl VRegGenerator {
-    pub fn fresh(&mut self, is_float: bool) -> VReg {
+    pub fn fresh(&mut self, is_float: bool, width: RegWidth) -> VReg {
         let reg = VReg {
             id: self.next,
             ty: if is_float {
@@ -43,6 +43,7 @@ impl VRegGenerator {
             } else {
                 VRegType::Int
             },
+            width,
         };
         self.next += 1;
         reg
@@ -292,7 +293,7 @@ impl IRGenerator {
 
             let mut params = Vec::with_capacity(func_params.len());
             for (param_name, param_ty) in func_params.clone() {
-                let param_reg = self.vreg_gen.fresh(Type::float == param_ty);
+                let param_reg = self.vreg_gen.fresh(Type::float == param_ty, type_to_reg_width(&param_ty));
                 if param_ty.fits_in_register() {
                     // Primitive or pointer: keep in VReg, no stack allocation needed
                     self.var_map

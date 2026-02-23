@@ -339,6 +339,16 @@ impl TargetRegs for A64Regs {
         )
     }
 
+    fn reg8(&self, reg: Self::Reg) -> &'static str {
+        // ARM uses w-registers for sub-32-bit operations
+        self.reg32(reg)
+    }
+
+    fn reg16(&self, reg: Self::Reg) -> &'static str {
+        // ARM uses w-registers for sub-32-bit operations
+        self.reg32(reg)
+    }
+
     fn reg32(&self, reg: Self::Reg) -> &'static str {
         match reg {
             A64RegGpr::X0 => "w0",

@@ -16,12 +16,72 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum RegRef<
+pub enum RegType<
     R: Eq + Copy + std::fmt::Debug + Copy + Hash,
     F: Eq + Copy + std::fmt::Debug + Copy + Hash,
 > {
     GprReg(R),
     FprReg(F),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct RegRef<
+    R: Eq + Copy + std::fmt::Debug + Copy + Hash,
+    F: Eq + Copy + std::fmt::Debug + Copy + Hash,
+> {
+    pub ty: RegType<R, F>,
+    pub size: RegWidth,
+}
+
+impl<R: Eq + Copy + std::fmt::Debug + Hash, F: Eq + Copy + std::fmt::Debug + Hash> RegRef<R, F> {
+    pub fn gpr(r: R, size: RegWidth) -> Self {
+        Self {
+            ty: RegType::GprReg(r),
+            size,
+        }
+    }
+
+    pub fn fpr(r: F, size: RegWidth) -> Self {
+        Self {
+            ty: RegType::FprReg(r),
+            size,
+        }
+    }
+
+    pub fn size(&self) -> RegWidth {
+        self.size
+    }
+
+    pub fn as_gpr(&self) -> Option<&R> {
+        match &self.ty {
+            RegType::GprReg(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn as_fpr(&self) -> Option<&F> {
+        match &self.ty {
+            RegType::FprReg(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn is_gpr(&self) -> bool {
+        matches!(self.ty, RegType::GprReg(_))
+    }
+
+    pub fn is_fpr(&self) -> bool {
+        matches!(self.ty, RegType::FprReg(_))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum RegWidth {
+    W8,
+    W16,
+    W32,
+    W64,
+    W128,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -195,8 +255,19 @@ where
     fn fp_is_caller_saved(&self, r: Self::FpReg) -> bool;
     fn fp_is_callee_saved(&self, r: Self::FpReg) -> bool;
 
+    fn reg8(&self, reg: Self::Reg) -> &'static str;
+    fn reg16(&self, reg: Self::Reg) -> &'static str;
     fn reg32(&self, reg: Self::Reg) -> &'static str;
     fn reg64(&self, reg: Self::Reg) -> &'static str;
+
+    fn reg_by_width(&self, reg: Self::Reg, width: RegWidth) -> &'static str {
+        match width {
+            RegWidth::W8 => self.reg8(reg),
+            RegWidth::W16 => self.reg16(reg),
+            RegWidth::W32 => self.reg32(reg),
+            RegWidth::W64 | RegWidth::W128 => self.reg64(reg),
+        }
+    }
 
     fn float128(&self, reg: Self::FpReg) -> &'static str;
 
@@ -220,20 +291,21 @@ where
             .partition(|p| matches!(p.ty, VRegType::Int));
 
         // Assign integer params
-        vreg_loc.extend(
-            int_params
-                .iter()
-                .zip(gp_args.iter())
-                .map(|(param, &reg)| (*param, Loc::PhysReg(RegRef::GprReg(reg)))),
-        );
+        for i in 0..int_params.len() {
+            let param: &VReg = int_params[i];
+            let width = param.width;
+            let reg = gp_args[i];
+            let rr: RegRef<Self::Reg, Self::FpReg> = RegRef::gpr(reg, width);
+            vreg_loc.insert(*param, Loc::PhysReg(rr));
+        }
 
         // Assign float params
-        vreg_loc.extend(
-            float_params
-                .iter()
-                .zip(fp_args.iter())
-                .map(|(param, &reg)| (*param, Loc::PhysReg(RegRef::FprReg(reg)))),
-        );
+        for i in 0..float_params.len() {
+            let param: &VReg = float_params[i];
+            let reg = fp_args[i];
+            let rr: RegRef<Self::Reg, Self::FpReg> = RegRef::fpr(reg, RegWidth::W128);
+            vreg_loc.insert(*param, Loc::PhysReg(rr));
+        }
 
         let flattened_blocks = flatten_blocks(func.blocks.clone());
         let live_ranges = assign_live_ranges(flattened_blocks);
@@ -252,22 +324,24 @@ where
         let (fpr_alloc, offset) = self.color_graph_fpr(fpr_stack, &fpr_graph, offset);
 
         gpr_alloc.iter().for_each(|(k, v)| {
-            if let Loc::PhysReg(reg_ref) = v
-                && let RegRef::GprReg(r) = reg_ref
-                && self.is_callee_saved(r)
-            {
-                used_callee_saved.push(*r);
+            if let Loc::PhysReg(rr) = v {
+                if let Some(r) = rr.as_gpr() {
+                    if self.is_callee_saved(r) {
+                        used_callee_saved.push(*r);
+                    }
+                }
             }
 
             vreg_loc.insert(*k, v.clone());
         });
 
         fpr_alloc.iter().for_each(|(k, v)| {
-            if let Loc::PhysReg(reg_ref) = v
-                && let RegRef::FprReg(r) = reg_ref
-                && self.fp_is_callee_saved(*r)
-            {
-                used_callee_saved_fp.push(*r);
+            if let Loc::PhysReg(rr) = v {
+                if let Some(r) = rr.as_fpr() {
+                    if self.fp_is_callee_saved(*r) {
+                        used_callee_saved_fp.push(*r);
+                    }
+                }
             }
 
             vreg_loc.insert(*k, v.clone());
@@ -331,8 +405,9 @@ where
             let neighbor_colors: HashSet<usize> = neighbors
                 .iter()
                 .filter_map(|n| {
-                    if let Some(Loc::PhysReg(RegRef::GprReg(reg))) = allocation.get(n) {
-                        self.allocatable_regs().iter().position(|r| r == reg)
+                    if let Some(Loc::PhysReg(rr)) = allocation.get(n) {
+                        rr.as_gpr()
+                            .and_then(|reg| self.allocatable_regs().iter().position(|r| r == reg))
                     } else {
                         None
                     }
@@ -341,7 +416,7 @@ where
 
             if let Some(color) = (0..Self::NUM_ALLOCATABLE).find(|c| !neighbor_colors.contains(c)) {
                 let phys_reg = self.allocatable_regs()[color];
-                allocation.insert(node, Loc::PhysReg(RegRef::GprReg(phys_reg)));
+                allocation.insert(node, Loc::PhysReg(RegRef::gpr(phys_reg, node.width)));
             } else {
                 allocation.insert(node, Loc::Stack(stack_offset));
                 stack_offset += 8;
@@ -367,8 +442,9 @@ where
             let neighbor_colors: HashSet<usize> = neighbors
                 .iter()
                 .filter_map(|n| {
-                    if let Some(Loc::PhysReg(RegRef::FprReg(reg))) = allocation.get(n) {
-                        self.float_regs().iter().position(|r| r == reg)
+                    if let Some(Loc::PhysReg(rr)) = allocation.get(n) {
+                        rr.as_fpr()
+                            .and_then(|reg| self.float_regs().iter().position(|r| r == reg))
                     } else {
                         None
                     }
@@ -377,7 +453,7 @@ where
 
             if let Some(color) = (0..Self::FPR_ALLOCATABLE).find(|c| !neighbor_colors.contains(c)) {
                 let phys_reg = self.float_regs()[color];
-                allocation.insert(node, Loc::PhysReg(RegRef::FprReg(phys_reg)));
+                allocation.insert(node, Loc::PhysReg(RegRef::fpr(phys_reg, RegWidth::W128)));
             } else {
                 allocation.insert(node, Loc::Stack(stack_offset));
                 stack_offset += 8;
@@ -422,7 +498,7 @@ where
             if let Some(dst_loc) = allocation.vreg_loc.get(param) {
                 let is_fp = matches!(param.ty, VRegType::Float);
                 if is_fp {
-                    let arg_reg = Loc::PhysReg(RegRef::FprReg(fp_args[fp_idx]));
+                    let arg_reg = Loc::PhysReg(RegRef::fpr(fp_args[fp_idx], RegWidth::W128));
                     if *dst_loc != arg_reg {
                         param_moves.push(LInst::Mov {
                             dst: dst_loc.clone(),
@@ -431,7 +507,7 @@ where
                     }
                     fp_idx += 1;
                 } else {
-                    let arg_reg = Loc::PhysReg(RegRef::GprReg(gp_args[gp_idx]));
+                    let arg_reg = Loc::PhysReg(RegRef::gpr(gp_args[gp_idx], param.width));
                     if *dst_loc != arg_reg {
                         param_moves.push(LInst::Mov {
                             dst: dst_loc.clone(),
@@ -508,10 +584,10 @@ where
                     .get(vreg)
                     .expect("vreg not in allocation");
                 match loc {
-                    Loc::PhysReg(RegRef::GprReg(r)) => (
+                    Loc::PhysReg(rr) if rr.is_gpr() => (
                         vec![],
                         Addr::BaseOff {
-                            base: *r,
+                            base: *rr.as_gpr().unwrap(),
                             off: offset,
                         },
                     ),
@@ -519,7 +595,7 @@ where
                         let fp = self.fp().expect("fp required for spilled address");
                         let scratch = self.scratch_regs()[0];
                         let setup = vec![LInst::Load {
-                            dst: Loc::PhysReg(RegRef::GprReg(scratch)),
+                            dst: Loc::PhysReg(RegRef::gpr(scratch, RegWidth::W64)),
                             addr: Addr::BaseOff {
                                 base: fp,
                                 off: *stack_off,
@@ -683,16 +759,18 @@ where
                     Value::Reg(index_vreg) => {
                         let base_loc = vreg_of_value(base).and_then(|v| allocation.vreg_loc.get(v));
                         let index_loc = allocation.vreg_loc.get(index_vreg);
-                        if let (
-                            Some(Loc::PhysReg(RegRef::GprReg(base_reg))),
-                            Some(Loc::PhysReg(RegRef::GprReg(index_reg))),
-                        ) = (base_loc, index_loc)
-                        {
+                        let base_gpr = base_loc.and_then(|l| {
+                            if let Loc::PhysReg(rr) = l { rr.as_gpr().copied() } else { None }
+                        });
+                        let index_gpr = index_loc.and_then(|l| {
+                            if let Loc::PhysReg(rr) = l { rr.as_gpr().copied() } else { None }
+                        });
+                        if let (Some(base_reg), Some(index_reg)) = (base_gpr, index_gpr) {
                             vec![LInst::Lea {
                                 dst: allocation.vreg_loc[dest].clone(),
                                 addr: Addr::BaseIndex {
-                                    base: *base_reg,
-                                    index: *index_reg,
+                                    base: base_reg,
+                                    index: index_reg,
                                     scale: scale_u8,
                                     off: 0,
                                 },
@@ -702,12 +780,12 @@ where
                             let base_scratch = self.scratch_regs()[0];
                             let index_operand = self.value_to_operand(index, allocation);
                             setup.push(LInst::Lea {
-                                dst: Loc::PhysReg(RegRef::GprReg(base_scratch)),
+                                dst: Loc::PhysReg(RegRef::gpr(base_scratch, RegWidth::W64)),
                                 addr,
                             });
                             setup.push(LInst::Add {
                                 dst: allocation.vreg_loc[dest].clone(),
-                                a: Operand::Loc(Loc::PhysReg(RegRef::GprReg(base_scratch))),
+                                a: Operand::Loc(Loc::PhysReg(RegRef::gpr(base_scratch, RegWidth::W64))),
                                 b: index_operand,
                             });
                             setup
@@ -760,19 +838,19 @@ where
                         .unwrap_or_else(|| self.scratch_regs()[0]),
                 ];
                 setup.push(LInst::Lea {
-                    dst: Loc::PhysReg(RegRef::GprReg(scratch0)),
+                    dst: Loc::PhysReg(RegRef::gpr(scratch0, RegWidth::W64)),
                     addr: addr_dst,
                 });
                 setup.push(LInst::Lea {
-                    dst: Loc::PhysReg(RegRef::GprReg(scratch1)),
+                    dst: Loc::PhysReg(RegRef::gpr(scratch1, RegWidth::W64)),
                     addr: addr_src,
                 });
                 setup.push(LInst::Call {
                     dst: None,
                     func: CallTarget::Direct("memcpy".to_owned()),
                     args: vec![
-                        Operand::Loc(Loc::PhysReg(RegRef::GprReg(scratch0))),
-                        Operand::Loc(Loc::PhysReg(RegRef::GprReg(scratch1))),
+                        Operand::Loc(Loc::PhysReg(RegRef::gpr(scratch0, RegWidth::W64))),
+                        Operand::Loc(Loc::PhysReg(RegRef::gpr(scratch1, RegWidth::W64))),
                         Operand::ImmI64(*size as i64),
                     ],
                 });

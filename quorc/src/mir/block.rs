@@ -1,11 +1,22 @@
 use std::collections::HashMap;
 
+use crate::backend::lir::regalloc::RegWidth;
 use crate::frontend::ast::{Expr, Type};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VReg {
     pub id: usize,
     pub ty: VRegType,
+    pub width: RegWidth,
+}
+
+pub fn type_to_reg_width(ty: &Type) -> RegWidth {
+    match ty {
+        Type::Bool | Type::Char => RegWidth::W8,
+        Type::int | Type::float => RegWidth::W32,
+        Type::Long | Type::Pointer(_) => RegWidth::W64,
+        _ => RegWidth::W64,
+    }
 }
 
 impl VReg {

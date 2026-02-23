@@ -271,6 +271,48 @@ impl TargetRegs for X86Regs {
         )
     }
 
+    fn reg8(&self, reg: Self::Reg) -> &'static str {
+        match reg {
+            X86RegGpr::RAX => "al",
+            X86RegGpr::RBX => "bl",
+            X86RegGpr::RCX => "cl",
+            X86RegGpr::RDX => "dl",
+            X86RegGpr::RSI => "sil",
+            X86RegGpr::RDI => "dil",
+            X86RegGpr::RBP => "bpl",
+            X86RegGpr::RSP => "spl",
+            X86RegGpr::R8 => "r8b",
+            X86RegGpr::R9 => "r9b",
+            X86RegGpr::R10 => "r10b",
+            X86RegGpr::R11 => "r11b",
+            X86RegGpr::R12 => "r12b",
+            X86RegGpr::R13 => "r13b",
+            X86RegGpr::R14 => "r14b",
+            X86RegGpr::R15 => "r15b",
+        }
+    }
+
+    fn reg16(&self, reg: Self::Reg) -> &'static str {
+        match reg {
+            X86RegGpr::RAX => "ax",
+            X86RegGpr::RBX => "bx",
+            X86RegGpr::RCX => "cx",
+            X86RegGpr::RDX => "dx",
+            X86RegGpr::RSI => "si",
+            X86RegGpr::RDI => "di",
+            X86RegGpr::RBP => "bp",
+            X86RegGpr::RSP => "sp",
+            X86RegGpr::R8 => "r8w",
+            X86RegGpr::R9 => "r9w",
+            X86RegGpr::R10 => "r10w",
+            X86RegGpr::R11 => "r11w",
+            X86RegGpr::R12 => "r12w",
+            X86RegGpr::R13 => "r13w",
+            X86RegGpr::R14 => "r14w",
+            X86RegGpr::R15 => "r15w",
+        }
+    }
+
     fn reg32(&self, reg: Self::Reg) -> &'static str {
         match reg {
             X86RegGpr::RAX => "eax",
