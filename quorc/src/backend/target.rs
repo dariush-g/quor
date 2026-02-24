@@ -3,7 +3,7 @@ use crate::{
         CodegenCtx,
         lir::regalloc::{Addr, LFunction, LInst, LTerm, Loc, Operand},
     },
-    mir::block::GlobalDef,
+    midend::mir::block::GlobalDef,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]

@@ -858,8 +858,9 @@ impl TypeChecker {
                     .ok_or_else(|| format!("Undefined function '{name}'"))?
                     .clone();
 
-                if param_types.len() != args.len()
-                    && !attributes.contains(&"any_params".to_string())
+                println!("{:?}", attributes);
+
+                if param_types.len() != args.len() && !attributes.contains(&"variadic".to_string())
                 {
                     return Err(format!(
                         "Function '{}' expected {} arguments, got {}",
@@ -1266,16 +1267,16 @@ impl TypeChecker {
 
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
-            Stmt::AtDecl(decl, _, _, _) => match decl.as_str() {
+            Stmt::AtDecl(decl, _, _, _) => match decl.to_lowercase().as_str() {
                 "import" => Ok(stmt.clone()),
-                "const" | "CONST" => Ok(stmt.clone()),
+                "const" => Ok(stmt.clone()),
                 "union" => Ok(stmt.clone()),
                 "keep_asm" => Ok(stmt.clone()),
                 "trust_ret" => Ok(stmt.clone()),
                 "__asm__" | "asm" | "_asm_" => Ok(stmt.clone()),
                 "__asm_bss__" | "_asm_bss_" | "asm_bss" => Ok(stmt.clone()),
                 "__asm_ro__" | "_asm_ro_" | "asm_ro" => Ok(stmt.clone()),
-                "any_params" | "ANY_PARAMS" => Ok(stmt.clone()),
+                "variadic" => Ok(stmt.clone()),
                 "extern" => Ok(stmt.clone()),
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),

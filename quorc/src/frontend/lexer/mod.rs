@@ -1,6 +1,5 @@
 use crate::frontend::lexer::token::*;
 
-
 pub mod token;
 
 pub struct Lexer {
@@ -117,6 +116,7 @@ impl Lexer {
                 };
                 tokens.push(self.make_token(token));
             }
+            '#' => tokens.push(self.make_token(TokenType::Hashtag)),
             '%' => tokens.push(self.make_token(TokenType::Percent)),
             '!' => {
                 let token = if self.match_char('=') {

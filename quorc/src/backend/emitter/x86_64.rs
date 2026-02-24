@@ -8,7 +8,7 @@ use crate::{
         target::TargetEmitter,
     },
     frontend::ast::Type,
-    mir::block::*,
+    midend::mir::block::*,
 };
 
 #[derive(Debug, Default)]

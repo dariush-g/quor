@@ -8,13 +8,12 @@ use crate::{
         lir::aarch64::A64Regs,
         target::{Target, TargetEmitter},
     },
-    mir::block::*,
+    midend::mir::block::*,
 };
 
 pub mod emitter;
 pub mod lir;
 pub mod target;
-pub mod x86_64_;
 
 #[derive(Debug)]
 pub struct Codegen {
@@ -67,11 +66,12 @@ impl Codegen {
         }
 
         for (_, func) in ir_program.functions {
-            codegen.asm.text.push_str(
-                &codegen
-                    .emitter
-                    .generate_function(&codegen.target_regs.to_lir(&func)),
-            );
+            let lowered_func = codegen.target_regs.to_lir(&func);
+            println!("{lowered_func:?}");
+            codegen
+                .asm
+                .text
+                .push_str(&codegen.emitter.generate_function(&lowered_func));
         }
 
         codegen.emit()

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::{backend::lir::regalloc::RegWidth, frontend::ast::*, mir::block::*};
+use crate::{backend::lir::regalloc::RegWidth, frontend::ast::*, midend::mir::block::*};
 
 #[derive(Default, Debug, Clone)]
 pub struct BlockIdGen {
@@ -293,7 +293,9 @@ impl IRGenerator {
 
             let mut params = Vec::with_capacity(func_params.len());
             for (param_name, param_ty) in func_params.clone() {
-                let param_reg = self.vreg_gen.fresh(Type::float == param_ty, type_to_reg_width(&param_ty));
+                let param_reg = self
+                    .vreg_gen
+                    .fresh(Type::float == param_ty, type_to_reg_width(&param_ty));
                 if param_ty.fits_in_register() {
                     // Primitive or pointer: keep in VReg, no stack allocation needed
                     self.var_map

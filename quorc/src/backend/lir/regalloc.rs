@@ -9,7 +9,7 @@ use crate::{
         interference::{InterferenceGraph, build_interference_graph},
     },
     frontend::ast::Type,
-    mir::block::{
+    midend::mir::block::{
         AtDecl, BlockId, GlobalValue, IRBlock, IRFunction, IRInstruction, Terminator, VReg,
         VRegType, Value,
     },
@@ -324,26 +324,23 @@ where
         let (fpr_alloc, offset) = self.color_graph_fpr(fpr_stack, &fpr_graph, offset);
 
         gpr_alloc.iter().for_each(|(k, v)| {
-            if let Loc::PhysReg(rr) = v {
-                if let Some(r) = rr.as_gpr() {
-                    if self.is_callee_saved(r) {
-                        used_callee_saved.push(*r);
-                    }
-                }
+            if let Loc::PhysReg(rr) = v
+                && let Some(r) = rr.as_gpr()
+                && self.is_callee_saved(r)
+            {
+                used_callee_saved.push(*r);
             }
 
             vreg_loc.insert(*k, v.clone());
         });
 
         fpr_alloc.iter().for_each(|(k, v)| {
-            if let Loc::PhysReg(rr) = v {
-                if let Some(r) = rr.as_fpr() {
-                    if self.fp_is_callee_saved(*r) {
-                        used_callee_saved_fp.push(*r);
-                    }
-                }
+            if let Loc::PhysReg(rr) = v
+                && let Some(r) = rr.as_fpr()
+                && self.fp_is_callee_saved(*r)
+            {
+                used_callee_saved_fp.push(*r);
             }
-
             vreg_loc.insert(*k, v.clone());
         });
 
@@ -760,10 +757,18 @@ where
                         let base_loc = vreg_of_value(base).and_then(|v| allocation.vreg_loc.get(v));
                         let index_loc = allocation.vreg_loc.get(index_vreg);
                         let base_gpr = base_loc.and_then(|l| {
-                            if let Loc::PhysReg(rr) = l { rr.as_gpr().copied() } else { None }
+                            if let Loc::PhysReg(rr) = l {
+                                rr.as_gpr().copied()
+                            } else {
+                                None
+                            }
                         });
                         let index_gpr = index_loc.and_then(|l| {
-                            if let Loc::PhysReg(rr) = l { rr.as_gpr().copied() } else { None }
+                            if let Loc::PhysReg(rr) = l {
+                                rr.as_gpr().copied()
+                            } else {
+                                None
+                            }
                         });
                         if let (Some(base_reg), Some(index_reg)) = (base_gpr, index_gpr) {
                             vec![LInst::Lea {
@@ -785,7 +790,10 @@ where
                             });
                             setup.push(LInst::Add {
                                 dst: allocation.vreg_loc[dest].clone(),
-                                a: Operand::Loc(Loc::PhysReg(RegRef::gpr(base_scratch, RegWidth::W64))),
+                                a: Operand::Loc(Loc::PhysReg(RegRef::gpr(
+                                    base_scratch,
+                                    RegWidth::W64,
+                                ))),
                                 b: index_operand,
                             });
                             setup

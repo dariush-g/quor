@@ -1,7 +1,7 @@
-use quorc::analyzer::TypeChecker;
 use quorc::backend::Codegen;
 use quorc::frontend::{lexer::Lexer, parser::Parser};
-use quorc::mir::cfg::IRGenerator;
+use quorc::midend::analyzer::TypeChecker;
+use quorc::midend::mir::cfg::IRGenerator;
 
 use std::env;
 use std::fs;
@@ -173,12 +173,7 @@ pub fn build_link_run(
     )?;
 
     run(
-        Command::new("gcc").args([
-            "-no-pie",
-            obj.to_str().unwrap(),
-            "-o".into(),
-            out,
-        ]),
+        Command::new("gcc").args(["-no-pie", obj.to_str().unwrap(), "-o".into(), out]),
         &workdir,
     )?;
 
@@ -204,18 +199,13 @@ pub fn build_link_run(
 
     // Assemble GAS syntax
     run(
-        Command::new("as")
-            .args([asm.to_str().unwrap(), "-o", obj.to_str().unwrap()]),
+        Command::new("as").args([asm.to_str().unwrap(), "-o", obj.to_str().unwrap()]),
         &workdir,
     )?;
 
     // Link with gcc
     run(
-        Command::new("gcc").args([
-            obj.to_str().unwrap(),
-            "-o".into(),
-            out,
-        ]),
+        Command::new("gcc").args([obj.to_str().unwrap(), "-o".into(), out]),
         &workdir,
     )?;
 
@@ -288,6 +278,10 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    if compiler_args.contains(&"--emit-ast".to_string()) {
+        println!("{:?}", program);
+    }
 
     // println!("{program:?}");
 

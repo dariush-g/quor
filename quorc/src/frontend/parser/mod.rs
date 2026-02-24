@@ -306,6 +306,9 @@ impl Parser {
                         TokenType::Star => {
                             assembly_code.push('*');
                         }
+                        TokenType::Hashtag => {
+                            assembly_code.push('#');
+                        }
                         TokenType::Slash => {
                             assembly_code.push('/');
                         }
@@ -424,7 +427,7 @@ impl Parser {
                     }
                     TokenType::Identifier(identifier) => {
                         match identifier.as_str() {
-                            "any_params" | "trust_ret" => {
+                            "variadic" | "trust_ret" => {
                                 lookahead += 1;
                             }
                             _ => break,
@@ -571,7 +574,7 @@ impl Parser {
             // println!("Found @ token, next token: {:?}", self.peek().token_type);
             if let TokenType::Identifier(attr) = &self.peek().token_type.clone() {
                 match attr.as_str() {
-                    "any_params" | "trust_ret" => {}
+                    "variadic" | "trust_ret" => {}
                     _ => continue,
                 };
                 self.advance();

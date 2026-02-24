@@ -1,4 +1,10 @@
-## Quor is a small, experimental programming language that compiles directly to x86_64 assembly (System V ABI)
+# Quor 
+
+Quor is a small, experimental systems programming language with Rust-inspired syntax that compiles to native x86_64 and aarch64 assembly.
+
+## Architecture
+
+Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph coloring regalloc) --> x86_64 / aarch64
 
 ### Current Features
 
@@ -12,7 +18,11 @@
 - `if` / 'else' / `while` / 'for'
 - Imports to a standard lib and to local files
 - Basic memory management using C's `malloc()` and `free()`
+- Basic output using C's printf
+- Variadic functions
 - Inline assembly
+- Multi-target codegen (x86_64, aarch64)
+- Type inference for variable assignments
 
 ## Examples
 
@@ -64,7 +74,7 @@ struct Example {
 }
 
 def main() :: int {
-    let example: Example* = malloc(sizeof(Example)) as Example*;
+    let example = malloc(sizeof(Example)) as Example*;
 
     example.x = 42;
 
@@ -72,7 +82,7 @@ def main() :: int {
 
 	free(example);
 
-	let person: Person = Person { name: "bob", age: 10 };
+	let person = Person { name: "bob", age: 10 };
 
     return 0;
 }
@@ -98,7 +108,7 @@ def get_time_int() :: int {
 
 ```quor
 @import <io.qu>
-@const XYZ = 100
+@const ONE_HUNDRED = 100
 def main() :: int {
 	print("%d", ONE_HUNDRED);
 	return 0;
@@ -106,8 +116,9 @@ def main() :: int {
 ```
 
 ## Known limitations:
-### 6 parameter functions 
-### No bitwise operations yet
-### No pointer indexing yet
-### No local variable type inference yet
 
+- 6 parameter maximum for function calls
+- No bitwise operations yet
+- No pointer indexing yet
+- No local variable type inference yet
+- codegen backends are a work in progress

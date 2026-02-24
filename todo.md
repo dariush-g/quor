@@ -1,5 +1,7 @@
 # Todo
 
+add RegWidth param in LIR regs
+
 make @define a text replacement
 
 add conditional compilation declarations:
@@ -10,12 +12,9 @@ add conditional compilation declarations:
 
 cfg ir - add ro_data and bss inline asm
 
-
 add line numbers to errors and improve error warnings in general
 
 features todo:
-    generics -> monomorph / static dispatch
-    traits -> dynamic dispatch
-    trained inlining cost function
-
-
+generics -> monomorph / static dispatch
+traits -> dynamic dispatch
+trained inlining cost function

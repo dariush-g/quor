@@ -1,9 +1,6 @@
 use crate::{
-    mir::{
-        block::{AtDecl, BlockId, IRInstruction, Terminator},
-        cfg::IRGenerator,
-    },
     frontend::ast::{Expr, Stmt},
+    midend::mir::{block::*, cfg::*},
 };
 
 impl IRGenerator {

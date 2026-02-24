@@ -3,15 +3,15 @@ use crate::{
         lir::{
             aarch64::{A64RegFpr, A64RegGpr, A64Regs},
             regalloc::{
-                Addr, CallTarget, CmpOp, LFunction, LInst, LTerm, Loc, Operand, RegType,
-                RegWidth, TargetRegs,
+                Addr, CallTarget, CmpOp, LFunction, LInst, LTerm, Loc, Operand, RegType, RegWidth,
+                TargetRegs,
             },
         },
         target::TargetEmitter,
         *,
     },
     frontend::ast::Type,
-    mir::block::{GlobalDef, GlobalValue},
+    midend::mir::block::{GlobalDef, GlobalValue},
 };
 
 #[derive(Debug, Default)]
@@ -34,8 +34,8 @@ impl ARMEmitter {
         }
     }
 
-    /// Return the scratch register name at a given width.
-    /// ARM64: W32 and below use w-registers, W64+ use x-registers.
+    // Return the scratch register name at a given width.
+    // ARM64: W32 and below use w-registers, W64+ use x-registers.
     fn scratch_at(n: u8, w: RegWidth) -> &'static str {
         match (n, w) {
             (16, RegWidth::W8 | RegWidth::W16 | RegWidth::W32) => "w16",
@@ -46,8 +46,8 @@ impl ARMEmitter {
         }
     }
 
-    /// Ensure an operand is in a register at the given width.
-    /// Returns (preamble_asm, register_name).
+    // Ensure an operand is in a register at the given width.
+    // Returns (preamble_asm, register_name).
     fn operand_to_reg(
         &self,
         operand: &Operand<A64RegGpr, A64RegFpr>,
@@ -70,7 +70,7 @@ impl ARMEmitter {
         }
     }
 
-    /// Ensure a location is in a register. Returns (preamble_asm, register_name).
+    // ensure a location is in a register. Returns (preamble_asm, register_name).
     fn loc_to_reg(&self, loc: &Loc<A64RegGpr, A64RegFpr>, scratch: &str) -> (String, String) {
         match loc {
             Loc::PhysReg(rr) => {
@@ -87,7 +87,7 @@ impl ARMEmitter {
         }
     }
 
-    /// Write a value from `src_reg` into `dst` location.
+    // write a value from `src_reg` into `dst` location.
     fn store_to_loc(&self, dst: &Loc<A64RegGpr, A64RegFpr>, src_reg: &str) -> String {
         match dst {
             Loc::PhysReg(rr) => {
@@ -107,8 +107,6 @@ impl ARMEmitter {
         }
     }
 
-    /// Emit a 3-operand ALU instruction: `op dst, a, b`
-    /// All operands use consistent register width derived from dst.
     fn emit_binop(
         &self,
         op: &str,
@@ -145,7 +143,7 @@ impl ARMEmitter {
         out
     }
 
-    /// Generate `ldr scratch, [addr]` handling global symbols with adrp+add.
+    // Generate `ldr scratch, [addr]` handling global symbols with adrp+add.
     fn load_addr_value(&self, scratch: &str, addr: &Addr<A64RegGpr>) -> String {
         match addr {
             Addr::Global { sym, off } => {
@@ -162,7 +160,7 @@ impl ARMEmitter {
         }
     }
 
-    /// Load the address of a global symbol into `dst_reg`.
+    // Load the address of a global symbol into `dst_reg`.
     fn load_global_addr(&self, dst_reg: &str, sym: usize) -> String {
         if cfg!(target_os = "macos") {
             format!(
@@ -177,7 +175,7 @@ impl ARMEmitter {
         }
     }
 
-    /// Format an address for use in ldr/str (non-global).
+    // Format an address for use in ldr/str (non-global).
     fn addr_str(&self, addr: &Addr<A64RegGpr>) -> String {
         match addr {
             Addr::BaseOff { base, off } => {
@@ -581,7 +579,9 @@ impl TargetEmitter for ARMEmitter {
                 let (dst_reg, is_stack) = match dst {
                     Loc::PhysReg(rr) => {
                         let name = match &rr.ty {
-                            RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_string(),
+                            RegType::GprReg(r) => {
+                                self.target_regs.reg_by_width(*r, rr.size).to_string()
+                            }
                             RegType::FprReg(r) => self.target_regs.float128(*r).to_string(),
                         };
                         (name, false)
@@ -629,7 +629,9 @@ impl TargetEmitter for ARMEmitter {
                 let (dst_reg, is_stack) = match dst {
                     Loc::PhysReg(rr) => {
                         let name = match &rr.ty {
-                            RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_string(),
+                            RegType::GprReg(r) => {
+                                self.target_regs.reg_by_width(*r, rr.size).to_string()
+                            }
                             RegType::FprReg(r) => self.target_regs.float128(*r).to_string(),
                         };
                         (name, false)
@@ -784,17 +786,42 @@ impl TargetEmitter for ARMEmitter {
         for block in &func.blocks {
             for inst in &block.insts {
                 let offsets = match inst {
-                    LInst::Store { addr: Addr::BaseOff { off, .. }, .. } => vec![*off + 8],
-                    LInst::Load { addr: Addr::BaseOff { off, .. }, .. } => vec![*off + 8],
-                    LInst::Mov { dst: Loc::Stack(o), .. } => vec![*o + 8],
-                    LInst::Mov { src: Operand::Loc(Loc::Stack(o)), .. } => vec![*o + 8],
-                    LInst::Add { dst: Loc::Stack(o), .. }
-                    | LInst::Sub { dst: Loc::Stack(o), .. }
-                    | LInst::Mul { dst: Loc::Stack(o), .. }
-                    | LInst::Div { dst: Loc::Stack(o), .. }
-                    | LInst::Mod { dst: Loc::Stack(o), .. }
-                    | LInst::CmpSet { dst: Loc::Stack(o), .. }
-                    | LInst::Cast { dst: Loc::Stack(o), .. } => vec![*o + 8],
+                    LInst::Store {
+                        addr: Addr::BaseOff { off, .. },
+                        ..
+                    } => vec![*off + 8],
+                    LInst::Load {
+                        addr: Addr::BaseOff { off, .. },
+                        ..
+                    } => vec![*off + 8],
+                    LInst::Mov {
+                        dst: Loc::Stack(o), ..
+                    } => vec![*o + 8],
+                    LInst::Mov {
+                        src: Operand::Loc(Loc::Stack(o)),
+                        ..
+                    } => vec![*o + 8],
+                    LInst::Add {
+                        dst: Loc::Stack(o), ..
+                    }
+                    | LInst::Sub {
+                        dst: Loc::Stack(o), ..
+                    }
+                    | LInst::Mul {
+                        dst: Loc::Stack(o), ..
+                    }
+                    | LInst::Div {
+                        dst: Loc::Stack(o), ..
+                    }
+                    | LInst::Mod {
+                        dst: Loc::Stack(o), ..
+                    }
+                    | LInst::CmpSet {
+                        dst: Loc::Stack(o), ..
+                    }
+                    | LInst::Cast {
+                        dst: Loc::Stack(o), ..
+                    } => vec![*o + 8],
                     _ => vec![],
                 };
                 for o in offsets {

@@ -58,6 +58,8 @@ pub enum TokenType {
     Or,
     As,
 
+    Hashtag,
+
     // Operators
     At,
     Plus,

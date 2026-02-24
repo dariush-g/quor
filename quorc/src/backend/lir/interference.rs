@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{backend::lir::regalloc::LiveRange, mir::block::VReg};
+use crate::{backend::lir::regalloc::LiveRange, midend::mir::block::VReg};
 
 #[derive(Debug, Clone, Default)]
 pub struct InterferenceGraph {
