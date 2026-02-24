@@ -7,12 +7,12 @@ def add(a: int, b: int) -> int {
 } 
 
 def main() :: int {
-    var n: int = add(1, 2);
+    var n = add(1, 2);
+    print("%d", n);
 
-    print(n);
-
-
-    let ch: char = 'h';
+    @cfg[target_os = "macos"] {
+        print("macos");
+    }
 
     return 0;
 }

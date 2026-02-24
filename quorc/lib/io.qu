@@ -1,41 +1,15 @@
 @extern printf
 
-@any_params
-def print(_: char*) :: void {
-    @__asm__ {
-        call printf
+@variadic def print(_: char*) :: void {
+    @cfg[target_arch = "aarch64"] {
+        @__asm__ {
+            str x1, [sp, #16]
+            bl _printf
+        }
+    }
+    @cfg[target_arch = "x86_64"] {
+        @__asm__ {
+            call printf
+        }
     }
 }
-
-def f_write(filename: char*, content: char*) :: void {
-    @__asm__ {
-        sub rsp, 32
-        push rbx
-        push r12
-        mov rbx, rdi
-        mov r12, rsi
-        mov rdi, rbx
-        lea rsi, [rel mode_write]
-        call fopen
-        test rax, rax
-        jz .error
-        mov rbx, rax    
-        mov rdi, r12
-        call strlen
-        mov rdi, r12    
-        mov rsi, 1      
-        mov rdx, rax   
-        mov rcx, rbx    
-        call fwrite
-        mov rdi, rbx
-        call fclose
-        mov rax, 0
-        jmp .cleanup
-        .error:
-        mov rax, -1
-        .cleanup:
-        pop r12
-        pop rbx
-        add rsp, 32
-    }
-} 

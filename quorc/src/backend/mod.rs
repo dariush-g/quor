@@ -1,5 +1,3 @@
-#[cfg(target_arch = "x86_64")]
-use crate::{backend::lir::x86_64::X86Regs, emitter::x86_64::X86Emitter};
 use crate::{
     backend::{
         emitter::x86_64::X86Emitter,
@@ -36,28 +34,28 @@ impl TargetCodegen {
     fn get_emitter_x86(&self) -> &X86Emitter {
         match self {
             TargetCodegen::X86(x86_codegen) => &x86_codegen.emitter,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 
     fn get_emitter_arm(&mut self) -> &ARMEmitter {
         match self {
             TargetCodegen::Arm(arm_codegen) => &arm_codegen.emitter,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 
     fn get_target_regs_x86(&self) -> &X86Regs {
         match self {
             TargetCodegen::X86(x86_codegen) => &x86_codegen.target_regs,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 
     fn get_target_regs_arm(&self) -> &A64Regs {
         match self {
             TargetCodegen::Arm(arm_codegen) => &arm_codegen.target_regs,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -81,7 +79,7 @@ impl Codegen {
             target_codegen: match target_arch() {
                 "x86_64" => TargetCodegen::X86(X86Codegen::default()),
                 "aarch64" => TargetCodegen::Arm(Arm64Codegen::default()),
-                _ => panic!(),
+                _ => panic!("unsupported target: {}", target_arch()),
             },
         };
 
@@ -95,7 +93,7 @@ impl Codegen {
                     let emitted = codegen.target_codegen.get_emitter_arm().t_extern(externed);
                     codegen.add_line(AsmSection::EXTERN, &emitted);
                 }
-                _ => panic!(),
+                _ => panic!("unsupported target: {}", target_arch()),
             }
         }
 
@@ -109,7 +107,7 @@ impl Codegen {
                     .target_codegen
                     .get_emitter_arm()
                     .t_add_global_const(constant.clone()),
-                _ => panic!(),
+                _ => panic!("unsupported target: {}", target_arch()),
             };
             if let GlobalValue::String(_) = constant.value
                 && target_os() == "macos"
@@ -138,7 +136,7 @@ impl Codegen {
                         .generate_function(lir);
                     codegen.asm.text.push_str(&func);
                 }
-                _ => panic!(),
+                _ => panic!("unsupported target: {}", target_arch()),
             };
         }
 

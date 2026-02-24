@@ -183,7 +183,7 @@ impl Lexer {
                 if self.match_char('|') {
                     tokens.push(self.make_token(TokenType::Or));
                 } else {
-                    return Err(LexError::InvalidCharacter(c, self.line, self.column));
+                    tokens.push(self.make_token(TokenType::Pipe));
                 }
             }
 

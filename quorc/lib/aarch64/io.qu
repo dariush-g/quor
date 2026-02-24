@@ -1,8 +1,0 @@
-@extern printf
-
-@variadic def print(_: char*) :: void {
-    @__asm__ {
-        str x1, [sp, #16]
-        bl _printf
-    }
-}

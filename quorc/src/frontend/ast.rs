@@ -342,4 +342,34 @@ pub enum Stmt {
     Return(Option<Expr>),
     Break,
     Continue,
+
+    CfgStmt(CfgExpr, Box<Stmt>),
+}
+
+#[derive(Debug, Clone)]
+pub enum CfgExpr {
+    Cmp {
+        left: Box<CfgExpr>,
+        right: Box<CfgExpr>,
+        op: CfgOp,
+    },
+    Value(String),
+    Known(String),
+}
+
+/*
+@cfg[target_os = "macos"] becomes
+CfgExpr::Cmp {
+    left: Known("target_os"),
+    right: Value("macos"),
+    op: CfgOp::Eq
+}
+*/
+
+#[derive(Debug, Clone)]
+pub enum CfgOp {
+    And,   // &
+    Or,    // |
+    NotEq, // !=
+    Eq,    // =
 }

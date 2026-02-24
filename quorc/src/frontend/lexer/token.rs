@@ -59,6 +59,7 @@ pub enum TokenType {
     As,
 
     Hashtag,
+    Pipe,
 
     // Operators
     At,

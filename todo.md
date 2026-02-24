@@ -1,5 +1,9 @@
 # Todo
 
+add custom target and cc info to readme
+
+make static strings maintain proper break characters when being put in rodata
+
 variadic functions on Apple need to be loaded onto stack
 
 make @define a text replacement

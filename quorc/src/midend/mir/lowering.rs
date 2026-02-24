@@ -200,6 +200,7 @@ impl IRGenerator {
                         },
                     );
                 }
+                Stmt::CfgStmt(_, _) => unreachable!(),
             }
         }
     }

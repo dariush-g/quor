@@ -191,16 +191,38 @@ impl Parser {
                 return self.parse_import();
             }
 
-            if decl == "extern" {
-                if let TokenType::Identifier(name) = &self.peek().token_type.clone() {
+            if decl == "extern"
+                && let TokenType::Identifier(name) = &self.peek().token_type.clone()
+            {
+                self.advance();
+                return Ok(Stmt::AtDecl(
+                    decl.to_string(),
+                    Some(name.to_string()),
+                    None,
+                    None,
+                ));
+            }
+
+            if decl == "cfg" {
+                if let TokenType::LeftBracket = self.peek().token_type {
                     self.advance();
+                    let mut cfg = vec![];
+                    while TokenType::RightBracket != self.peek().token_type {
+                        cfg.push(self.peek().clone());
+                        self.advance();
+                    }
+                    self.advance();
+
+                    let stmt = self.parse_cfg(cfg);
+
                     return Ok(Stmt::AtDecl(
                         decl.to_string(),
-                        Some(name.to_string()),
                         None,
                         None,
+                        Some(Box::new(stmt?)),
                     ));
                 }
+                return Err(ParseError::UnexpectedToken(self.peek().clone()));
             }
 
             if let TokenType::Identifier(name) = &self.peek().clone().token_type {
@@ -404,6 +426,95 @@ impl Parser {
             found: self.peek().clone(),
             message: "Expected declaration after '@'".to_owned(),
         })
+    }
+
+    fn parse_cfg(&mut self, tokens: Vec<Token>) -> Result<Stmt, ParseError> {
+        let mut pos = 0;
+        let expr = self.parse_cfg_expr(&tokens, &mut pos);
+        if let TokenType::LeftBrace = self.peek().token_type {
+            self.advance();
+            let block = Stmt::Block(self.block(None)?);
+            return Ok(Stmt::CfgStmt(expr, Box::new(block)));
+        }
+        Err(ParseError::Expected {
+            expected: TokenType::LeftBrace,
+            found: self.peek().clone(),
+            message: "Expected block after cfg declaration".to_owned(),
+        })
+    }
+
+    fn parse_cfg_expr(&self, tokens: &[Token], pos: &mut usize) -> CfgExpr {
+        let mut left = self.parse_cfg_cmp(tokens, pos);
+
+        while *pos < tokens.len() {
+            match &tokens[*pos].token_type {
+                TokenType::Ampersand => {
+                    *pos += 1;
+                    let right = self.parse_cfg_cmp(tokens, pos);
+                    left = CfgExpr::Cmp {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                        op: CfgOp::And,
+                    };
+                }
+                TokenType::Pipe => {
+                    *pos += 1;
+                    let right = self.parse_cfg_cmp(tokens, pos);
+                    left = CfgExpr::Cmp {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                        op: CfgOp::Or,
+                    };
+                }
+                _ => break,
+            }
+        }
+
+        left
+    }
+
+    fn parse_cfg_cmp(&self, tokens: &[Token], pos: &mut usize) -> CfgExpr {
+        let left = self.parse_cfg_atom(tokens, pos);
+
+        if *pos < tokens.len() {
+            match &tokens[*pos].token_type {
+                TokenType::Equal => {
+                    *pos += 1;
+                    let right = self.parse_cfg_atom(tokens, pos);
+                    CfgExpr::Cmp {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                        op: CfgOp::Eq,
+                    }
+                }
+                TokenType::BangEqual => {
+                    *pos += 1;
+                    let right = self.parse_cfg_atom(tokens, pos);
+                    CfgExpr::Cmp {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                        op: CfgOp::NotEq,
+                    }
+                }
+                _ => left,
+            }
+        } else {
+            left
+        }
+    }
+
+    fn parse_cfg_atom(&self, tokens: &[Token], pos: &mut usize) -> CfgExpr {
+        match &tokens[*pos].token_type {
+            TokenType::StringLiteral(s) => {
+                *pos += 1;
+                CfgExpr::Value(s.clone())
+            }
+            TokenType::Identifier(s) => {
+                *pos += 1;
+                CfgExpr::Known(s.clone())
+            }
+            _ => panic!("unexpected token in @cfg: {:?}", tokens[*pos]),
+        }
     }
 
     fn statement(
