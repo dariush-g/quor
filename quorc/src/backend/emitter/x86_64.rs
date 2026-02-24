@@ -20,7 +20,7 @@ impl TargetEmitter for X86Emitter {
     type Reg = X86RegGpr;
     type FpReg = X86RegFpr;
 
-    fn t_add_global_const(&mut self, constant: GlobalDef) -> String {
+    fn t_add_global_const(&self, constant: GlobalDef) -> String {
         let symbol = format!("__q_g_{}", constant.id);
 
         let mut out = String::new();
@@ -88,7 +88,7 @@ impl TargetEmitter for X86Emitter {
     }
 
     fn t_prologue(
-        &mut self,
+        &self,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
         func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -106,7 +106,7 @@ impl TargetEmitter for X86Emitter {
     }
 
     fn t_epilogue(
-        &mut self,
+        &self,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -117,7 +117,7 @@ impl TargetEmitter for X86Emitter {
     }
 
     fn t_emit_inst(
-        &mut self,
+        &self,
         inst: &LInst<Self::Reg, Self::FpReg>,
         _ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -217,7 +217,11 @@ impl TargetEmitter for X86Emitter {
             LInst::Call { dst, func, args } => self.emit_call(dst, func, args),
             LInst::Mov { dst, src } => {
                 let w = Self::loc_width(dst);
-                format!("mov {}, {}\n", self.t_loc_at(dst, w), self.t_operand_at(src, w))
+                format!(
+                    "mov {}, {}\n",
+                    self.t_loc_at(dst, w),
+                    self.t_operand_at(src, w)
+                )
             }
             LInst::Lea { dst, addr } => {
                 // LEA always operates on addresses (64-bit)
@@ -255,7 +259,7 @@ impl TargetEmitter for X86Emitter {
     }
 
     fn t_emit_term(
-        &mut self,
+        &self,
         term: &LTerm<Self::Reg, Self::FpReg>,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -410,11 +414,19 @@ impl X86Emitter {
             }
             Type::int => {
                 // Truncate or same-size move at 32-bit
-                format!("mov {}, {}\n", self.t_loc_at(dst, RegWidth::W32), self.t_operand_at(src, RegWidth::W32))
+                format!(
+                    "mov {}, {}\n",
+                    self.t_loc_at(dst, RegWidth::W32),
+                    self.t_operand_at(src, RegWidth::W32)
+                )
             }
             _ => {
                 // Default: move at dst width
-                format!("mov {}, {}\n", self.t_loc_at(dst, dst_w), self.t_operand_at(src, dst_w))
+                format!(
+                    "mov {}, {}\n",
+                    self.t_loc_at(dst, dst_w),
+                    self.t_operand_at(src, dst_w)
+                )
             }
         }
     }
@@ -431,7 +443,11 @@ impl X86Emitter {
         let mem = self.mem_ref_sized(addr, size);
         let mut ret = match size {
             "byte" => format!("movzx {}, {}\n", rax, mem),
-            "dword" => format!("mov {}, {}\n", self.target_args.reg_by_width(X86RegGpr::RAX, RegWidth::W32), mem),
+            "dword" => format!(
+                "mov {}, {}\n",
+                self.target_args.reg_by_width(X86RegGpr::RAX, RegWidth::W32),
+                mem
+            ),
             _ => format!("lea {}, {}\n", rax, mem),
         };
         if let Loc::PhysReg(rr) = dst

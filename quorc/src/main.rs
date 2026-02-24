@@ -1,13 +1,16 @@
 use quorc::backend::Codegen;
+use quorc::debug_log;
 use quorc::frontend::{lexer::Lexer, parser::Parser};
 use quorc::midend::analyzer::TypeChecker;
 use quorc::midend::mir::cfg::IRGenerator;
+use quorc::target::{in_debug_mode, init_target, target_arch, target_os};
 
 use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Instant;
 
 // nasm -f elf64 test.asm -o test.o && ld test.o -o test && ./test
 
@@ -226,6 +229,33 @@ fn main() {
 
     let compiler_args = &args[2..args.len()];
 
+    let mut os_override = None;
+    let mut arch_override = None;
+    let mut debug_mode = false;
+
+    for arg in compiler_args {
+        if let Some(value) = arg.strip_prefix("--target-os=") {
+            os_override = Some(value.to_string());
+        }
+        if let Some(value) = arg.strip_prefix("--target-arch=") {
+            arch_override = Some(value.to_string());
+        }
+        if "--debug" == arg.as_str() {
+            debug_mode = true;
+        }
+    }
+
+    init_target(arch_override, os_override, debug_mode);
+
+    debug_log!(
+        "target_arch" => target_arch(),
+        "target_os"   => target_os()
+    );
+
+    if in_debug_mode() {
+        println!("\x1b[35m────────────────────────────\x1b[0m");
+    }
+
     let mut src_path = PathBuf::from(&args[1]);
     if src_path.is_relative() {
         src_path = env::current_dir()
@@ -257,6 +287,9 @@ fn main() {
 
     let keep_asm = source.contains("@keep_asm");
 
+    let start = Instant::now();
+    let lexer_time = start;
+
     let mut lexer = Lexer::new(source);
     let tokens = match lexer.tokenize() {
         Ok(t) => t,
@@ -266,9 +299,13 @@ fn main() {
         }
     };
 
+    debug_log!("lexer" => format!("{:.2?}", lexer_time.elapsed()));
+
     if compiler_args.contains(&"--emit-tokens".to_string()) {
         println!("{:?}", tokens);
     }
+
+    let parser_time = Instant::now();
 
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {
@@ -279,11 +316,15 @@ fn main() {
         }
     };
 
+    debug_log!("parser" => format!("{:.2?}", parser_time.elapsed()));
+
     if compiler_args.contains(&"--emit-ast".to_string()) {
         println!("{:?}", program);
     }
 
     // println!("{program:?}");
+
+    let analyzer_time = Instant::now();
 
     let typed = match TypeChecker::analyze_program(program, &src_path) {
         Ok(tp) => tp,
@@ -293,26 +334,43 @@ fn main() {
         }
     };
 
-    // println!("{typed:?}");
+    debug_log!("analyzer" => format!("{:.2?}", analyzer_time.elapsed()));
 
     if compiler_args.contains(&"--emit-typed".to_string()) {
         println!("{:?}", typed);
     }
 
-    let cfged = match IRGenerator::generate(typed) {
-        Ok(cfg) => cfg,
+    let mir_time = Instant::now();
+
+    let mir = match IRGenerator::generate(typed) {
+        Ok(mir) => mir,
         Err(e) => {
             eprintln!("Type error: {e:?}");
             std::process::exit(1);
         }
     };
 
+    debug_log!("mir" => format!("{:.2?}", mir_time.elapsed()));
+
     if compiler_args.contains(&"--emit-mir".to_string()) {
-        println!("{:?}", cfged);
+        println!("{:?}", mir);
     }
 
-    let codegen = Codegen::generate(cfged);
-    let asm = codegen;
+    let codegen_time = Instant::now();
+
+    let asm = Codegen::generate(mir);
+
+    debug_log!("codegen" => format!("{:.2?}", codegen_time.elapsed()));
+
+    if in_debug_mode() {
+        println!("\x1b[35m────────────────────────────\x1b[0m");
+    }
+
+    debug_log!("total" => format!("{:.2?}", start.elapsed()));
+
+    if in_debug_mode() {
+        println!("\x1b[35m────────────────────────────\x1b[0m");
+    }
 
     if compiler_args.contains(&"--emit-asm".to_string()) {
         println!("{}", asm);

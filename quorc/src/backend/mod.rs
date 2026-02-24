@@ -1,13 +1,18 @@
-use crate::backend::lir::regalloc::{LFunction, TargetRegs};
 #[cfg(target_arch = "x86_64")]
 use crate::{backend::lir::x86_64::X86Regs, emitter::x86_64::X86Emitter};
-
 use crate::{
     backend::{
-        emitter::aarch64::ARMEmitter,
-        lir::aarch64::A64Regs,
-        target::{Target, TargetEmitter},
+        emitter::x86_64::X86Emitter,
+        lir::{
+            regalloc::{LFunction, TargetRegs},
+            x86_64::X86Regs,
+        },
     },
+    target::{target_arch, target_os},
+};
+
+use crate::{
+    backend::{emitter::aarch64::ARMEmitter, lir::aarch64::A64Regs, target::TargetEmitter},
     midend::mir::block::*,
 };
 
@@ -17,48 +22,98 @@ pub mod target;
 
 #[derive(Debug)]
 pub struct Codegen {
-    pub target: Target,
-    #[cfg(target_arch = "aarch64")]
-    pub emitter: ARMEmitter,
-    #[cfg(target_arch = "x86_64")]
-    pub emitter: X86Emitter,
-    #[cfg(target_arch = "aarch64")]
-    pub target_regs: A64Regs,
-    #[cfg(target_arch = "x86_64")]
-    pub target_regs: X86Regs,
     pub asm: AsmEmitter,
+    pub target_codegen: TargetCodegen,
+}
+
+#[derive(Debug)]
+pub enum TargetCodegen {
+    X86(X86Codegen),
+    Arm(Arm64Codegen),
+}
+
+impl TargetCodegen {
+    fn get_emitter_x86(&self) -> &X86Emitter {
+        match self {
+            TargetCodegen::X86(x86_codegen) => &x86_codegen.emitter,
+            _ => panic!(),
+        }
+    }
+
+    fn get_emitter_arm(&mut self) -> &ARMEmitter {
+        match self {
+            TargetCodegen::Arm(arm_codegen) => &arm_codegen.emitter,
+            _ => panic!(),
+        }
+    }
+
+    fn get_target_regs_x86(&self) -> &X86Regs {
+        match self {
+            TargetCodegen::X86(x86_codegen) => &x86_codegen.target_regs,
+            _ => panic!(),
+        }
+    }
+
+    fn get_target_regs_arm(&self) -> &A64Regs {
+        match self {
+            TargetCodegen::Arm(arm_codegen) => &arm_codegen.target_regs,
+            _ => panic!(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct X86Codegen {
+    pub emitter: X86Emitter,
+    pub target_regs: X86Regs,
+}
+
+#[derive(Debug, Default)]
+pub struct Arm64Codegen {
+    pub emitter: ARMEmitter,
+    pub target_regs: A64Regs,
 }
 
 impl Codegen {
     pub fn generate(ir_program: IRProgram) -> String {
-        #[cfg(target_arch = "aarch64")]
-        let target = Target::ARM;
-        #[cfg(target_arch = "x86_64")]
-        let target = Target::X86;
-
         let mut codegen = Codegen {
-            target,
-            #[cfg(target_arch = "aarch64")]
-            emitter: ARMEmitter::default(),
-            #[cfg(target_arch = "x86_64")]
-            emitter: X86Emitter::default(),
-            #[cfg(target_arch = "aarch64")]
-            target_regs: A64Regs,
-            #[cfg(target_arch = "x86_64")]
-            target_regs: X86Regs,
             asm: AsmEmitter::default(),
+            target_codegen: match target_arch() {
+                "x86_64" => TargetCodegen::X86(X86Codegen::default()),
+                "aarch64" => TargetCodegen::Arm(Arm64Codegen::default()),
+                _ => panic!(),
+            },
         };
 
         for externed in ir_program.externs {
-            codegen.add_line(AsmSection::EXTERN, &codegen.emitter.t_extern(externed));
+            match target_arch() {
+                "x86_64" => {
+                    let emitted = codegen.target_codegen.get_emitter_x86().t_extern(externed);
+                    codegen.add_line(AsmSection::EXTERN, &emitted);
+                }
+                "aarch64" => {
+                    let emitted = codegen.target_codegen.get_emitter_arm().t_extern(externed);
+                    codegen.add_line(AsmSection::EXTERN, &emitted);
+                }
+                _ => panic!(),
+            }
         }
 
         for constant in ir_program.global_consts {
-            let constant_ = codegen.emitter.t_add_global_const(constant.clone());
+            let constant_ = match target_arch() {
+                "x86_64" => {
+                    let emitter = codegen.target_codegen.get_emitter_x86();
+                    emitter.t_add_global_const(constant.clone())
+                }
+                "aarch64" => codegen
+                    .target_codegen
+                    .get_emitter_arm()
+                    .t_add_global_const(constant.clone()),
+                _ => panic!(),
+            };
             if let GlobalValue::String(_) = constant.value
-                && cfg!(target_os = "macos")
+                && target_os() == "macos"
             {
-                #[cfg(target_os = "macos")]
                 codegen.add_line(AsmSection::CSTRING, &constant_);
             } else {
                 codegen.add_line(AsmSection::RODATA, &constant_);
@@ -66,15 +121,32 @@ impl Codegen {
         }
 
         for (_, func) in ir_program.functions {
-            let lowered_func = codegen.target_regs.to_lir(&func);
-            println!("{lowered_func:?}");
-            codegen
-                .asm
-                .text
-                .push_str(&codegen.emitter.generate_function(&lowered_func));
+            match target_arch() {
+                "x86_64" => {
+                    let lir = &codegen.target_codegen.get_target_regs_x86().to_lir(&func);
+                    let func = &codegen
+                        .target_codegen
+                        .get_emitter_x86()
+                        .generate_function(lir);
+                    codegen.asm.text.push_str(func);
+                }
+                "aarch64" => {
+                    let lir = &codegen.target_codegen.get_target_regs_arm().to_lir(&func);
+                    let func = codegen
+                        .target_codegen
+                        .get_emitter_arm()
+                        .generate_function(lir);
+                    codegen.asm.text.push_str(&func);
+                }
+                _ => panic!(),
+            };
         }
 
-        codegen.emit()
+        match (target_arch(), target_os()) {
+            ("x86_64", _) => codegen.emit_x86_64(),
+            (_, "macos") => codegen.emit_macos(),
+            _ => codegen.emit_aarch64_linux(),
+        }
     }
 
     pub fn add_line(&mut self, section: AsmSection, line: &str) {
@@ -83,14 +155,12 @@ impl Codegen {
             AsmSection::RODATA => self.asm.rodata.push_str(&format!("{line}\n")),
             AsmSection::DATA => self.asm.data.push_str(&format!("{line}\n")),
             AsmSection::TEXT => self.asm.text.push_str(&format!("{line}\n")),
-            #[cfg(target_os = "macos")]
             AsmSection::CSTRING => self.asm.cstrings.push_str(&format!("{line}\n")),
             AsmSection::EXTERN => self.asm.externs.push_str(&format!("{line}\n")),
         }
     }
 
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-    fn emit(&self) -> String {
+    fn emit_macos(&self) -> String {
         let externs = format!("{}\n", self.asm.externs);
         let rodata = format!(".section __TEXT,__const\n{}", self.asm.rodata);
         let cstrings = format!(".section __TEXT,__cstring\n{}", self.asm.cstrings);
@@ -101,8 +171,7 @@ impl Codegen {
         format!("{externs}{cstrings}{rodata}{data}{bss}{text}")
     }
 
-    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    fn emit(&self) -> String {
+    fn emit_aarch64_linux(&self) -> String {
         let externs = format!("{}\n", self.asm.externs);
         let rodata = format!(".section .rodata\n{}", self.asm.rodata);
         let data = format!(".section .data\n{}", self.asm.data);
@@ -112,8 +181,7 @@ impl Codegen {
         format!("{externs}{rodata}{data}{bss}{text}")
     }
 
-    #[cfg(target_arch = "x86_64")]
-    fn emit(&self) -> String {
+    fn emit_x86_64(&self) -> String {
         let rodata = format!("section .rodata\n{}", self.asm.rodata);
         let data = format!("section .data\n{}", self.asm.data);
         let bss = format!("section .bss\n{}", self.asm.bss);
@@ -131,7 +199,6 @@ pub struct AsmEmitter {
     pub data: String,
     pub rodata: String,
     pub bss: String,
-    #[cfg(target_os = "macos")]
     pub cstrings: String,
 }
 
@@ -142,7 +209,6 @@ pub enum AsmSection {
     RODATA,
     DATA,
     TEXT,
-    #[cfg(target_os = "macos")]
     CSTRING,
 }
 

@@ -447,7 +447,7 @@ impl TargetEmitter for ARMEmitter {
     type Reg = A64RegGpr;
     type FpReg = A64RegFpr;
 
-    fn t_add_global_const(&mut self, constant: GlobalDef) -> String {
+    fn t_add_global_const(&self, constant: GlobalDef) -> String {
         let mut out = String::new();
         let symbol = format!("__q_g_{}", constant.id);
         out.push_str(&format!("{}:\n", symbol));
@@ -506,7 +506,7 @@ impl TargetEmitter for ARMEmitter {
     }
 
     fn t_prologue(
-        &mut self,
+        &self,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -535,7 +535,7 @@ impl TargetEmitter for ARMEmitter {
     }
 
     fn t_epilogue(
-        &mut self,
+        &self,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
         func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -555,7 +555,7 @@ impl TargetEmitter for ARMEmitter {
     }
 
     fn t_emit_inst(
-        &mut self,
+        &self,
         inst: &LInst<Self::Reg, Self::FpReg>,
         _ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -710,7 +710,7 @@ impl TargetEmitter for ARMEmitter {
     }
 
     fn t_emit_term(
-        &mut self,
+        &self,
         term: &LTerm<Self::Reg, Self::FpReg>,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
     ) -> String {
@@ -844,7 +844,7 @@ impl TargetEmitter for ARMEmitter {
         }
     }
 
-    fn generate_function(&mut self, func: &LFunction<Self::Reg, Self::FpReg>) -> String {
+    fn generate_function(&self, func: &LFunction<Self::Reg, Self::FpReg>) -> String {
         let mut func_asm = String::new();
         let ctx = &mut Self::generate_ctx(func);
         func_asm.push_str(&self.t_prologue(ctx, func));

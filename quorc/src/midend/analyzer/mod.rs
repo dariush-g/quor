@@ -1,8 +1,8 @@
-use crate::frontend::{
+use crate::{debug_log, frontend::{
     ast::{BinaryOp, Expr, Stmt, Type, UnaryOp},
     lexer::Lexer,
     parser::Parser,
-};
+}};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -70,7 +70,8 @@ fn rec_import_walk(
     current_file: &Path,
 ) -> Vec<Stmt> {
     let mut ret = Vec::new();
-    eprintln!("Analyzing {current_file:?}");
+
+    // debug_log!("analyzing" => format!("{current_file:?}"));
 
     let current_dir = current_file.parent().unwrap_or_else(|| {
         eprintln!("Cannot determine parent directory of {current_file:?}");

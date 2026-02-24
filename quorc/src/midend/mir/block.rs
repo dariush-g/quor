@@ -175,7 +175,7 @@ impl AtDecl {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone)]
