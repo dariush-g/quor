@@ -23,6 +23,8 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Inline assembly
 - Multi-target codegen (x86_64, aarch64)
 - Type inference for variable assignments
+- Custom target builds between x86_64 and aarch64
+- conditional compilation
 
 ## Examples
 
@@ -120,5 +122,4 @@ def main() :: int {
 - 6 parameter maximum for function calls
 - No bitwise operations yet
 - No pointer indexing yet
-- No local variable type inference yet
 - codegen backends are a work in progress
