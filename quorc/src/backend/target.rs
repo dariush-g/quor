@@ -45,7 +45,16 @@ pub trait TargetEmitter: std::fmt::Debug {
     fn generate_function(&self, func: &LFunction<Self::Reg, Self::FpReg>) -> String {
         let mut func_asm = String::new();
         let mut ctx = Self::generate_ctx(func);
-        func_asm.push_str(&self.t_prologue(&mut ctx, func));
+
+        if func.name != "main" {
+            func_asm.push_str(&format!("__q_f_{}:\n", func.name));
+        } else {
+            func_asm.push_str(&format!("global main\n{}:\n", func.name));
+        }
+
+        if func.has_frame {
+            func_asm.push_str(&self.t_prologue(&mut ctx, func));
+        }
 
         for block in func.blocks.clone() {
             for inst in block.insts {
@@ -54,7 +63,9 @@ pub trait TargetEmitter: std::fmt::Debug {
             func_asm.push_str(&self.t_emit_term(&block.term, &mut ctx));
         }
 
-        func_asm.push_str(&self.t_epilogue(&mut ctx, func));
+        if func.has_frame {
+            func_asm.push_str(&self.t_epilogue(&mut ctx, func));
+        }
 
         func_asm
     }

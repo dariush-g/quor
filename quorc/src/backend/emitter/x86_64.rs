@@ -90,14 +90,10 @@ impl TargetEmitter for X86Emitter {
     fn t_prologue(
         &self,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
-        func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
+        _func: &crate::backend::lir::regalloc::LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         let mut prologue = String::new();
-        if func.name != "main" {
-            prologue.push_str(&format!("__q_f_{}:\n", func.name));
-        } else {
-            prologue.push_str(&format!("global main\n{}:\n", func.name));
-        }
+
         prologue.push_str(&format!(
             "push rbp\nmov rbp, rsp\nsub rsp, {}\n",
             ctx.frame.frame_size
@@ -241,7 +237,15 @@ impl TargetEmitter for X86Emitter {
                 RegType::GprReg(r) => self.target_args.reg_by_width(*r, rr.size).to_owned(),
                 RegType::FprReg(r) => self.target_args.float128(*r).to_owned(),
             },
-            Loc::Stack(offset) => format!("qword [rbp - {offset}]\n"),
+            Loc::Stack(offset, width) => {
+                let word = match width {
+                    RegWidth::W8 => "byte",
+                    RegWidth::W32 => "dword",
+                    RegWidth::W64 => "qword",
+                    _ => "qword",
+                };
+                format!("{word} [rbp - {offset}]\n")
+            }
         }
     }
 
@@ -316,7 +320,7 @@ impl X86Emitter {
     fn loc_width(loc: &Loc<X86RegGpr, X86RegFpr>) -> RegWidth {
         match loc {
             Loc::PhysReg(rr) => rr.size,
-            Loc::Stack(_) => RegWidth::W64,
+            Loc::Stack(_, width) => *width,
         }
     }
 
@@ -334,7 +338,7 @@ impl X86Emitter {
                 RegType::GprReg(r) => self.target_args.reg_by_width(*r, w).to_owned(),
                 RegType::FprReg(r) => self.target_args.float128(*r).to_owned(),
             },
-            Loc::Stack(offset) => {
+            Loc::Stack(offset, _) => {
                 let size = Self::width_to_size_prefix(w);
                 format!("{} [rbp - {}]", size, offset)
             }
@@ -492,7 +496,7 @@ impl X86Emitter {
             let is_fp = match arg {
                 Operand::Loc(loc) => match loc {
                     Loc::PhysReg(rr) => rr.is_fpr(),
-                    Loc::Stack(_) => false,
+                    Loc::Stack(_, _) => false,
                 },
                 Operand::ImmI64(_) => false,
                 Operand::ImmF64(_) => true,

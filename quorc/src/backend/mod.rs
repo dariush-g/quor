@@ -83,21 +83,27 @@ impl Codegen {
             },
         };
 
-        for externed in ir_program.externs {
+        for externed in &ir_program.externs {
             match target_arch() {
                 "x86_64" => {
-                    let emitted = codegen.target_codegen.get_emitter_x86().t_extern(externed);
+                    let emitted = codegen
+                        .target_codegen
+                        .get_emitter_x86()
+                        .t_extern(externed.to_string());
                     codegen.add_line(AsmSection::EXTERN, &emitted);
                 }
                 "aarch64" => {
-                    let emitted = codegen.target_codegen.get_emitter_arm().t_extern(externed);
+                    let emitted = codegen
+                        .target_codegen
+                        .get_emitter_arm()
+                        .t_extern(externed.to_string());
                     codegen.add_line(AsmSection::EXTERN, &emitted);
                 }
                 _ => panic!("unsupported target: {}", target_arch()),
             }
         }
 
-        for constant in ir_program.global_consts {
+        for constant in &ir_program.global_consts {
             let constant_ = match target_arch() {
                 "x86_64" => {
                     let emitter = codegen.target_codegen.get_emitter_x86();
@@ -118,10 +124,13 @@ impl Codegen {
             }
         }
 
-        for (_, func) in ir_program.functions {
+        for func in ir_program.functions.values() {
             match target_arch() {
                 "x86_64" => {
-                    let lir = &codegen.target_codegen.get_target_regs_x86().to_lir(&func);
+                    let lir = &codegen
+                        .target_codegen
+                        .get_target_regs_x86()
+                        .to_lir(&ir_program, func);
                     let func = &codegen
                         .target_codegen
                         .get_emitter_x86()
@@ -129,7 +138,10 @@ impl Codegen {
                     codegen.asm.text.push_str(func);
                 }
                 "aarch64" => {
-                    let lir = &codegen.target_codegen.get_target_regs_arm().to_lir(&func);
+                    let lir = &codegen
+                        .target_codegen
+                        .get_target_regs_arm()
+                        .to_lir(&ir_program, func);
                     let func = codegen
                         .target_codegen
                         .get_emitter_arm()

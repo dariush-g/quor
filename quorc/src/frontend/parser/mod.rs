@@ -538,7 +538,7 @@ impl Parser {
                     }
                     TokenType::Identifier(identifier) => {
                         match identifier.as_str() {
-                            "variadic" | "trust_ret" => {
+                            "variadic" | "trust_ret" | "inline" | "no_frame" => {
                                 lookahead += 1;
                             }
                             _ => break,
@@ -685,7 +685,7 @@ impl Parser {
             // println!("Found @ token, next token: {:?}", self.peek().token_type);
             if let TokenType::Identifier(attr) = &self.peek().token_type.clone() {
                 match attr.as_str() {
-                    "variadic" | "trust_ret" => {}
+                    "variadic" | "trust_ret" | "inline" | "no_frame" => {}
                     _ => continue,
                 };
                 self.advance();

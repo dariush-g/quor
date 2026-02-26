@@ -164,12 +164,18 @@ pub enum AtDecl {
     TrustRet,
     InlineAssembly { content: String },
     Extern { name: String },
+    Variadic,
+    Inline,
+    NoFrame,
 }
 
 impl AtDecl {
     pub fn parse_attribute(attribute: &str) -> Option<AtDecl> {
         match attribute {
             "trust_ret" => Some(AtDecl::TrustRet),
+            "variadic" => Some(AtDecl::Variadic),
+            "inline" => Some(AtDecl::Inline),
+            "no_frame" => Some(AtDecl::NoFrame),
             _ => None,
         }
     }

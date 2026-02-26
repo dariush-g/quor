@@ -492,6 +492,7 @@ impl TypeChecker {
             }
             Expr::Assign { value, .. } => self.fill_expr_types(value),
             Expr::Call { name, args, .. } => {
+                self.called.push(name.to_string());
                 for arg in args {
                     if name == "sizeof" {
                         let param = &arg;
@@ -503,8 +504,6 @@ impl TypeChecker {
                         }
                     }
                     self.fill_expr_types(arg);
-                    self.called.push(name.to_string());
-                    // println!("{name} {:?}", arg);
                 }
             }
             Expr::ArrayAccess { array, index } => {
@@ -1153,16 +1152,11 @@ impl TypeChecker {
     pub fn type_check_stmt(&mut self, stmt: &Stmt) -> Result<Stmt, String> {
         match stmt {
             Stmt::AtDecl(decl, _, _, _) => match decl.to_lowercase().as_str() {
-                "import" => Ok(stmt.clone()),
-                "const" => Ok(stmt.clone()),
-                "union" => Ok(stmt.clone()),
-                "keep_asm" => Ok(stmt.clone()),
-                "trust_ret" => Ok(stmt.clone()),
-                "__asm__" | "asm" | "_asm_" => Ok(stmt.clone()),
-                "__asm_bss__" | "_asm_bss_" | "asm_bss" => Ok(stmt.clone()),
-                "__asm_ro__" | "_asm_ro_" | "asm_ro" => Ok(stmt.clone()),
-                "variadic" => Ok(stmt.clone()),
-                "extern" => Ok(stmt.clone()),
+                "extern" | "inline" | "import" | "const" | "union" | "keep_asm" | "trust_ret"
+                | "variadic" | "no_frame" | "__asm__" | "asm" | "_asm_" | "__asm_bss__"
+                | "_asm_bss_" | "asm_bss" | "__asm_ro__" | "_asm_ro_" | "asm_ro" => {
+                    Ok(stmt.clone())
+                }
                 // "public" => Ok(stmt.clone()),
                 // "private" => Ok(stmt.clone()),
                 _ => Err(format!("Unknown @ declaration: '{decl}'")),

@@ -1,10 +1,11 @@
 @extern printf
 
-@variadic def print(_: char*) :: void {
+@variadic 
+@no_frame 
+def print(_: char*) :: void {
     @cfg[target_arch = "aarch64"] {
         @__asm__ {
-            str x1, [sp, #16]
-            bl _printf
+            b _printf
         }
     }
     @cfg[target_arch = "x86_64"] {

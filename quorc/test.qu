@@ -1,6 +1,10 @@
+@keep_asm
+
 @import <io.qu>
 
+
 def main() :: int {
-    print("hello world");
+    print("%d, %s", 20, "hello");
+
     return 0;
 }

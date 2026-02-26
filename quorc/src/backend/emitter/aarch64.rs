@@ -23,7 +23,7 @@ impl ARMEmitter {
     fn loc_width(loc: &Loc<A64RegGpr, A64RegFpr>) -> RegWidth {
         match loc {
             Loc::PhysReg(rr) => rr.size,
-            Loc::Stack(_) => RegWidth::W64,
+            Loc::Stack(_, _) => RegWidth::W64,
         }
     }
 
@@ -34,8 +34,6 @@ impl ARMEmitter {
         }
     }
 
-    // Return the scratch register name at a given width.
-    // ARM64: W32 and below use w-registers, W64+ use x-registers.
     fn scratch_at(n: u8, w: RegWidth) -> &'static str {
         match (n, w) {
             (16, RegWidth::W8 | RegWidth::W16 | RegWidth::W32) => "w16",
@@ -80,7 +78,7 @@ impl ARMEmitter {
                 };
                 (String::new(), name)
             }
-            Loc::Stack(offset) => {
+            Loc::Stack(offset, _) => {
                 let setup = format!("ldur {}, [x29, #-{}]\n", scratch, offset);
                 (setup, scratch.to_string())
             }
@@ -98,10 +96,18 @@ impl ARMEmitter {
                 if dst_reg == src_reg {
                     String::new()
                 } else {
-                    format!("mov {}, {}\n", dst_reg, src_reg)
+                    // Auto-correct register width mismatch (e.g. mov w9, x16 is invalid)
+                    let src = if dst_reg.starts_with('w') && src_reg.starts_with('x') {
+                        format!("w{}", &src_reg[1..])
+                    } else if dst_reg.starts_with('x') && src_reg.starts_with('w') {
+                        format!("x{}", &src_reg[1..])
+                    } else {
+                        src_reg.to_string()
+                    };
+                    format!("mov {}, {}\n", dst_reg, src)
                 }
             }
-            Loc::Stack(offset) => {
+            Loc::Stack(offset, _) => {
                 format!("stur {}, [x29, #-{}]\n", src_reg, offset)
             }
         }
@@ -131,7 +137,7 @@ impl ARMEmitter {
                 };
                 (name, false)
             }
-            Loc::Stack(_) => (s16.to_string(), true),
+            Loc::Stack(_, _) => (s16.to_string(), true),
         };
 
         out.push_str(&format!("{} {}, {}, {}\n", op, dst_reg, reg_a, reg_b));
@@ -226,7 +232,7 @@ impl ARMEmitter {
     ) -> String {
         let mut out = String::new();
 
-        let is_lea = matches!(ty, Type::Pointer(_) | Type::Array(_, _));
+        let is_lea = matches!(ty, Type::Array(_, _) | Type::Pointer(_));
 
         if is_lea {
             // Pointer/array types: compute effective address (LEA equivalent)
@@ -292,7 +298,8 @@ impl ARMEmitter {
                     out.push_str(&format!("{} {}, {}\n", load_instr, tmp, addr_s));
                 }
             }
-            out.push_str(&self.store_to_loc(dst, "x16"));
+            let store_scratch = if use_w { "w16" } else { "x16" };
+            out.push_str(&self.store_to_loc(dst, store_scratch));
         }
 
         out
@@ -508,19 +515,9 @@ impl TargetEmitter for ARMEmitter {
     fn t_prologue(
         &self,
         ctx: &mut CodegenCtx<Self::Reg, Self::FpReg>,
-        func: &LFunction<Self::Reg, Self::FpReg>,
+        _func: &LFunction<Self::Reg, Self::FpReg>,
     ) -> String {
         let mut out = String::new();
-
-        if func.name == "main" {
-            if cfg!(target_os = "macos") {
-                out.push_str(".globl _main\n_main:\n");
-            } else {
-                out.push_str(".globl main\nmain:\n");
-            }
-        } else {
-            out.push_str(&format!("__q_f_{}:\n", func.name));
-        }
 
         // Save frame pointer and link register
         out.push_str("stp x29, x30, [sp, #-16]!\n");
@@ -586,7 +583,7 @@ impl TargetEmitter for ARMEmitter {
                         };
                         (name, false)
                     }
-                    Loc::Stack(_) => (s16.to_string(), true),
+                    Loc::Stack(_, _) => (s16.to_string(), true),
                 };
 
                 out.push_str(&format!("sdiv {}, {}, {}\n", dst_reg, reg_a, reg_b));
@@ -636,7 +633,7 @@ impl TargetEmitter for ARMEmitter {
                         };
                         (name, false)
                     }
-                    Loc::Stack(_) => (ds16.to_string(), true),
+                    Loc::Stack(_, _) => (ds16.to_string(), true),
                 };
 
                 out.push_str(&format!("cset {}, {}\n", dst_reg, cond));
@@ -769,7 +766,7 @@ impl TargetEmitter for ARMEmitter {
                 RegType::GprReg(r) => self.target_regs.reg_by_width(*r, rr.size).to_owned(),
                 RegType::FprReg(r) => self.target_regs.float128(*r).to_owned(),
             },
-            Loc::Stack(offset) => format!("[x29, #-{}]", offset),
+            Loc::Stack(offset, _) => format!("[x29, #-{}]", offset),
         }
     }
 
@@ -795,32 +792,40 @@ impl TargetEmitter for ARMEmitter {
                         ..
                     } => vec![*off + 8],
                     LInst::Mov {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     } => vec![*o + 8],
                     LInst::Mov {
-                        src: Operand::Loc(Loc::Stack(o)),
+                        src: Operand::Loc(Loc::Stack(o, _)),
                         ..
                     } => vec![*o + 8],
                     LInst::Add {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     }
                     | LInst::Sub {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     }
                     | LInst::Mul {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     }
                     | LInst::Div {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     }
                     | LInst::Mod {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     }
                     | LInst::CmpSet {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     }
                     | LInst::Cast {
-                        dst: Loc::Stack(o), ..
+                        dst: Loc::Stack(o, _),
+                        ..
                     } => vec![*o + 8],
                     _ => vec![],
                 };
@@ -847,7 +852,18 @@ impl TargetEmitter for ARMEmitter {
     fn generate_function(&self, func: &LFunction<Self::Reg, Self::FpReg>) -> String {
         let mut func_asm = String::new();
         let ctx = &mut Self::generate_ctx(func);
-        func_asm.push_str(&self.t_prologue(ctx, func));
+        if func.name == "main" {
+            if target_os() == "macos" {
+                func_asm.push_str(".globl _main\n_main:\n");
+            } else {
+                func_asm.push_str(".globl main\nmain:\n");
+            }
+        } else {
+            func_asm.push_str(&format!("__q_f_{}:\n", func.name));
+        }
+        if func.has_frame {
+            func_asm.push_str(&self.t_prologue(ctx, func));
+        }
 
         // Emit entry block first, then remaining blocks
         let mut blocks = func.blocks.clone();
@@ -864,8 +880,12 @@ impl TargetEmitter for ARMEmitter {
             func_asm.push_str(&self.t_emit_term(&block.term, ctx));
         }
 
-        func_asm.push_str(&self.t_epilogue(ctx, func));
-
+        if func.has_frame {
+            func_asm.push_str(&self.t_epilogue(ctx, func));
+        }
+        if !func.has_frame {
+            remove_last_line(&mut func_asm);
+        }
         func_asm
     }
 
@@ -874,5 +894,13 @@ impl TargetEmitter for ARMEmitter {
             return format!(".extern _{ext}");
         }
         format!(".extern {ext}")
+    }
+}
+
+fn remove_last_line(s: &mut String) {
+    if let Some(pos) = s.trim_end_matches(['\n', '\r']).rfind('\n') {
+        s.truncate(pos + 1);
+    } else {
+        s.clear(); // only one line existed
     }
 }

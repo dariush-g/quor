@@ -289,7 +289,10 @@ impl IRGenerator {
         } = func
         {
             let entry = self.new_block();
-            self.set_current(entry);
+            // Set current directly instead of using set_current() to avoid
+            // leaking the previous function's last block into this function's
+            // closed set.
+            self.scope_handler.current = entry;
 
             let mut params = Vec::with_capacity(func_params.len());
             for (param_name, param_ty) in func_params.clone() {

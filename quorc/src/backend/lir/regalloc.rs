@@ -10,9 +10,10 @@ use crate::{
     },
     frontend::ast::Type,
     midend::mir::block::{
-        AtDecl, BlockId, GlobalValue, IRBlock, IRFunction, IRInstruction, Terminator, VReg,
-        VRegType, Value,
+        AtDecl, BlockId, GlobalValue, IRBlock, IRFunction, IRInstruction, IRProgram, Terminator,
+        VReg, VRegType, Value,
     },
+    target::target_os,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -90,7 +91,7 @@ pub enum Loc<
     F: Copy + Eq + std::fmt::Debug + std::hash::Hash,
 > {
     PhysReg(RegRef<R, F>),
-    Stack(i32),
+    Stack(i32, RegWidth),
 }
 
 #[derive(Debug, Clone)]
@@ -415,7 +416,7 @@ where
                 let phys_reg = self.allocatable_regs()[color];
                 allocation.insert(node, Loc::PhysReg(RegRef::gpr(phys_reg, node.width)));
             } else {
-                allocation.insert(node, Loc::Stack(stack_offset));
+                allocation.insert(node, Loc::Stack(stack_offset, node.width));
                 stack_offset += 8;
             }
         }
@@ -452,7 +453,7 @@ where
                 let phys_reg = self.float_regs()[color];
                 allocation.insert(node, Loc::PhysReg(RegRef::fpr(phys_reg, RegWidth::W128)));
             } else {
-                allocation.insert(node, Loc::Stack(stack_offset));
+                allocation.insert(node, Loc::Stack(stack_offset, node.width));
                 stack_offset += 8;
             }
         }
@@ -479,18 +480,20 @@ where
         ret
     }
 
-    fn to_lir(&self, func: &IRFunction) -> LFunction<Self::Reg, Self::FpReg> {
+    fn to_lir(
+        &self,
+        mir_prgrm: &IRProgram,
+        func: &IRFunction,
+    ) -> LFunction<Self::Reg, Self::FpReg> {
         let name = func.name.clone();
         let allocation = self.regalloc(func);
 
-        // Build parameter move instructions: arg registers → allocated locations.
-        // The regalloc may assign parameters to different registers than the ABI
-        // argument registers, so we need explicit moves at function entry.
         let gp_args = self.arg_regs();
         let fp_args = self.fp_arg_regs();
         let mut param_moves: Vec<LInst<Self::Reg, Self::FpReg>> = Vec::new();
         let mut gp_idx = 0;
         let mut fp_idx = 0;
+
         for param in &func.params {
             if let Some(dst_loc) = allocation.vreg_loc.get(param) {
                 let is_fp = matches!(param.ty, VRegType::Float);
@@ -541,7 +544,7 @@ where
                 term.as_ref()?;
 
                 let mut insts: Vec<LInst<Self::Reg, Self::FpReg>> = Vec::new();
-                // Prepend parameter moves to the entry block
+
                 if block.id == func.entry {
                     insts.extend(param_moves.clone());
                 }
@@ -549,7 +552,7 @@ where
                     block
                         .instructions
                         .iter()
-                        .flat_map(|v| self.mir_instr_to_lir(v, &allocation)),
+                        .flat_map(|v| self.mir_instr_to_lir(mir_prgrm, v, &allocation)),
                 );
 
                 Some(LBlock::<Self::Reg, Self::FpReg> {
@@ -560,10 +563,19 @@ where
             })
             .collect();
 
+        let mut has_frame = true;
+
+        for a in &func.attributes {
+            if let AtDecl::NoFrame = a {
+                has_frame = false;
+            }
+        }
+
         LFunction {
             name,
             blocks,
             entry: func.entry,
+            has_frame,
             size: func.offset,
         }
     }
@@ -588,7 +600,7 @@ where
                             off: offset,
                         },
                     ),
-                    Loc::Stack(stack_off) => {
+                    Loc::Stack(stack_off, _) => {
                         let fp = self.fp().expect("fp required for spilled address");
                         let scratch = self.scratch_regs()[0];
                         let setup = vec![LInst::Load {
@@ -630,6 +642,7 @@ where
 
     fn mir_instr_to_lir(
         &self,
+        mir_prgrm: &IRProgram,
         mirinst: &IRInstruction,
         allocation: &Allocation<Self::Reg, Self::FpReg>,
     ) -> Vec<LInst<Self::Reg, Self::FpReg>> {
@@ -809,18 +822,126 @@ where
                     }
                 }
             }
-            IRInstruction::Call {
-                reg,
-                func: _func,
-                args,
-            } => vec![LInst::Call {
-                dst: reg.map(|r| allocation.vreg_loc[&r].clone()),
-                func: CallTarget::Direct(_func.to_string()),
-                args: args
-                    .iter()
-                    .map(|a| self.value_to_operand(a, allocation))
-                    .collect(),
-            }],
+            IRInstruction::Call { reg, func, args } => {
+                let mut instrs = vec![];
+                let mir_func = mir_prgrm.functions.get(func).unwrap();
+                let mut is_variadic = false;
+                for attribute in mir_func.attributes.clone() {
+                    if let AtDecl::Variadic = attribute {
+                        is_variadic = true;
+                    }
+                }
+
+                // println!("{args:?}");
+
+                let mut passed_args = vec![];
+                if is_variadic && target_os() == "macos" {
+                    // Non-variadic args passed in registers as normal
+                    for arg in args.iter().take(mir_func.params.len()) {
+                        passed_args.push(self.value_to_operand(arg, allocation));
+                    }
+
+                    // Variadic args must be passed on the stack per macOS ARM64 ABI
+                    let variadic_args: Vec<Operand<Self::Reg, Self::FpReg>> = args
+                        .iter()
+                        .skip(mir_func.params.len())
+                        .map(|a| self.value_to_operand(a, allocation))
+                        .collect();
+                    let num_variadic = variadic_args.len();
+
+                    if num_variadic > 0 {
+                        let stack_size = (num_variadic * 8 + 15) & !15; // 16-byte aligned
+                        instrs.push(LInst::InlineAsm {
+                            asm: format!("sub sp, sp, #{}", stack_size),
+                        });
+
+                        for (i, arg) in variadic_args.iter().enumerate() {
+                            let offset = i * 8;
+                            match arg {
+                                Operand::ImmI64(v) => {
+                                    instrs.push(LInst::InlineAsm {
+                                        asm: format!("mov x16, #{}\nstr x16, [sp, #{}]", v, offset),
+                                    });
+                                }
+                                Operand::ImmF64(f) => {
+                                    instrs.push(LInst::InlineAsm {
+                                        asm: format!(
+                                            "mov x16, #0x{:x}\nstr x16, [sp, #{}]",
+                                            f.to_bits(),
+                                            offset
+                                        ),
+                                    });
+                                }
+                                Operand::Loc(Loc::PhysReg(rr)) => {
+                                    let reg_name = match &rr.ty {
+                                        RegType::GprReg(r) => self.reg64(*r),
+                                        RegType::FprReg(f) => {
+                                            // Float variadic args: store via fpr
+                                            let fpr_name = self.float128(*f);
+                                            instrs.push(LInst::InlineAsm {
+                                                asm: format!("str {}, [sp, #{}]", fpr_name, offset),
+                                            });
+                                            continue;
+                                        }
+                                    };
+                                    instrs.push(LInst::InlineAsm {
+                                        asm: format!("str {}, [sp, #{}]", reg_name, offset),
+                                    });
+                                }
+                                Operand::Loc(Loc::Stack(off, _)) => {
+                                    instrs.push(LInst::InlineAsm {
+                                        asm: format!(
+                                            "ldur x16, [x29, #-{}]\nstr x16, [sp, #{}]",
+                                            off, offset
+                                        ),
+                                    });
+                                }
+                                Operand::Indirect(addr) => match addr {
+                                    Addr::BaseOff { base, off } => {
+                                        let base_reg = self.reg64(*base);
+                                        instrs.push(LInst::InlineAsm {
+                                            asm: format!(
+                                                "ldur x16, [{}, #-{}]\nstr x16, [sp, #{}]",
+                                                base_reg, off, offset
+                                            ),
+                                        });
+                                    }
+                                    _ => {
+                                        instrs.push(LInst::InlineAsm {
+                                            asm: format!("mov x16, #0\nstr x16, [sp, #{}]", offset),
+                                        });
+                                    }
+                                },
+                            }
+                        }
+                    }
+
+                    instrs.push(LInst::Call {
+                        dst: reg.map(|r| allocation.vreg_loc[&r].clone()),
+                        func: CallTarget::Direct(func.clone()),
+                        args: passed_args, // only non-variadic args
+                    });
+
+                    if num_variadic > 0 {
+                        let stack_size = (num_variadic * 8 + 15) & !15;
+                        instrs.push(LInst::InlineAsm {
+                            asm: format!("add sp, sp, #{}", stack_size),
+                        });
+                    }
+
+                    return instrs;
+                }
+
+                instrs.push(LInst::Call {
+                    dst: reg.map(|r| allocation.vreg_loc[&r].clone()),
+                    func: CallTarget::Direct(func.to_string()),
+                    args: args
+                        .iter()
+                        .map(|a| self.value_to_operand(a, allocation))
+                        .collect(),
+                });
+                instrs
+            }
             IRInstruction::Move { dest, from } => vec![LInst::Mov {
                 dst: allocation.vreg_loc[dest].clone(),
                 src: self.value_to_operand(from, allocation),
@@ -890,6 +1011,7 @@ where
             Value::ConstFloat(c) => Operand::ImmF64(*c),
             Value::Local(local_id) => Operand::Loc(Loc::Stack(
                 allocation.local_loc.get(local_id).copied().unwrap_or(0),
+                RegWidth::W64,
             )),
             Value::Global(global_id) => {
                 let sym = allocation
@@ -924,6 +1046,7 @@ pub struct LFunction<
     pub name: String,
     pub blocks: Vec<LBlock<R, F>>,
     pub entry: BlockId,
+    pub has_frame: bool,
     pub size: i32,
 }
 
