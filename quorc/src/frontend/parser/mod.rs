@@ -1063,10 +1063,11 @@ impl Parser {
     fn factor(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.unary()?;
 
-        while self.match_token(&[TokenType::Slash, TokenType::Star]) {
+        while self.match_token(&[TokenType::Slash, TokenType::Star, TokenType::Percent]) {
             let op = match self.previous().token_type {
                 TokenType::Slash => BinaryOp::Div,
                 TokenType::Star => BinaryOp::Mul,
+                TokenType::Percent => BinaryOp::Mod,
                 _ => unreachable!(),
             };
 
