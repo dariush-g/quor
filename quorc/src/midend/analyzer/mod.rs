@@ -23,7 +23,10 @@ pub struct TypeChecker {
     class_fields: HashMap<String, Vec<(String, Type)>>,
     current_return_type: Option<Type>,
     in_loop: bool,
+    class_generics: HashMap<String, Vec<String>>,
     called: Vec<String>,
+    monomorphized_structs: Vec<Stmt>,
+    generic_rewrites: HashMap<String, String>,
 }
 
 impl Default for TypeChecker {
@@ -37,7 +40,87 @@ impl Default for TypeChecker {
             current_return_type: None,
             in_loop: false,
             called: Vec::new(),
+            class_generics: HashMap::new(),
+            monomorphized_structs: Vec::new(),
+            generic_rewrites: HashMap::new(),
         }
+    }
+}
+
+pub fn mangle_name(base: &str, concrete_types: &[Type]) -> String {
+    let suffix = concrete_types
+        .iter()
+        .map(type_to_mangled_string)
+        .collect::<Vec<_>>()
+        .join(".");
+    format!("{base}.{suffix}")
+}
+
+fn type_to_mangled_string(ty: &Type) -> String {
+    match ty {
+        Type::int => "int".to_string(),
+        Type::float => "float".to_string(),
+        Type::Long => "long".to_string(),
+        Type::Char => "Char".to_string(),
+        Type::Bool => "Bool".to_string(),
+        Type::Pointer(inner) => format!("Ptr_{}", type_to_mangled_string(inner)),
+        Type::Struct { name, .. } => name.clone(),
+        Type::Array(elem, Some(n)) => format!("Arr{}_{}", n, type_to_mangled_string(elem)),
+        Type::Array(elem, None) => format!("Arr_{}", type_to_mangled_string(elem)),
+        _ => "Unknown".to_string(),
+    }
+}
+
+fn substitute_type(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::Generic(param) => mapping
+            .get(param)
+            .cloned()
+            .unwrap_or_else(|| panic!("Unresolved generic parameter '{param}'")),
+        Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type(inner, mapping))),
+        Type::Array(elem, size) => Type::Array(Box::new(substitute_type(elem, mapping)), *size),
+        Type::Struct {
+            name,
+            instances,
+            generics,
+        } => Type::Struct {
+            name: name.clone(),
+            instances: instances
+                .iter()
+                .map(|(n, t)| (n.clone(), substitute_type(t, mapping)))
+                .collect(),
+            generics: generics
+                .iter()
+                .map(|t| substitute_type(t, mapping))
+                .collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn unify_generic(
+    declared: &Type,
+    concrete: &Type,
+    mapping: &mut HashMap<String, Type>,
+) -> Result<(), String> {
+    match (declared, concrete) {
+        (Type::Generic(param), _) => {
+            if let Some(existing) = mapping.get(param) {
+                if existing != concrete {
+                    return Err(format!(
+                        "Conflicting types for generic '{param}': {existing:?} vs {concrete:?}"
+                    ));
+                }
+            } else {
+                mapping.insert(param.clone(), concrete.clone());
+            }
+            Ok(())
+        }
+        (Type::Pointer(d_inner), Type::Pointer(c_inner)) => {
+            unify_generic(d_inner, c_inner, mapping)
+        }
+        (Type::Array(d_elem, _), Type::Array(c_elem, _)) => unify_generic(d_elem, c_elem, mapping),
+        _ => Ok(()),
     }
 }
 
@@ -278,12 +361,16 @@ impl TypeChecker {
                 }
                 if decl.as_str() == "union" {
                     if let Stmt::StructDecl {
-                        name, instances, ..
+                        name,
+                        instances,
+                        generics,
+                        ..
                     } = program.get(i + 1).unwrap()
                     {
                         program[i + 1] = Stmt::StructDecl {
                             name: name.to_string(),
                             instances: instances.to_vec(),
+                            generics: generics.to_vec(),
                             union: true,
                         }
                     } else {
@@ -366,6 +453,7 @@ impl TypeChecker {
                 name,
                 instances,
                 union,
+                generics,
                 ..
             } = stmt
             {
@@ -373,12 +461,21 @@ impl TypeChecker {
                 type_checker
                     .class_fields
                     .insert(name.clone(), instances.clone());
+                type_checker
+                    .class_generics
+                    .insert(name.clone(), generics.to_vec());
             }
         }
 
         for stmt in program {
             let checked_stmt = type_checker.type_check_stmt(&stmt)?;
             checked_program.push(checked_stmt);
+        }
+
+        // Prepend monomorphized struct declarations so IR gen sees them
+        let mono = std::mem::take(&mut type_checker.monomorphized_structs);
+        for s in mono.into_iter().rev() {
+            checked_program.insert(0, s);
         }
 
         for stmt in &mut checked_program {
@@ -514,7 +611,10 @@ impl TypeChecker {
                 self.fill_expr_types(target);
                 self.fill_expr_types(value);
             }
-            Expr::StructInit { params, .. } => {
+            Expr::StructInit { name, params } => {
+                if let Some(mangled) = self.generic_rewrites.get(name.as_str()) {
+                    *name = mangled.clone();
+                }
                 for (_, expr) in params {
                     self.fill_expr_types(expr);
                 }
@@ -567,6 +667,67 @@ impl TypeChecker {
 
     fn lookup_fn(&self, name: &str) -> Option<&(Vec<Type>, Type, Vec<String>)> {
         self.functions.get(name)
+    }
+
+    fn monomorphize_struct(
+        &mut self,
+        base_name: &str,
+        concrete_types: &[Type],
+    ) -> Result<String, String> {
+        let mangled = mangle_name(base_name, concrete_types);
+
+        // Already monomorphized
+        if self.classes.contains_key(&mangled) {
+            return Ok(mangled);
+        }
+
+        let generic_params = self
+            .class_generics
+            .get(base_name)
+            .ok_or_else(|| format!("No generic params for struct '{base_name}'"))?
+            .clone();
+
+        if generic_params.len() != concrete_types.len() {
+            return Err(format!(
+                "Struct '{base_name}' expects {} type parameter(s), got {}",
+                generic_params.len(),
+                concrete_types.len()
+            ));
+        }
+
+        let mapping: HashMap<String, Type> = generic_params
+            .iter()
+            .cloned()
+            .zip(concrete_types.iter().cloned())
+            .collect();
+
+        let base_fields = self
+            .class_fields
+            .get(base_name)
+            .ok_or_else(|| format!("No fields for struct '{base_name}'"))?
+            .clone();
+
+        let concrete_fields: Vec<(String, Type)> = base_fields
+            .iter()
+            .map(|(name, ty)| (name.clone(), substitute_type(ty, &mapping)))
+            .collect();
+
+        // Register the concrete struct
+        let is_union = *self.classes.get(base_name).unwrap_or(&false);
+        self.classes.insert(mangled.clone(), is_union);
+        self.class_fields
+            .insert(mangled.clone(), concrete_fields.clone());
+        self.class_generics.insert(mangled.clone(), Vec::new());
+
+        // Emit a concrete StructDecl for IR generation
+        self.monomorphized_structs.push(Stmt::StructDecl {
+            name: mangled.clone(),
+            instances: concrete_fields,
+            generics: Vec::new(),
+            union: is_union,
+        });
+
+        Ok(mangled)
     }
 
     pub fn type_check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
@@ -902,13 +1063,67 @@ impl TypeChecker {
                     .get(name)
                     .ok_or_else(|| format!("Undefined class: '{name}'"))?
                     .clone();
+                let class_generics = self.class_generics.get(name).cloned().unwrap_or_default();
 
+                // --- Generic struct: infer type params and monomorphize ---
+                if !class_generics.is_empty() {
+                    let mut mapping: HashMap<String, Type> = HashMap::new();
+
+                    // Type-check each field and unify against declared (generic) types
+                    let mut seen = HashSet::new();
+                    for (fname, fexpr) in params {
+                        if !seen.insert(fname.clone()) {
+                            return Err(format!("Duplicate field initializer '{fname}'"));
+                        }
+                        let declared_ty = class_fields
+                            .iter()
+                            .find(|(n, _)| n == fname)
+                            .map(|(_, t)| t)
+                            .ok_or_else(|| format!("Struct '{name}' has no field '{fname}'"))?;
+                        let got = self.type_check_expr(fexpr)?;
+                        unify_generic(declared_ty, &got, &mut mapping)?;
+                    }
+
+                    // Check all required fields are present
+                    for (fname, _) in &class_fields {
+                        if !seen.contains(fname) {
+                            return Err(format!("Missing initializer for field '{name}.{fname}'"));
+                        }
+                    }
+
+                    // Collect concrete types in declaration order of generic params
+                    let concrete_types: Vec<Type> = class_generics
+                        .iter()
+                        .map(|param| {
+                            mapping.get(param).cloned().ok_or_else(|| {
+                                format!(
+                                    "Could not infer type for generic parameter '{param}' in struct '{name}'"
+                                )
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let mangled = self.monomorphize_struct(name, &concrete_types)?;
+                    self.generic_rewrites.insert(name.clone(), mangled.clone());
+
+                    // Build concrete field list
+                    let concrete_fields: Vec<(String, Type)> =
+                        self.class_fields.get(&mangled).unwrap().clone();
+
+                    return Ok(Type::Struct {
+                        name: mangled,
+                        instances: concrete_fields,
+                        generics: Vec::new(),
+                    });
+                }
+
+                // --- Non-generic struct (original logic) ---
                 if *self.classes.get(name).unwrap() {
                     if self.class_fields.get(name).unwrap().is_empty() {
-                        // TODO: add warning here for making a union with no fields -> pointless
                         return Ok(Type::Struct {
                             name: name.clone(),
                             instances: vec![],
+                            generics: Vec::new(),
                         });
                     }
                     if params.len() != 1 {
@@ -920,6 +1135,7 @@ impl TypeChecker {
                             Some(Ok(Type::Struct {
                                 name: name.clone(),
                                 instances: vec![(params[0].0.clone(), params[0].1.get_type())],
+                                generics: Vec::new(),
                             }))
                         } else {
                             None
@@ -955,7 +1171,6 @@ impl TypeChecker {
                     let got = self.type_check_expr(fexpr)?;
 
                     let got = if let Type::Array(ty, len) = got {
-                        // println!("{len:?}");
                         Type::Array(ty.clone(), len)
                     } else {
                         got.clone()
@@ -965,6 +1180,7 @@ impl TypeChecker {
                         Type::Struct { name, .. } => Type::Struct {
                             name,
                             instances: Vec::new(),
+                            generics: Vec::new(),
                         },
                         _ => got,
                     };
@@ -977,7 +1193,6 @@ impl TypeChecker {
                                 let ty1 = base_type(&got);
                                 let ty2 = base_type(expected);
 
-                                // Only compare struct names, not their fields
                                 match (&ty1, &ty2) {
                                     (
                                         Type::Struct { name: n1, .. },
@@ -1008,6 +1223,7 @@ impl TypeChecker {
                         .iter()
                         .map(|(name, ty)| (name.to_string(), ty.clone()))
                         .collect(),
+                    generics: Vec::new(),
                 })
             }
             // Expr::InstanceVar(class_name, instance_name) => {
@@ -1169,6 +1385,7 @@ impl TypeChecker {
                 let resolved_type = if let Type::Struct {
                     name: class_name,
                     instances,
+                    ..
                 } = &var_type
                 {
                     if instances.is_empty() {
@@ -1179,6 +1396,7 @@ impl TypeChecker {
                         Type::Struct {
                             name: class_name.clone(),
                             instances: class_fields.clone(),
+                            generics: Vec::new(),
                         }
                     } else {
                         var_type.clone()
@@ -1433,9 +1651,17 @@ impl TypeChecker {
 
                 match &self.current_return_type {
                     Some(expected) if *expected != return_type => {
-                        return Err(format!(
-                            "Return type mismatch: expected {expected:?}, found {return_type:?}"
-                        ));
+                        if let Type::Struct {
+                            name: expected_name,
+                            ..
+                        } = expected
+                            && let Type::Struct { name, .. } = &return_type
+                            && name.split('.').next().unwrap_or("") != expected_name
+                        {
+                            return Err(format!(
+                                "Return type mismatch: expected {expected:?}, found {return_type:?}"
+                            ));
+                        }
                     }
                     None => return Err("Return statement outside of function".to_string()),
                     _ => {}
@@ -1459,6 +1685,7 @@ impl TypeChecker {
                 name,
                 instances,
                 union,
+                generics,
             } => {
                 for (i, instance) in instances.clone().iter().enumerate() {
                     for (j, instance1) in instances.iter().enumerate() {
@@ -1497,6 +1724,7 @@ impl TypeChecker {
                 Ok(Stmt::StructDecl {
                     name: name.to_string(),
                     instances: instances.to_vec(),
+                    generics: generics.to_vec(),
                     union: *union,
                 })
             }
@@ -1511,6 +1739,7 @@ pub fn base_type(ty: &Type) -> Type {
         Type::Struct { name, .. } => Type::Struct {
             name: name.clone(),
             instances: Vec::new(),
+            generics: Vec::new(),
         },
         Type::Pointer(inside) => Type::Pointer(Box::new(base_type(inside))),
         _ => ty.clone(),

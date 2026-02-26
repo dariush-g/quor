@@ -1,13 +1,20 @@
+use std::collections::HashSet;
+
 use crate::frontend::{ast::*, lexer::token::*};
 
 pub struct Parser {
     tokens: Vec<Token>,
+    current_generics: HashSet<String>,
     current: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self {
+            tokens,
+            current: 0,
+            current_generics: HashSet::new(),
+        }
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
@@ -643,6 +650,50 @@ impl Parser {
             return Err(ParseError::UnexpectedToken(name_tok.clone()));
         };
 
+        let mut generics = vec![];
+
+        if let TokenType::Less = self.peek().token_type {
+            self.advance();
+            if let TokenType::Identifier(generic) = &self.peek().token_type {
+                generics.push(generic.clone());
+                if !self.current_generics.insert(generic.to_string()) {
+                    return Err(ParseError::Expected {
+                        expected: TokenType::Identifier("generic parameter".to_string()),
+                        found: self.peek().clone(),
+                        message: "Duplicate generic params".to_owned(),
+                    });
+                }
+            }
+
+            self.advance();
+
+            while self.peek().token_type == TokenType::Comma {
+                self.advance();
+                if let TokenType::Identifier(generic) = &self.peek().token_type {
+                    generics.push(generic.clone());
+                    if !self.current_generics.insert(generic.to_string()) {
+                        return Err(ParseError::Expected {
+                            expected: TokenType::Identifier("generic parameter".to_string()),
+                            found: self.peek().clone(),
+                            message: "Duplicate generic params".to_owned(),
+                        });
+                    }
+                } else {
+                    return Err(ParseError::Expected {
+                        expected: TokenType::Identifier("generic parameter".to_owned()),
+                        found: self.peek().clone(),
+                        message: "Maybe eliminate trailing comma".to_owned(),
+                    });
+                }
+                self.advance();
+            }
+
+            self.consume(
+                TokenType::Greater,
+                "expected '>' after struct's generic parameters",
+            )?;
+        }
+
         self.consume(TokenType::LeftBrace, "Expected '{' after class name")?;
 
         let mut fields = Vec::new();
@@ -670,9 +721,12 @@ impl Parser {
 
         self.consume(TokenType::RightBrace, "Expected '}' after class body")?;
 
+        self.current_generics = HashSet::new();
+
         Ok(Stmt::StructDecl {
             name: class_name,
             instances: fields,
+            generics,
             union: false,
         })
     }
@@ -1504,13 +1558,33 @@ impl Parser {
                 Type::Long
             }
             TokenType::Identifier(name) => {
-                // Handle class names as types
                 let struct_name = name.clone();
-                self.advance();
-                // Type::Pointer(Box::new(
-                Type::Struct {
-                    name: struct_name,
-                    instances: Vec::new(),
+
+                if self.current_generics.contains(&struct_name) {
+                    self.advance();
+                    Type::Generic(struct_name)
+                } else {
+                    self.advance();
+                    
+                    let mut generics = vec![];
+                    if let TokenType::Less = self.peek().token_type {
+                        self.advance(); // consume '<'
+                        generics.push(self.parse_type()?);
+                        while self.peek().token_type == TokenType::Comma {
+                            self.advance(); // consume ','
+                            generics.push(self.parse_type()?);
+                        }
+                        self.consume(
+                            TokenType::Greater,
+                            "expected '>' after generic type arguments",
+                        )?;
+                    }
+                    // Type::Pointer(Box::new(
+                    Type::Struct {
+                        name: struct_name,
+                        instances: Vec::new(),
+                        generics,
+                    }
                 }
                 // ))
             }

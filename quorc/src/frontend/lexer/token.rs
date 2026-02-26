@@ -135,6 +135,7 @@ impl TokenType {
             TokenType::Struct => Type::Struct {
                 name: String::new(),
                 instances: Vec::new(),
+                generics: Vec::new(),
             },
             TokenType::Boolean => Type::Bool,
 

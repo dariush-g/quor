@@ -1,8 +1,16 @@
 @import <io.qu>
 
+struct Example<T, F> {
+    x: T;
+    y: F;
+}
+
+def example() :: Example<int, int> {
+    return Example { x: 42, y: 10 };
+}
 
 def main() :: int {
-    let x = 10 % 2;
-    print("%d\n", x);
+    let example = example();
+    print("%d", example.x);
     return 0;
 }

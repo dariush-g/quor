@@ -134,7 +134,10 @@ impl IRGenerator {
         let mut ir_generator = IRGenerator::default();
 
         for stmt in stmts.clone() {
-            if let Stmt::StructDecl { .. } = stmt {
+            if let Stmt::StructDecl { generics, .. } = &stmt {
+                if !generics.is_empty() {
+                    continue; // skip generic templates; only concrete monomorphized structs
+                }
                 ir_generator.generate_struct(&stmt)?
             }
         }
@@ -167,6 +170,7 @@ impl IRGenerator {
             name,
             instances,
             union,
+            generics,
         } = stmt.clone()
         {
             let offsets = self.get_field_offsets(&instances, union);

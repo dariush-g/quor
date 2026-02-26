@@ -5,24 +5,20 @@ pub enum Type {
     float,
     Long,
     Char,
-
     null,
-
     Bool,
-
     Array(Box<Type>, Option<usize>),
-
     Function,
-
     Struct {
         name: String,
         instances: Vec<(String, Type)>,
+        generics: Vec<Type>,
     },
-
     StructLiteral(String),
     Void,
     Unknown,
     Pointer(Box<Type>),
+    Generic(String), // resolved before midend
     Inferred,
 }
 
@@ -225,6 +221,7 @@ impl Expr {
                     .iter()
                     .map(|(name, expr)| (name.clone(), expr.get_type()))
                     .collect(),
+                generics: Vec::new(),
             },
             Expr::IntLiteral(_) => Type::int,
             Expr::FloatLiteral(_) => Type::float,
@@ -319,6 +316,7 @@ pub enum Stmt {
     StructDecl {
         name: String,
         instances: Vec<(String, Type)>,
+        generics: Vec<String>,
         union: bool,
     },
     If {

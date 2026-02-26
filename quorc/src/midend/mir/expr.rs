@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use crate::{
     backend::lir::regalloc::RegWidth,
     frontend::ast::{BinaryOp, Expr, Type, UnaryOp},
-    midend::mir::{block::*, cfg::*},
+    midend::{
+        analyzer::mangle_name,
+        mir::{block::*, cfg::*},
+    },
 };
 
 fn round_up(x: usize, align: usize) -> usize {
@@ -207,6 +210,7 @@ impl IRGenerator {
                 .iter()
                 .map(|f| (f.0.clone(), f.1.1.clone()))
                 .collect(),
+            generics: Vec::new(),
         }
     }
 
@@ -319,8 +323,9 @@ impl IRGenerator {
                 let mut field_type = Type::Void;
                 let vreg = self.vreg_gen.fresh(false, RegWidth::W64);
                 if let Some((ty, id)) = self.var_map.get(&struct_var_name) {
-                    if let Type::Struct { name, .. } = ty {
-                        let struct_def = self.ir_program.structs.get(name).unwrap();
+                    if let Type::Struct { name, generics, .. } = ty {
+                        let mangled_name = mangle_name(name, generics);
+                        let struct_def = self.ir_program.structs.get(&mangled_name).unwrap();
                         let offset = struct_def.fields.get(&field_name).unwrap().0;
                         field_type = struct_def.fields.get(&field_name).unwrap().1.clone();
                         self.scope_handler.instructions.push(IRInstruction::Load {
