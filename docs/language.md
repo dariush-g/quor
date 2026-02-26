@@ -6,7 +6,7 @@
 @variadic -- allows for an undeclared number of parameters (on macos, variadic args are passed by stack)
 @no_frame -- does not add function prologue or epilogue in codegen
 
-### Inline Assembly
+### Inline assembly
 @asm -- inline assembly
 @asm_bss -- inline assembly in bss section
 @asm_ro -- inline assembly in rodata section
@@ -22,3 +22,6 @@
 ### Data
 @union -- precedes the __struct__ keyword in order to make it a union type
 @const -- creates a global constant 
+
+### Conditional compilation
+@cfg[CONDITION] {} -- e.g. @cfg[target_os = "macos"] {}
