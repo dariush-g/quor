@@ -17,7 +17,6 @@ cfg ir - add ro_data and bss inline asm
 add line numbers to errors and improve error warnings in general
 
 features todo:
-no :: <return-type> fills in to :: void in parser
 generics
 traits
 tiling

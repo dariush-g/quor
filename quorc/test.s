@@ -7,10 +7,27 @@ __q_g_0:
 __q_g_1:
     .asciz "hello"
 
+__q_g_2:
+    .asciz "hello"
+
 .section __TEXT,__const
 .section __DATA,__data
 .section __DATA,__bss
 .section __TEXT,__text
+__q_f_hello:
+stp x29, x30, [sp, #-16]!
+mov x29, sp
+.Lblock_hello_2:
+adrp x16, __q_g_2@PAGE
+add x16, x16, __q_g_2@PAGEOFF
+mov x9, x16
+mov x0, x9
+bl __q_f_print
+mov x10, x0
+b .Lret_hello
+.Lret_hello:
+ldp x29, x30, [sp], #16
+ret
 .globl _main
 _main:
 stp x29, x30, [sp, #-16]!
@@ -30,6 +47,8 @@ mov x0, x9
 bl __q_f_print
 mov x10, x0
 add sp, sp, #16
+bl __q_f_hello
+mov x9, x0
 mov x16, #0
 mov x0, x16
 b .Lret_main

@@ -742,6 +742,20 @@ impl Parser {
         }
 
         self.consume(TokenType::RightParen, "Expected ')' after parameters")?;
+
+        if let TokenType::LeftBrace = self.peek().token_type {
+            self.advance();
+            let body = self.block(None)?;
+
+            return Ok(Stmt::FunDecl {
+                name: fun_name,
+                params: parameters,
+                return_type: Type::Void,
+                body,
+                attributes,
+            });
+        }
+
         self.consume(TokenType::DoubleColon, "Expected '::' after parameters")?;
         let return_type = self.parse_type()?;
         self.consume(TokenType::LeftBrace, "Expected '{' before function body")?;

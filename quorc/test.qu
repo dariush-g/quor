@@ -5,6 +5,10 @@
 
 def main() :: int {
     print("%d, %s", 20, "hello");
-
+    hello();
     return 0;
+}
+
+def hello() {
+    print("hello");
 }
