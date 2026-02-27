@@ -1,13 +1,18 @@
-@import <io.qu>
-@keep_asm
-struct Example {
-    x: int;
-    y: char;
+
+
+struct Example<T, K> {
+    x: T;
+    y: K;
 }
 
+def example() :: Example<int, char*> {
+    return Example {
+        x: 10,
+        y: "hello world"
+    };
+}
 
 def main() :: int {
-    let example = malloc(10);
-
+    let example = example();
     return 0;
 }

@@ -1,4 +1,4 @@
-# Quor 
+# Quor
 
 Quor is a small, experimental systems programming language with Rust-inspired syntax that compiles to native x86_64 and aarch64 assembly.
 
@@ -47,15 +47,15 @@ def main() :: int {
 ### Generic Structs
 
 ```quor
-def Example<T, K> {
+struct Example<T, K> {
     x: T;
     y: K;
 }
 
-def example() :: Example<int, char> {
+def example() :: Example<int, char*> {
     return Example {
-        x: 10;
-        y: 27;
+        x: 10,
+        y: "hello world"
     };
 }
 ```
