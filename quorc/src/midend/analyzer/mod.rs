@@ -61,12 +61,12 @@ fn type_to_mangled_string(ty: &Type) -> String {
         Type::int => "int".to_string(),
         Type::float => "float".to_string(),
         Type::Long => "long".to_string(),
-        Type::Char => "Char".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::Pointer(inner) => format!("Ptr_{}", type_to_mangled_string(inner)),
+        Type::Char => "char".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::Pointer(inner) => format!("ptr_{}", type_to_mangled_string(inner)),
         Type::Struct { name, .. } => name.clone(),
-        Type::Array(elem, Some(n)) => format!("Arr{}_{}", n, type_to_mangled_string(elem)),
-        Type::Array(elem, None) => format!("Arr_{}", type_to_mangled_string(elem)),
+        Type::Array(elem, Some(n)) => format!("arr{}_{}", n, type_to_mangled_string(elem)),
+        Type::Array(elem, None) => format!("arr_{}", type_to_mangled_string(elem)),
         _ => "Unknown".to_string(),
     }
 }

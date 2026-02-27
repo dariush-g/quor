@@ -1,16 +1,13 @@
 @import <io.qu>
-
-struct Example<T, F> {
-    x: T;
-    y: F;
+@keep_asm
+struct Example {
+    x: int;
+    y: char;
 }
 
-def example() :: Example<int, int> {
-    return Example { x: 42, y: 10 };
-}
 
 def main() :: int {
-    let example = example();
-    print("%d", example.x);
+    let example = malloc(10);
+
     return 0;
 }

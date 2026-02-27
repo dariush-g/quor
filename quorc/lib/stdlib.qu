@@ -1,18 +1,2 @@
+@import <string.qu>
 
-
-struct string {
-    ptr: char*;
-    length: int;
-    capacity: int;
-}
-
-def new_string() :: string {
-    let len = 10;
-    let str = string { ptr: malloc(len) as char*, length: 0, capacity: 10 };
-    *str.ptr = '\0';
-    return str;
-}
-
-def free_string(str: string) :: void {
-    free(str.ptr);
-}

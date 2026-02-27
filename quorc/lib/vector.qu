@@ -1,0 +1,7 @@
+
+
+struct vector<I> {
+    ptr: I*;
+    size: int;
+    capacity: int;
+}

@@ -1,19 +1,22 @@
-
 # Todo
 
-* make static strings maintain proper break characters when being put in rodata
+- fix built in function codegen or put them into an import
 
-* make @define a text replacement
+- add generic structs to readme
 
-* cfg ir - add ro_data and bss inline asm
+- make static strings maintain proper break characters when being put in rodata
 
-* add line numbers to errors and improve error warnings in general
+- make @define a text replacement
+
+- cfg ir - add ro_data and bss inline asm
+
+- add line numbers to errors and improve error warnings in general
 
 ## features todo:
 
-* x86_64 branches / t_terminators
+- x86_64 branches / t_terminators
 
-* monomorphic generics
+- generic functions
 
-* proper dominance frontier and phi nodes
-* basic coalescing
+- proper dominance frontier and phi nodes
+- basic coalescing

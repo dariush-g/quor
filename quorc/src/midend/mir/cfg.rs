@@ -152,6 +152,14 @@ impl IRGenerator {
             }
         }
 
+        // ir_generator.generate_function(&Stmt::FunDecl {
+        //     name: "malloc".to_string(),
+        //     params: vec![("_".to_string(), Type::int)],
+        //     return_type: Type::Pointer(Box::new(Type::Void)),
+        //     body: Vec::new(),
+        //     attributes: Vec::new(),
+        // })?;
+
         ir_generator.blocks = ir_generator
             .blocks
             .clone()
@@ -170,7 +178,7 @@ impl IRGenerator {
             name,
             instances,
             union,
-            generics,
+            ..
         } = stmt.clone()
         {
             let offsets = self.get_field_offsets(&instances, union);

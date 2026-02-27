@@ -25,6 +25,7 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Type inference for variable assignments
 - Custom target builds between x86_64 and aarch64
 - conditional compilation
+- Monomorphized generic structs
 
 ## Examples
 
@@ -40,6 +41,22 @@ def main() :: int {
     print_int(add(1, 2));
 
     return 0;
+}
+```
+
+### Generic Structs
+
+```quor
+def Example<T, K> {
+    x: T;
+    y: K;
+}
+
+def example() :: Example<int, char> {
+    return Example {
+        x: 10;
+        y: 27;
+    };
 }
 ```
 
