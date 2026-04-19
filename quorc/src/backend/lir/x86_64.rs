@@ -209,7 +209,7 @@ impl TargetRegs for X86Regs {
     }
 
     fn scratch_regs(&self) -> &'static [Self::Reg] {
-        todo!()
+        &[X86RegGpr::R10, X86RegGpr::R11]
     }
 
     fn float_regs(&self) -> &'static [Self::FpReg] {

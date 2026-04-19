@@ -98,10 +98,8 @@ pub fn build_link_run(
     let obj = workdir.join(format!("{out_name}.o"));
     let bin = workdir.join(out_name);
 
-    // 1) write GAS-syntax assembly
     fs::write(&asm, asm_text)?;
 
-    // 2) assemble with clang (GAS syntax, arm64)
     {
         let mut c = Command::new("clang");
         c.args([
@@ -115,7 +113,6 @@ pub fn build_link_run(
         run(&mut c, workdir)?;
     }
 
-    // 3) link with clang (standard C runtime provides entry → _main)
     {
         let mut c = Command::new("clang");
         c.args([

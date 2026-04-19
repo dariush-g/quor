@@ -277,12 +277,16 @@ impl TargetEmitter for X86Emitter {
                 }
                 asm.push_str(&format!("jmp .Lret_{}\n", ctx.func.name));
             }
-            LTerm::Jump { target } => todo!(),
+            LTerm::Jump { target } => {
+                asm.push_str(&format!(".Lblock_{}_{}\n", ctx.func.name, target.0));
+            }
             LTerm::Branch {
                 condition,
                 if_true,
                 if_false,
-            } => todo!(),
+            } => {
+                todo!()
+            }
         };
         asm
     }
@@ -308,6 +312,22 @@ impl TargetEmitter for X86Emitter {
 }
 
 impl X86Emitter {
+    fn scratch_at(n: u8, w: RegWidth) -> &'static str {
+        match (n, w) {
+            (10, RegWidth::W64) => "r10",
+            (10, RegWidth::W32) => "r10d",
+            (10, RegWidth::W16) => "r10w",
+            (10, RegWidth::W8) => "r10b",
+
+            (11, RegWidth::W64) => "r11",
+            (11, RegWidth::W32) => "r11d",
+            (11, RegWidth::W16) => "r11w",
+            (11, RegWidth::W8) => "r11b",
+
+            _ => unreachable!(),
+        }
+    }
+
     fn width_to_size_prefix(w: RegWidth) -> &'static str {
         match w {
             RegWidth::W8 => "byte",
