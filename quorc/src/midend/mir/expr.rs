@@ -306,7 +306,7 @@ impl IRGenerator {
             Expr::DerefAssign { target, value } => {
                 let (rhs_val, _) = self.lower_place(*value).unwrap();
                 let (ptr_val, ptr_ty) = self.lower_place(*target).unwrap();
-                
+
                 let pointee_ty = ptr_ty
                     .deref()
                     .expect("cannot dereference non-pointer")
@@ -793,6 +793,7 @@ impl IRGenerator {
             Expr::PostIncrement { name: _ } => None,
             Expr::PreDecrement { name: _ } => None,
             Expr::PostDecrement { name: _ } => None,
+            Expr::SizeOf(_) => None,
         }
     }
 

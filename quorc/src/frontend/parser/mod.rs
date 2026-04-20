@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::frontend::{ast::*, lexer::token::*};
+use crate::frontend::{ast::*, lexer::token::*, size::SizeOf};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -1267,7 +1267,43 @@ impl Parser {
         Ok(expr)
     }
 
+    fn sizeof_expression(&mut self) -> Result<Expr, ParseError> {
+        match &self.peek().token_type {
+            TokenType::Char => Ok(Expr::SizeOf(SizeOf::Prim(Type::Char))),
+            TokenType::Int => Ok(Expr::SizeOf(SizeOf::Prim(Type::int))),
+            TokenType::Float => Ok(Expr::SizeOf(SizeOf::Prim(Type::float))),
+            TokenType::Boolean => Ok(Expr::SizeOf(SizeOf::Prim(Type::Bool))),
+            TokenType::StringLiteral(_) => Ok(Expr::SizeOf(SizeOf::Prim(Type::Pointer(Box::new(
+                Type::Char,
+            ))))),
+            TokenType::Identifier(ident) => Ok(Expr::SizeOf(SizeOf::Variable(ident.to_string()))),
+            _ => Err(ParseError::UnexpectedToken(self.peek().clone())),
+        }
+    }
+
     fn finish_call(&mut self, callee: Expr) -> Result<Expr, ParseError> {
+        if let Expr::Variable(name, _) = callee.clone()
+            && name == "sizeof"
+        {
+            let mut arguments = Vec::new();
+            if !self.check(&TokenType::RightParen) {
+                loop {
+                    arguments.push(self.sizeof_expression()?);
+                    self.advance();
+                    if !self.match_token(&[TokenType::Comma]) {
+                        break;
+                    }
+                }
+            }
+            self.consume(TokenType::RightParen, "Expected ')' after sizeof arguments")?;
+
+            return Ok(Expr::Call {
+                name,
+                args: arguments,
+                return_type: Type::int,
+            });
+        }
+
         let mut arguments = Vec::new();
 
         if !self.check(&TokenType::RightParen) {
@@ -1565,7 +1601,7 @@ impl Parser {
                     Type::Generic(struct_name)
                 } else {
                     self.advance();
-                    
+
                     let mut generics = vec![];
                     if let TokenType::Less = self.peek().token_type {
                         self.advance(); // consume '<'

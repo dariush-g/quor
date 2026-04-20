@@ -216,12 +216,39 @@ pub fn build_link_run(
     Ok(())
 }
 
+const FLAG_HELP: &[(&str, &str)] = &[
+    ("--debug", "Enable debug mode with timing and stage output"),
+    ("--emit-tokens", "Print the token stream after lexing"),
+    ("--emit-ast", "Print the AST after parsing"),
+    ("--emit-typed", "Print the typed AST after type checking"),
+    ("--emit-mir", "Print the MIR after IR generation"),
+    (
+        "--emit-asm",
+        "Print the generated assembly before assembling",
+    ),
+    (
+        "--target-os=<os>",
+        "Override the target OS (e.g. linux, macos)",
+    ),
+    (
+        "--target-arch=<arch>",
+        "Override the target architecture (e.g. x86_64, aarch64)",
+    ),
+];
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
         eprintln!("Usage: quor <source-file>");
         std::process::exit(1);
+    }
+
+    if args.contains(&"--help".to_owned()) {
+        for (flag, desc) in FLAG_HELP {
+            println!("{} :: {}\n", flag, desc)
+        }
+        return;
     }
 
     let compiler_args = &args[2..args.len()];

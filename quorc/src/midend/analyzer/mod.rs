@@ -4,6 +4,7 @@ use crate::{
         ast::{BinaryOp, CfgExpr, CfgOp, Expr, Stmt, Type, UnaryOp},
         lexer::Lexer,
         parser::Parser,
+        size::SizeOf,
     },
     midend::mir::block::AtDecl,
     target::{target_arch, target_os},
@@ -567,6 +568,36 @@ impl TypeChecker {
         }
     }
 
+    fn parse_size_of(&mut self, size_of: SizeOf) -> Option<usize> {
+        match size_of {
+            SizeOf::Variable(var) => {
+                if self.classes.contains_key(&var) {
+                    let ty = Type::Struct {
+                        name: var.clone(),
+                        instances: self.class_fields.get(&var).unwrap().to_vec(),
+                        generics: self
+                            .class_generics
+                            .get(&var)
+                            .unwrap()
+                            .iter()
+                            .map(|g| Type::Generic(g.to_string()))
+                            .collect(),
+                    };
+
+                    Some(ty.size())
+                } else {
+                    for scope in &self.variables {
+                        if scope.contains_key(&var) {
+                            return Some(scope.get(&var).unwrap().size());
+                        }
+                    }
+                    None
+                }
+            }
+            SizeOf::Prim(ty) => Some(ty.size()),
+        }
+    }
+
     fn fill_expr_types(&mut self, expr: &mut Expr) {
         match expr {
             Expr::Variable(name, ty) => {
@@ -589,17 +620,16 @@ impl TypeChecker {
             }
             Expr::Assign { value, .. } => self.fill_expr_types(value),
             Expr::Call { name, args, .. } => {
+                if name == "sizeof"
+                    && let Some(Expr::SizeOf(so)) = args.first()
+                {
+                    let size = self.parse_size_of(so.clone()).unwrap().try_into().unwrap();
+                    *expr = Expr::IntLiteral(size);
+                    return;
+                }
+
                 self.called.push(name.to_string());
                 for arg in args {
-                    if name == "sizeof" {
-                        let param = &arg;
-                        if let Expr::Variable(name, _) = param
-                            && self.classes.contains_key(name)
-                        {
-                            self.variables.last_mut().unwrap().remove(name);
-                            return;
-                        }
-                    }
                     self.fill_expr_types(arg);
                 }
             }
@@ -1362,6 +1392,7 @@ impl TypeChecker {
                     )),
                 }
             }
+            Expr::SizeOf(_) => todo!(),
         }
     }
 

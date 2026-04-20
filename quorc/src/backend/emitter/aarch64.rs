@@ -68,7 +68,6 @@ impl ARMEmitter {
         }
     }
 
-    // ensure a location is in a register. Returns (preamble_asm, register_name).
     fn loc_to_reg(&self, loc: &Loc<A64RegGpr, A64RegFpr>, scratch: &str) -> (String, String) {
         match loc {
             Loc::PhysReg(rr) => {
@@ -85,7 +84,6 @@ impl ARMEmitter {
         }
     }
 
-    // write a value from `src_reg` into `dst` location.
     fn store_to_loc(&self, dst: &Loc<A64RegGpr, A64RegFpr>, src_reg: &str) -> String {
         match dst {
             Loc::PhysReg(rr) => {
@@ -149,7 +147,7 @@ impl ARMEmitter {
         out
     }
 
-    // Generate `ldr scratch, [addr]` handling global symbols with adrp+add.
+    // Generate `ldr scratch [addr] -- global symbols adrp+add.
     fn load_addr_value(&self, scratch: &str, addr: &Addr<A64RegGpr>) -> String {
         match addr {
             Addr::Global { sym, off } => {

@@ -29,5 +29,3 @@ pub fn target_os() -> &'static str {
 pub fn in_debug_mode() -> bool {
     *DEBUG_MODE.get().unwrap()
 }
-
-

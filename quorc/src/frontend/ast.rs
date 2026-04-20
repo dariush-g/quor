@@ -1,3 +1,5 @@
+use crate::frontend::size::SizeOf;
+
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -114,6 +116,7 @@ fn round_up(x: usize, align: usize) -> usize {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    SizeOf(SizeOf),
     IntLiteral(i32),
     LongLiteral(i64),
     FloatLiteral(f32),
