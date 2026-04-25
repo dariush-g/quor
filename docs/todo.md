@@ -1,5 +1,7 @@
 # Todo
 
+- coalescing
+
 - fix built in function codegen or put them into an import
 
 - add generic structs to readme
