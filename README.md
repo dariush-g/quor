@@ -38,7 +38,7 @@ def add(a: int, b: int) :: int {
 
 def main() :: int {
 
-    print_int(add(1, 2));
+    print("%d", add(1, 2));
 
     return 0;
 }
@@ -139,4 +139,4 @@ def main() :: int {
 - 6 parameter maximum for function calls
 - No bitwise operations yet
 - No pointer indexing yet
-- codegen backends are a work in progress
+
