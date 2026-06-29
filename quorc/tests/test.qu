@@ -1,28 +1,14 @@
-@import::<io.qu>
+@keep_asm
 
-struct Person {
-    name: char*;
-    age: int;
-}
-
-def get_name(self: Person*) :: char* {
-    return self.name;
-}
-
-struct Example {
-    x: int;
-}
+@import <io.qu>
 
 def main() :: int {
-    let example: Example* = malloc(sizeof(Example)) as Example*;
+    let x = 10.0;
 
-    example.x = 42;
+    let n = 1.2;
+    let z = x * n;
 
-    print("%d", example.x);
-
-	free(example);
-
-	let person: Person = Person { name: "bob", age: 10 };
+    print("%f", z);
 
     return 0;
 }

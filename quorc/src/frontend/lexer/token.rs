@@ -35,7 +35,7 @@ pub enum TokenType {
     Continue,
 
     IntLiteral(i32),
-    FloatLiteral(f32),
+    FloatLiteral(f64),
     CharLiteral(char),
     StringLiteral(String),
     LongLiteral(i64),

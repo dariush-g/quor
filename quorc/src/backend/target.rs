@@ -56,7 +56,11 @@ pub trait TargetEmitter: std::fmt::Debug {
             func_asm.push_str(&self.t_prologue(&mut ctx, func));
         }
 
-        for block in func.blocks.clone() {
+        let mut ordered_blocks = func.blocks.clone();
+        ordered_blocks.sort_by_key(|b| if b.id == func.entry { 0usize } else { 1usize });
+
+        for block in ordered_blocks {
+            func_asm.push_str(&format!(".Lblock_{}_{}: \n", func.name, block.id.0));
             for inst in block.insts {
                 func_asm.push_str(&self.t_emit_inst(&inst, &mut ctx));
             }
@@ -71,6 +75,10 @@ pub trait TargetEmitter: std::fmt::Debug {
     }
 
     fn t_extern(&self, ext: String) -> String;
+
+    fn t_drain_float_consts(&self) -> String {
+        String::new()
+    }
 
     fn generate_ctx(
         func: &LFunction<Self::Reg, Self::FpReg>,

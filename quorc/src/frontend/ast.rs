@@ -119,7 +119,7 @@ pub enum Expr {
     SizeOf(SizeOf),
     IntLiteral(i32),
     LongLiteral(i64),
-    FloatLiteral(f32),
+    FloatLiteral(f64),
     BoolLiteral(bool),
     StringLiteral(String),
     // name of class

@@ -10,7 +10,9 @@ def print(_: char*) :: void {
     }
     @cfg[target_arch = "x86_64"] {
         @__asm__ {
+            sub rsp, 8
             call printf
+            add rsp, 8
         }
     }
 }

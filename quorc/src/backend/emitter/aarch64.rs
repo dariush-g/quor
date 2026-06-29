@@ -1,3 +1,5 @@
+use std::{cell::RefCell, collections::HashMap};
+
 use crate::{
     backend::{
         lir::{
@@ -17,6 +19,7 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct ARMEmitter {
     target_regs: A64Regs,
+    float_consts: RefCell<HashMap<u64, String>>,
 }
 
 impl ARMEmitter {
@@ -44,6 +47,28 @@ impl ARMEmitter {
         }
     }
 
+    fn intern_f64(&self, f: f64) -> String {
+        let bits = f.to_bits();
+        let mut map = self.float_consts.borrow_mut();
+        map.entry(bits)
+            .or_insert_with(|| format!("__q_fc_{:016x}", bits))
+            .clone()
+    }
+
+    fn load_float_const(&self, dst_reg: &str, label: &str) -> String {
+        if cfg!(target_os = "macos") {
+            format!(
+                "adrp {0}, {1}@PAGE\nldr {0}, [{0}, {1}@PAGEOFF]\n",
+                dst_reg, label
+            )
+        } else {
+            format!(
+                "adrp {0}, {1}\nldr {0}, [{0}, :lo12:{1}]\n",
+                dst_reg, label
+            )
+        }
+    }
+
     // Ensure an operand is in a register at the given width.
     // Returns (preamble_asm, register_name).
     fn operand_to_reg(
@@ -58,7 +83,8 @@ impl ARMEmitter {
                 (setup, scratch.to_string())
             }
             Operand::ImmF64(f) => {
-                let setup = format!("mov {}, #0x{:x}\n", scratch, f.to_bits());
+                let label = self.intern_f64(*f);
+                let setup = self.load_float_const(scratch, &label);
                 (setup, scratch.to_string())
             }
             Operand::Indirect(addr) => {
@@ -753,9 +779,17 @@ impl TargetEmitter for ARMEmitter {
         match operand {
             Operand::Loc(loc) => self.t_loc(loc.clone()),
             Operand::ImmI64(i) => format!("#{}", i),
-            Operand::ImmF64(f) => format!("#0x{:x}", f.to_bits()),
+            Operand::ImmF64(f) => self.intern_f64(*f),
             Operand::Indirect(addr) => self.t_addr(addr.clone()),
         }
+    }
+
+    fn t_drain_float_consts(&self) -> String {
+        let mut out = String::new();
+        for (bits, label) in self.float_consts.borrow_mut().drain() {
+            out.push_str(&format!("{}:\n    .quad 0x{:016x}\n", label, bits));
+        }
+        out
     }
 
     fn t_loc(&self, loc: Loc<Self::Reg, Self::FpReg>) -> String {

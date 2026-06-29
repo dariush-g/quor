@@ -1,12 +1,10 @@
 use crate::{
-    debug_log,
     frontend::{
         ast::{BinaryOp, CfgExpr, CfgOp, Expr, Stmt, Type, UnaryOp},
         lexer::Lexer,
         parser::Parser,
         size::SizeOf,
     },
-    midend::mir::block::AtDecl,
     target::{target_arch, target_os},
 };
 

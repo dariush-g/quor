@@ -152,6 +152,21 @@ impl Codegen {
             };
         }
 
+        let float_rodata = match target_arch() {
+            "x86_64" => codegen
+                .target_codegen
+                .get_emitter_x86()
+                .t_drain_float_consts(),
+            "aarch64" => codegen
+                .target_codegen
+                .get_emitter_arm()
+                .t_drain_float_consts(),
+            _ => String::new(),
+        };
+        if !float_rodata.is_empty() {
+            codegen.add_line(AsmSection::RODATA, &float_rodata);
+        }
+
         match (target_arch(), target_os()) {
             ("x86_64", _) => codegen.emit_x86_64(),
             (_, "macos") => codegen.emit_macos(),

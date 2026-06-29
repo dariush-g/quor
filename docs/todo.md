@@ -1,5 +1,7 @@
 # Todo
 
+sizeof in analyzer
+
 - coalescing
 
 - fix built in function codegen or put them into an import

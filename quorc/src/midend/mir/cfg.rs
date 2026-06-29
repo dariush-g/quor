@@ -275,7 +275,7 @@ impl IRGenerator {
         match expr {
             Expr::IntLiteral(i) => GlobalValue::Int(i.into()),
             Expr::LongLiteral(l) => GlobalValue::Int(l),
-            Expr::FloatLiteral(f) => GlobalValue::Float(f.into()),
+            Expr::FloatLiteral(f) => GlobalValue::Float(f),
             Expr::BoolLiteral(b) => GlobalValue::Bool(b),
             Expr::StringLiteral(s) => GlobalValue::String(s),
             Expr::CharLiteral(c) => GlobalValue::Char(c),

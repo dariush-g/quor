@@ -277,7 +277,7 @@ impl Lexer {
 
         if is_float {
             let value = num_text
-                .parse::<f32>()
+                .parse::<f64>()
                 .map_err(|_| LexError::InvalidNumber(num_text.clone(), start_line, start_col))?;
 
             Ok(Token::new(

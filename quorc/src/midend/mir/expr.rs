@@ -219,7 +219,7 @@ impl IRGenerator {
             Expr::BoolLiteral(b) => Some((Value::Const(b as i64), Type::Bool)),
             Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::int)),
             Expr::LongLiteral(i) => Some((Value::Const(i), Type::Long)),
-            Expr::FloatLiteral(f) => Some((Value::ConstFloat(f as f64), Type::float)),
+            Expr::FloatLiteral(f) => Some((Value::ConstFloat(f), Type::float)),
 
             Expr::Variable(name, ty) => {
                 let value = self.var_map.get(&name).unwrap().1.clone();
@@ -258,7 +258,7 @@ impl IRGenerator {
         match expr {
             Expr::IntLiteral(i) => Some((Value::Const(i as i64), Type::int)),
             Expr::LongLiteral(l) => Some((Value::Const(l), Type::Long)),
-            Expr::FloatLiteral(f) => Some((Value::ConstFloat(f as f64), Type::float)),
+            Expr::FloatLiteral(f) => Some((Value::ConstFloat(f), Type::float)),
             Expr::BoolLiteral(b) => Some((Value::Const(b as i64), Type::Bool)),
             Expr::StringLiteral(s) => {
                 let mut def = self.globals.get(&s);
