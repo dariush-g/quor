@@ -31,7 +31,7 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 
 ### Functions
 
-```quor
+```rust
 def add(a: int, b: int) :: int {
     return a + b;
 }
@@ -46,7 +46,7 @@ def main() :: int {
 
 ### Generic Structs
 
-```quor
+```rust
 struct Example<T, K> {
     x: T;
     y: K;
@@ -62,7 +62,7 @@ def example() :: Example<int, char*> {
 
 ### Loops
 
-```quor
+```rust
 def main() :: int {
     let i: int = 0;
 
@@ -76,7 +76,7 @@ def main() :: int {
 
 ### Structs
 
-```quor
+```rust
 @import <io.qu>
 
 struct Person {
@@ -109,7 +109,7 @@ def main() :: int {
 
 ### Inline assembly
 
-```quor
+```rust
 @trust_ret
 def get_time_int() :: int {
     @__asm__ {
@@ -125,7 +125,7 @@ def get_time_int() :: int {
 
 ### Global constants
 
-```quor
+```rust
 @import <io.qu>
 @const ONE_HUNDRED = 100
 def main() :: int {
