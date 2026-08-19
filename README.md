@@ -156,10 +156,31 @@ macOS builds target platform version 15.0.
 
 ## Usage
 
-    cd quorc
-    cargo build --release
-    ./target/release/quorc hello.qu
-    ./hello
+Build the compiler:
+
+```sh
+cd quorc
+cargo build --release
+```
+
+Write a source file:
+
+```rust
+@import <io.qu>
+
+def main() :: int {
+    print("hello\n");
+    return 0;
+}
+```
+
+Compile and run it. The binary is written next to the source file,
+named after it:
+
+```sh
+./target/release/quorc hello.qu
+./hello
+```
 
 Flags go after the filename.
 
