@@ -23,7 +23,7 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Inline assembly
 - Multi-target codegen (x86_64, aarch64)
 - Type inference for variable assignments
-- Custom target builds between x86_64 and aarch64
+- Custom target builds between x86_64 and aarch64 (linker and assembler still use host toolchain)
 - conditional compilation
 - Monomorphized generic structs
 
@@ -140,4 +140,39 @@ def main() :: int {
 - 6 parameter maximum for function calls
 - No bitwise operations yet
 - No pointer indexing yet
+
+## Requirements
+
+quorc emits assembly that calls into libc, so an assembler and a
+linker are required. It shells out to them directly.
+
+| Host          | Needs                          |
+|---------------|--------------------------------|
+| Linux x86_64  | nasm, gcc                      |
+| Linux aarch64 | as, gcc			             |
+| macOS x86_64  | nasm, clang 			         |
+
+macOS builds target platform version 15.0.
+
+## Usage
+
+    cd quorc
+    cargo build --release
+    ./target/release/quorc hello.qu
+    ./hello
+
+Flags go after the filename.
+
+    --debug              stage timings
+    --emit-tokens        token stream
+    --emit-ast           AST
+    --emit-typed         typed AST
+    --emit-mir           MIR
+    --emit-asm           generated assembly
+    --target-arch=<a>    x86_64 | aarch64  (codegen only)
+    --target-os=<os>     linux | macos     (codegen only)
+	--help 				
+
+Add `@keep_asm` anywhere in the entry file to keep the intermediate
+assembly.
 
