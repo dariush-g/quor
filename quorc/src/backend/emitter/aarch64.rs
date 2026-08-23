@@ -62,10 +62,7 @@ impl ARMEmitter {
                 dst_reg, label
             )
         } else {
-            format!(
-                "adrp {0}, {1}\nldr {0}, [{0}, :lo12:{1}]\n",
-                dst_reg, label
-            )
+            format!("adrp {0}, {1}\nldr {0}, [{0}, :lo12:{1}]\n", dst_reg, label)
         }
     }
 
@@ -498,7 +495,7 @@ impl TargetEmitter for ARMEmitter {
                 out.push_str(&format!("    .byte {}\n", *c as u8));
             }
             GlobalValue::String(s) => {
-                out.push_str(&format!("    .asciz {:?}\n", s));
+                out.push_str(&format!("    .asciz \"{}\"\n", s));
             }
             GlobalValue::Bytes(bytes) => {
                 let list = bytes

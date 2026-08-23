@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, println};
 
 use crate::{
     backend::{
@@ -48,7 +48,7 @@ impl TargetEmitter for X86Emitter {
             }
 
             GlobalValue::String(s) => {
-                out.push_str(&format!("    db {:?}, 0\n", s));
+                out.push_str(&format!("    db `{}`, 0\n", s));
             }
 
             GlobalValue::Bytes(bytes) => {

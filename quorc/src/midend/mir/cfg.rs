@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{collections::{HashMap, HashSet, VecDeque}, unreachable};
 
 use crate::{backend::lir::regalloc::RegWidth, frontend::ast::*, midend::mir::block::*};
 

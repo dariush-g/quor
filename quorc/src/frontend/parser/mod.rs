@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, println};
 
 use crate::frontend::{ast::*, lexer::token::*, size::SizeOf};
 

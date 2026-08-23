@@ -1,3 +1,5 @@
+use std::println;
+
 use crate::frontend::lexer::token::*;
 
 pub mod token;
