@@ -8,8 +8,6 @@ sizeof in analyzer
 
 - add generic structs to readme
 
-- make static strings maintain proper break characters when being put in rodata
-
 - make @define a text replacement
 
 - cfg ir - add ro_data and bss inline asm
