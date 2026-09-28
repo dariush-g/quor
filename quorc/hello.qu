@@ -1,7 +1,0 @@
-@import <io.qu>
-
-def main() :: int {
-	let x = "hello\n";
-	print(x);
-	return 0;
-}
