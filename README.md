@@ -38,7 +38,8 @@ def add(a: int, b: int) :: int {
 
 def main() :: int {
 
-    print("%d", add(1, 2));
+	let result = add(1, 2);
+    print("%d", result);
 
     return 0;
 }
