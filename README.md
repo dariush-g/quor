@@ -141,48 +141,7 @@ def main() :: int {
 - No bitwise operations yet
 - No pointer indexing yet
 
-## Requirements
-
-quorc emits assembly that calls into libc, so an assembler and a
-linker are required. It shells out to them directly.
-
-| Host          | Needs                          |
-|---------------|--------------------------------|
-| Linux x86_64  | nasm, gcc                      |
-| Linux aarch64 | as, gcc			             |
-| macOS x86_64  | nasm, clang 			         |
-
-macOS builds target platform version 15.0.
-
-## Usage
-
-Build the compiler:
-
-```sh
-cd quorc
-cargo build --release
-```
-
-Write a source file:
-
-```rust
-@import <io.qu>
-
-def main() :: int {
-    print("hello\n");
-    return 0;
-}
-```
-
-Compile and run it. The binary is written next to the source file,
-named after it:
-
-```sh
-./target/release/quorc hello.qu
-./hello
-```
-
-Flags go after the filename.
+Flags 
 
     --debug              stage timings
     --emit-tokens        token stream
@@ -194,6 +153,6 @@ Flags go after the filename.
     --target-os=<os>     linux | macos     (codegen only)
 	--help 				
 
-Add `@keep_asm` anywhere in the entry file to keep the intermediate
+Add `@keep_asm` anywhere in the file to keep intermediate
 assembly.
 
