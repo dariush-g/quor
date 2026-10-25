@@ -21,11 +21,13 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Basic output using C's printf
 - Variadic functions
 - Inline assembly
-- Multi-target codegen (x86_64, aarch64)
+- Native x86_64 codegen
 - Type inference for variable assignments
-- Custom target builds between x86_64 and aarch64 (linker and assembler still use host toolchain)
+- Custom target builds between x86_64 and aarch64 (linker and assembler still use host's architecture though)
 - conditional compilation
-- Monomorphized generic structs
+  
+- Monomorphized generic structs (AI assisted in writing)
+- Native AArch64 codegen (AI assisted in writing)
 
 ## Examples
 
