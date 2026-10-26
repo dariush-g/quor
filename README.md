@@ -28,6 +28,7 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
   
 - Monomorphized generic structs (AI assisted in writing)
 - Native AArch64 codegen (AI assisted in writing)
+- AI also assisted in writing a macro in the debug flag
 
 ## Examples
 
