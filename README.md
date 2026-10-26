@@ -20,7 +20,7 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Basic memory management using C's `malloc()` and `free()`
 - Basic output using C's printf
 - Variadic functions
-- Inline assembly
+- Inline assembly (but no variable interop within it yet)
 - Native x86_64 codegen
 - Type inference for variable assignments
 - Custom target builds between x86_64 and aarch64 (linker and assembler still use host's architecture though)
