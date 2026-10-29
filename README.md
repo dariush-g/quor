@@ -138,12 +138,16 @@ def main() :: int {
 }
 ```
 
-## Known limitations:
+## Limitations/bugs:
 
+### Limitations
 - aarch64 register sizes are buggy
 - 6 parameter maximum for function calls
 - No bitwise operations yet
 - No pointer indexing yet
+### Bugs
+- nested function calls on aarch64
+
 
 Flags 
 
