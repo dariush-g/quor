@@ -1,6 +1,6 @@
 # Quor
 
-Quor is a small, experimental systems programming language with Rust-inspired syntax that compiles to native x86_64 and aarch64 assembly.
+Quor is a small, experimental systems programming language that compiles to native x86_64 and aarch64 assembly, built for pedagogical reasons.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Basic unions (stack-allocated with heap option)
 - Variables & global constants
 - Functions and function calls
-- `if` / 'else' / `while` / 'for'
+- `if` / 'else' / `while`
 - Imports to a standard lib and to local files
 - Basic memory management using C's `malloc()` and `free()`
 - Basic output using C's printf
@@ -26,9 +26,9 @@ Source (.qu) --> Lexer --> Parser --> AST --> MIR (block-based) --> LIR (graph c
 - Custom target builds between x86_64 and aarch64 (linker and assembler still use host's architecture though)
 - conditional compilation
   
-- Monomorphized generic structs (AI assisted in writing)
-- Native AArch64 codegen (AI assisted in writing)
-- AI also assisted in writing a macro in the debug flag
+- Monomorphized generic structs (AI-assisted implementation)
+- Native AArch64 codegen (AI-assisted implementation)
+- Macro in debug flag (AI-assisted implementation)
 
 ## Examples
 
