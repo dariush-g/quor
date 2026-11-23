@@ -66,8 +66,33 @@ impl ARMEmitter {
         }
     }
 
-    // Ensure an operand is in a register at the given width.
-    // Returns (preamble_asm, register_name).
+    // fixes the problem of a too large immediate value being moved
+    fn load_imm(reg: &str, i: i64) -> String {
+        let is_w = reg.starts_with('w');
+        if (-65536..=65535).contains(&i) {
+            return format!("mov {}, #{}\n", reg, i);
+        }
+        let bits = if is_w { (i as u32) as u64 } else { i as u64 };
+        let chunks = if is_w { 2 } else { 4 };
+        let mut out = String::new();
+        let mut first = true;
+        for n in 0..chunks {
+            let part = (bits >> (n * 16)) & 0xffff;
+            if part == 0 {
+                continue;
+            }
+            let op = if first { "movz" } else { "movk" };
+            out.push_str(&format!("{} {}, #{}, lsl #{}\n", op, reg, part, n * 16));
+            first = false;
+        }
+        if first {
+            out.push_str(&format!("mov {}, #0\n", reg));
+        }
+        out
+    }
+
+    // Ensure an operand is in a register at a given width
+    // returns (preamble_asm, register_name).
     fn operand_to_reg(
         &self,
         operand: &Operand<A64RegGpr, A64RegFpr>,
@@ -76,8 +101,7 @@ impl ARMEmitter {
         match operand {
             Operand::Loc(loc) => self.loc_to_reg(loc, scratch),
             Operand::ImmI64(i) => {
-                let setup = format!("mov {}, #{}\n", scratch, i);
-                (setup, scratch.to_string())
+                (Self::load_imm(scratch, *i), scratch.to_string())
             }
             Operand::ImmF64(f) => {
                 let label = self.intern_f64(*f);

@@ -1,4 +1,4 @@
-
+@import <io.qu>
 
 def add(a: int, b: int) :: int {
     return a + b;
@@ -9,9 +9,9 @@ def main() :: int {
     let a = 0;
 
     let i = 0;
-    while (i < 1000000) {
+    while (i < 100000000) {
         a = add(a, i);
-        i++;
+        i = i + 1;
     }
 
     return a;

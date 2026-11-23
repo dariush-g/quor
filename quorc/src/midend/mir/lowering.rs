@@ -51,6 +51,8 @@ impl IRGenerator {
                 Terminator::Jump { block: cond_block },
             );
         }
+
+        self.set_current(after_block);
     }
 
     pub fn lower_if(&mut self, cond: Expr, if_true: &[Stmt], else_: Option<&[Stmt]>) {
